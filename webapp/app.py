@@ -823,20 +823,16 @@ def admin():
 
 @app.route("/admin/sincronizar_firebase", methods=["POST"])
 def sincronizar_firebase():
-    """Trae los cambios hechos en el sitio remoto (Firebase) hacia la base
-    local, y sube los empleados/equipos creados o editados localmente que
-    todavia no existen en Firebase. Solo toca campos de administracion --
-    nunca datos de escaneo/estado en linea."""
-    resumen = firebase_sync.sincronizar()
-    if "error" in resumen:
-        return redirect(url_for("admin", error="firebase_" + resumen["error"]))
-    return redirect(url_for(
-        "admin", sincronizado="1",
-        fu_bajados=resumen["usuarios"]["bajados_nuevos"], fu_actualizados=resumen["usuarios"]["actualizados"],
-        fu_subidos=resumen["usuarios"]["subidos"],
-        fe_bajados=resumen["equipos"]["bajados_nuevos"], fe_actualizados=resumen["equipos"]["actualizados"],
-        fe_subidos=resumen["equipos"]["subidos"],
-    ))
+    """Arranca la sincronizacion con Firebase en segundo plano (no bloquea
+    la request) para que el navegador pueda mostrar una barra de progreso
+    haciendo poll a /admin/sincronizar_firebase/estado."""
+    iniciado = firebase_sync.iniciar_sincronizacion_async()
+    return jsonify({"iniciado": iniciado})
+
+
+@app.route("/admin/sincronizar_firebase/estado")
+def sincronizar_firebase_estado():
+    return jsonify(firebase_sync.obtener_estado())
 
 
 @app.route("/admin/importar_gestion", methods=["POST"])
@@ -1685,4 +1681,4 @@ def disponibilidad():
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5001)
+    app.run(debug=True, port=5001, threaded=True)

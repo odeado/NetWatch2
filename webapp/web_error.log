@@ -1797,3 +1797,424 @@ Press CTRL+C to quit
  * Restarting with stat
  * Debugger is active!
  * Debugger PIN: 366-906-506
+ * Detected change in 'C:\\Scripts\\NetWatch 2.0\\webapp\\app.py', reloading
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 366-906-506
+ * Detected change in 'C:\\Scripts\\NetWatch 2.0\\webapp\\app.py', reloading
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 366-906-506
+127.0.0.1 - - [14/Jul/2026 12:26:17] "GET / HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 12:26:17] "GET /static/style.css HTTP/1.1" 304 -
+127.0.0.1 - - [14/Jul/2026 12:26:17] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 12:26:20] "GET /admin HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 12:26:20] "GET /static/style.css HTTP/1.1" 304 -
+127.0.0.1 - - [14/Jul/2026 12:28:24] "POST /admin/sincronizar_firebase HTTP/1.1" 302 -
+127.0.0.1 - - [14/Jul/2026 12:28:25] "GET /admin?sincronizado=1&fu_bajados=1&fu_actualizados=0&fu_subidos=82&fe_bajados=0&fe_actualizados=0&fe_subidos=217 HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 12:28:25] "GET /static/style.css HTTP/1.1" 304 -
+ * Detected change in 'C:\\Scripts\\NetWatch 2.0\\webapp\\firebase_sync.py', reloading
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 366-906-506
+ * Detected change in 'C:\\Scripts\\NetWatch 2.0\\webapp\\firebase_sync.py', reloading
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 366-906-506
+ * Detected change in 'C:\\Scripts\\NetWatch 2.0\\webapp\\firebase_sync.py', reloading
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 366-906-506
+ * Detected change in 'C:\\Scripts\\NetWatch 2.0\\webapp\\firebase_sync.py', reloading
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 366-906-506
+ * Detected change in 'C:\\Scripts\\NetWatch 2.0\\webapp\\firebase_sync.py', reloading
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 366-906-506
+ * Detected change in 'C:\\Scripts\\NetWatch 2.0\\webapp\\firebase_sync.py', reloading
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 366-906-506
+ * Detected change in 'C:\\Scripts\\NetWatch 2.0\\webapp\\firebase_sync.py', reloading
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 366-906-506
+127.0.0.1 - - [14/Jul/2026 12:31:37] "GET / HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 12:31:37] "GET /static/style.css HTTP/1.1" 304 -
+127.0.0.1 - - [14/Jul/2026 12:31:37] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 12:31:42] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 12:31:45] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 12:31:47] "GET /api/monitor_log HTTP/1.1" 200 -
+ * Detected change in 'C:\\Scripts\\NetWatch 2.0\\webapp\\firebase_sync.py', reloading
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 366-906-506
+127.0.0.1 - - [14/Jul/2026 12:31:51] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 12:31:52] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 12:31:57] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 12:31:58] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 12:32:02] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 12:32:05] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 12:32:07] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 12:32:12] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 12:32:12] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 12:32:17] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 12:32:18] "GET /disponibilidad HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 12:32:18] "GET /static/style.css HTTP/1.1" 304 -
+127.0.0.1 - - [14/Jul/2026 12:32:25] "GET / HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 12:32:25] "GET /static/style.css HTTP/1.1" 304 -
+127.0.0.1 - - [14/Jul/2026 12:32:25] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 12:32:27] "GET /admin HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 12:32:27] "GET /static/style.css HTTP/1.1" 304 -
+127.0.0.1 - - [14/Jul/2026 12:32:29] "GET /admin/equipos HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 12:32:29] "GET /static/style.css HTTP/1.1" 304 -
+127.0.0.1 - - [14/Jul/2026 12:32:31] "GET /admin/parametros HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 12:32:31] "GET /static/style.css HTTP/1.1" 304 -
+127.0.0.1 - - [14/Jul/2026 12:32:32] "GET /topologia HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 12:32:32] "GET /static/style.css HTTP/1.1" 304 -
+127.0.0.1 - - [14/Jul/2026 12:32:33] "GET /admin/parametros HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 12:32:34] "GET /static/style.css HTTP/1.1" 304 -
+127.0.0.1 - - [14/Jul/2026 12:32:55] "GET /topologia HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 12:32:56] "GET /static/style.css HTTP/1.1" 304 -
+ * Detected change in 'C:\\Scripts\\NetWatch 2.0\\webapp\\firebase_sync.py', reloading
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 366-906-506
+ * Detected change in 'C:\\Scripts\\NetWatch 2.0\\webapp\\firebase_sync.py', reloading
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 366-906-506
+ * Detected change in 'C:\\Scripts\\NetWatch 2.0\\webapp\\firebase_sync.py', reloading
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 366-906-506
+ * Detected change in 'C:\\Scripts\\NetWatch 2.0\\webapp\\firebase_sync.py', reloading
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 366-906-506
+ * Detected change in 'C:\\Scripts\\NetWatch 2.0\\webapp\\app.py', reloading
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 366-906-506
+ * Detected change in 'C:\\Scripts\\NetWatch 2.0\\webapp\\app.py', reloading
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 366-906-506
+127.0.0.1 - - [14/Jul/2026 13:02:45] "GET /admin/equipos HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:02:45] "GET /static/style.css HTTP/1.1" 304 -
+127.0.0.1 - - [14/Jul/2026 13:02:49] "GET /equipo/3 HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:02:49] "GET /static/style.css HTTP/1.1" 304 -
+127.0.0.1 - - [14/Jul/2026 13:03:31] "GET / HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:03:31] "GET /static/style.css HTTP/1.1" 304 -
+127.0.0.1 - - [14/Jul/2026 13:03:32] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:03:33] "GET /admin HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:03:34] "GET /static/style.css HTTP/1.1" 304 -
+127.0.0.1 - - [14/Jul/2026 13:03:36] "GET /admin/equipos HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:03:36] "GET /static/style.css HTTP/1.1" 304 -
+127.0.0.1 - - [14/Jul/2026 13:03:37] "GET /admin/parametros HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:03:38] "GET /static/style.css HTTP/1.1" 304 -
+127.0.0.1 - - [14/Jul/2026 13:03:39] "GET /topologia HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:03:40] "GET /static/style.css HTTP/1.1" 304 -
+127.0.0.1 - - [14/Jul/2026 13:03:41] "GET /admin/parametros HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:03:41] "GET /static/style.css HTTP/1.1" 304 -
+ * Detected change in 'C:\\Scripts\\NetWatch 2.0\\webapp\\firebase_sync.py', reloading
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 366-906-506
+ * Detected change in 'C:\\Scripts\\NetWatch 2.0\\webapp\\firebase_sync.py', reloading
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 366-906-506
+ * Detected change in 'C:\\Scripts\\NetWatch 2.0\\webapp\\firebase_sync.py', reloading
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 366-906-506
+ * Detected change in 'C:\\Scripts\\NetWatch 2.0\\webapp\\firebase_sync.py', reloading
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 366-906-506
+ * Detected change in 'C:\\Scripts\\NetWatch 2.0\\webapp\\firebase_sync.py', reloading
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 366-906-506
+ * Detected change in 'C:\\Scripts\\NetWatch 2.0\\webapp\\db.py', reloading
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 366-906-506
+ * Detected change in 'C:\\Scripts\\NetWatch 2.0\\webapp\\firebase_sync.py', reloading
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 366-906-506
+ * Detected change in 'C:\\Scripts\\NetWatch 2.0\\webapp\\firebase_sync.py', reloading
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 366-906-506
+127.0.0.1 - - [14/Jul/2026 13:11:50] "GET / HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:11:50] "GET /static/style.css HTTP/1.1" 304 -
+127.0.0.1 - - [14/Jul/2026 13:11:50] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:11:55] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:11:56] "GET /admin HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:11:56] "GET /static/style.css HTTP/1.1" 304 -
+127.0.0.1 - - [14/Jul/2026 13:11:59] "GET / HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:12:00] "GET /static/style.css HTTP/1.1" 304 -
+127.0.0.1 - - [14/Jul/2026 13:12:00] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:12:05] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:12:07] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:12:10] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:12:14] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:12:15] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:12:20] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:12:21] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:12:25] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:12:28] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:12:30] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:12:35] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:12:35] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:12:40] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:12:42] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:12:45] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:12:49] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:12:50] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:12:55] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:12:56] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:13:00] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:13:03] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:13:05] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:13:10] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:13:10] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:13:15] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:13:17] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:13:20] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:13:24] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:13:25] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:13:30] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:13:31] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:13:35] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:13:38] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:13:40] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:13:45] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:13:45] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:13:50] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:13:52] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:13:55] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:13:59] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:14:00] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:14:05] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:14:06] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:14:10] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:14:13] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:14:15] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:14:20] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:14:20] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:14:25] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:14:27] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:14:30] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:14:34] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:14:35] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:14:40] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:14:41] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:14:45] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:14:48] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:14:50] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:14:55] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:14:55] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:15:00] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:15:02] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:15:05] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:15:09] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:15:10] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:15:15] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:15:16] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:15:20] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:15:23] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:15:25] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:15:30] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:15:30] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:15:35] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:15:37] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:15:40] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:15:44] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:15:45] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:15:50] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:15:51] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:15:55] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:15:58] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:16:00] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:16:05] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:16:05] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:16:10] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:16:12] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:16:15] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:16:19] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:16:20] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:16:25] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:16:26] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:16:30] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:16:33] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:16:35] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:16:40] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:16:40] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:16:45] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:16:47] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:16:50] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:16:54] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:16:55] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:17:00] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:17:01] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:17:05] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:17:08] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:17:10] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:17:15] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:17:15] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:17:20] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:17:22] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:17:25] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:17:29] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:17:30] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:17:35] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:17:36] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:17:40] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:17:43] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:17:45] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:17:50] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:17:50] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:17:55] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:17:57] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:18:00] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:18:04] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:18:05] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:18:10] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:18:11] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:18:15] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:18:18] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:18:20] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:18:25] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:18:25] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:18:30] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:18:32] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:18:35] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:18:39] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:18:40] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:18:45] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:18:46] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:18:50] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:18:53] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:18:55] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:19:00] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:19:00] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:19:05] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:19:07] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:19:10] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:19:14] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:19:15] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:19:20] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:19:21] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:19:25] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:19:28] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:19:30] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:19:35] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:19:35] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:19:40] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:19:42] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:19:45] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:19:49] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:19:50] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:19:55] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:19:56] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:20:00] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:20:03] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:20:05] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:20:10] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:20:10] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:20:15] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:20:17] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:20:20] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:20:24] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:20:25] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:20:30] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:20:31] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:20:35] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:20:38] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:20:40] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:20:45] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:20:45] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:20:50] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:20:52] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:20:55] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:20:59] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:21:00] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:21:05] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:21:06] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:21:10] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:21:13] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:21:15] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:21:20] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:21:20] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:21:25] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:21:27] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:21:30] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:21:34] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:21:35] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:21:40] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:21:41] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:21:45] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:21:48] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:21:50] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:21:55] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:21:55] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:22:00] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:22:02] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:22:05] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:22:09] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:22:10] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:22:15] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:22:16] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:22:20] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:22:23] "GET /api/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:22:25] "GET /api/monitor_log HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:22:25] "GET /admin HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:22:25] "GET /static/style.css HTTP/1.1" 304 -
+127.0.0.1 - - [14/Jul/2026 13:22:29] "POST /admin/sincronizar_firebase HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:22:29] "GET /admin/sincronizar_firebase/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:22:30] "GET /admin/sincronizar_firebase/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:22:31] "GET /admin/sincronizar_firebase/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:22:31] "GET /admin/sincronizar_firebase/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:22:32] "GET /admin/sincronizar_firebase/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:22:33] "GET /admin/sincronizar_firebase/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:22:34] "GET /admin/sincronizar_firebase/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:22:34] "GET /admin/sincronizar_firebase/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:22:35] "GET /admin/sincronizar_firebase/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:22:35] "GET /admin/sincronizar_firebase/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:22:36] "GET /admin/sincronizar_firebase/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:22:37] "GET /admin/sincronizar_firebase/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:22:38] "GET /admin/sincronizar_firebase/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:22:38] "GET /admin/sincronizar_firebase/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:22:39] "GET /admin/sincronizar_firebase/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:22:39] "GET /admin/sincronizar_firebase/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:22:40] "GET /admin/sincronizar_firebase/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:22:41] "GET /admin/sincronizar_firebase/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:22:42] "GET /admin/sincronizar_firebase/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:22:42] "GET /admin/sincronizar_firebase/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:22:43] "GET /admin/sincronizar_firebase/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:22:43] "GET /admin/sincronizar_firebase/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:22:44] "GET /admin/sincronizar_firebase/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:22:45] "GET /admin/sincronizar_firebase/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:22:46] "GET /admin/sincronizar_firebase/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:22:46] "GET /admin/sincronizar_firebase/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:22:47] "GET /admin/sincronizar_firebase/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:22:48] "GET /admin/sincronizar_firebase/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:22:49] "GET /admin/sincronizar_firebase/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:22:50] "GET /admin/sincronizar_firebase/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:22:51] "GET /admin/sincronizar_firebase/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:22:52] "GET /admin/sincronizar_firebase/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:22:53] "GET /admin/sincronizar_firebase/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:22:54] "GET /admin/sincronizar_firebase/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:22:55] "GET /admin/sincronizar_firebase/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:22:56] "GET /admin/sincronizar_firebase/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:22:57] "GET /admin/sincronizar_firebase/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:22:58] "GET /admin/sincronizar_firebase/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:22:59] "GET /admin/sincronizar_firebase/estado HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:22:59] "GET /admin?sincronizado=1&fu_bajados=0&fu_actualizados=0&fu_subidos=0&fe_bajados=0&fe_actualizados=0&fe_subidos=0 HTTP/1.1" 200 -
+127.0.0.1 - - [14/Jul/2026 13:22:59] "GET /static/style.css HTTP/1.1" 304 -

@@ -27,6 +27,12 @@
     {% if e.open_ports %}{% for p in e.open_ports %}<span class="port">{{ p.port }}</span>{% endfor %}{% else %}-{% endif %}
   </span></div>
   <div><span class="k">Confianza</span><span class="v"><span class="badge badge-{{ e.confidence_label }}">{{ e.confidence_label }} ({{ e.confidence_score }})</span></span></div>
+  <div><span class="k">Detectado via</span><span class="v">
+    {% if e.metodo_deteccion == 'ping' %}Ping (ICMP)
+    {% elif e.metodo_deteccion == 'puertos' %}Puerto abierto (RDP/SMB/RPC/WinRM)
+    {% elif e.metodo_deteccion == 'arp' %}Tabla ARP <span class="muted">(firewall bloquea ping y puertos, pero el equipo esta conectado)</span>
+    {% else %}-{% endif %}
+  </span></div>
   <div><span class="k">Estado deteccion</span><span class="v">
     <span class="tag tag-{{ e.estado_deteccion }}">{{ e.estado_deteccion }}</span>
     <span class="estado-cambiar">

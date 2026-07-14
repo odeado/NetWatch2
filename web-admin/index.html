@@ -4,153 +4,235 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Win NetWatch RMM - Administracion remota</title>
-<style>
-  :root {
-    --bg: #0f1420; --panel: #161d2e; --panel2: #1c2438; --border: #2a3348;
-    --blue: #4f8cff; --text: #e6e9f0; --muted: #8a92a6; --red: #e05a5a; --green: #3fbf72;
-  }
-  * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--text); font-family: -apple-system, Segoe UI, Roboto, sans-serif; }
-  header { padding: 18px 24px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
-  header h1 { font-size: 18px; margin: 0; }
-  header p { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
-  main { max-width: 1100px; margin: 0 auto; padding: 24px; }
-  .hidden { display: none !important; }
-  .login-box { max-width: 340px; margin: 80px auto; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 24px; }
-  .login-box h2 { margin-top: 0; font-size: 16px; }
-  label { display: block; font-size: 13px; color: var(--muted); margin: 12px 0 4px; }
-  input, select, textarea { width: 100%; padding: 8px 10px; background: var(--panel2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 14px; }
-  button { cursor: pointer; border-radius: 6px; border: 1px solid var(--border); background: var(--panel2); color: var(--text); padding: 8px 14px; font-size: 13px; }
-  button.primary { background: var(--blue); border-color: var(--blue); color: #fff; }
-  button.danger { background: transparent; border-color: var(--red); color: var(--red); }
-  .error { color: var(--red); font-size: 13px; margin-top: 10px; min-height: 16px; }
-  .tabs { display: flex; gap: 8px; margin-bottom: 16px; }
-  .tabs button { background: var(--panel); }
-  .tabs button.active { background: var(--blue); border-color: var(--blue); color: #fff; }
-  .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 12px; }
-  table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
-  th, td { text-align: left; padding: 10px 12px; font-size: 13px; border-bottom: 1px solid var(--border); }
-  th { color: var(--muted); font-weight: 500; }
-  tr:last-child td { border-bottom: none; }
-  tr.editing { background: var(--panel2); }
-  .row-actions { display: flex; gap: 6px; }
-  .badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 12px; }
-  .badge-on { background: rgba(63,191,114,0.15); color: var(--green); }
-  .badge-off { background: rgba(224,90,90,0.15); color: var(--red); }
-  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.55); display: flex; align-items: center; justify-content: center; z-index: 50; }
-  .modal-box { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 20px; width: 420px; max-height: 85vh; overflow-y: auto; }
-  .modal-box h3 { margin-top: 0; font-size: 15px; }
-  .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
-  .empty { color: var(--muted); font-size: 13px; padding: 20px; text-align: center; }
-  .user-bar { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); }
-</style>
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
 
+<div class="login-box" id="caja-login">
+  <h2>Win NetWatch RMM</h2>
+  <p class="subtitle muted">Administracion remota &mdash; inicia sesion para continuar.</p>
+  <label>Correo <input type="email" id="login-email" placeholder="tu-correo@ejemplo.com"></label>
+  <label>Contrasena <input type="password" id="login-password"></label>
+  <button class="btn btn-primary" onclick="iniciarSesion()" style="width:100%; padding:10px;">Entrar</button>
+  <div class="login-error" id="login-error"></div>
+</div>
+
+<div id="panel-admin" style="display:none">
+
 <header>
-  <div>
-    <h1>Win NetWatch RMM &mdash; Administracion remota</h1>
-    <p>Solo empleados y equipos (catalogo). El estado de escaneo/online-offline vive unicamente en el sistema local.</p>
-  </div>
-  <div class="user-bar hidden" id="barra-usuario">
-    <span id="texto-usuario"></span>
-    <button onclick="cerrarSesion()">Cerrar sesion</button>
+  <div class="header-row">
+    <div>
+      <h1>Win NetWatch RMM &mdash; Administracion remota</h1>
+      <p class="subtitle">Empleados, equipos, parametros e infraestructura. El estado de escaneo/online-offline vive unicamente en el sistema local.</p>
+    </div>
+    <div class="header-acciones">
+      <span class="tickets-nav-link" id="texto-usuario" style="cursor:default;"></span>
+      <button class="tickets-nav-link" onclick="cerrarSesion()">Cerrar sesion</button>
+    </div>
   </div>
 </header>
 
-<main>
+<nav class="admin-tabs">
+  <button id="tab-empleados" class="active" onclick="mostrarTab('empleados')">Empleados</button>
+  <button id="tab-equipos" onclick="mostrarTab('equipos')">Equipos</button>
+  <button id="tab-parametros" onclick="mostrarTab('parametros')">Parametros y Red</button>
+  <button id="tab-infraestructura" onclick="mostrarTab('infraestructura')">Infraestructura</button>
+</nav>
 
-<div class="login-box" id="caja-login">
-  <h2>Iniciar sesion</h2>
-  <label>Correo</label>
-  <input type="email" id="login-email" placeholder="tu-correo@ejemplo.com">
-  <label>Contrasena</label>
-  <input type="password" id="login-password">
-  <div style="margin-top:16px">
-    <button class="primary" onclick="iniciarSesion()" style="width:100%">Entrar</button>
+<div id="vista-empleados">
+  <div class="admin-toolbar">
+    <input type="text" id="buscar-empleados" class="admin-buscador" placeholder="Buscar por nombre, email, departamento, ciudad o telefono..." oninput="pintarEmpleados()">
+    <button class="btn btn-primary" onclick="abrirModalEmpleado()">+ Agregar empleado</button>
   </div>
-  <div class="error" id="login-error"></div>
+  <div class="fichas-grid" id="grid-empleados"></div>
+  <p class="empty" id="empleados-vacio" style="display:none; margin-top:14px;">Sin empleados todavia. Agrega el primero arriba.</p>
 </div>
 
-<div id="panel-admin" class="hidden">
-  <div class="tabs">
-    <button id="tab-empleados" class="active" onclick="mostrarTab('empleados')">Empleados</button>
-    <button id="tab-equipos" onclick="mostrarTab('equipos')">Equipos</button>
+<div id="vista-equipos" style="display:none">
+  <div class="admin-toolbar">
+    <input type="text" id="buscar-equipos" class="admin-buscador" placeholder="Buscar por hostname, IP, marca, modelo o responsable..." oninput="pintarEquipos()">
+    <button class="btn btn-primary" onclick="abrirModalEquipo()">+ Agregar equipo</button>
   </div>
+  <div class="fichas-grid" id="grid-equipos"></div>
+  <p class="empty" id="equipos-vacio" style="display:none; margin-top:14px;">Sin equipos todavia. Agrega el primero arriba.</p>
+</div>
 
-  <div id="vista-empleados">
-    <div class="toolbar">
-      <input type="text" id="buscar-empleados" placeholder="Buscar..." style="max-width:260px" oninput="pintarEmpleados()">
-      <button class="primary" onclick="abrirModalEmpleado()">+ Agregar empleado</button>
+<div id="vista-parametros" style="display:none">
+  <div class="catalogos-grid" style="display:flex; gap:24px; flex-wrap:wrap;">
+    <div class="catalogo-col" style="flex:1; min-width:260px;">
+      <h3 class="muted" style="text-transform:uppercase; font-size:13px; letter-spacing:0.04em; margin-bottom:8px;">Departamentos</h3>
+      <ul class="catalogo-list" id="lista-departamentos" style="list-style:none; padding:0; display:flex; flex-direction:column; gap:6px; margin-bottom:10px;"></ul>
+      <div style="display:flex; gap:8px;">
+        <input type="text" id="nuevo-departamento" class="admin-buscador" placeholder="Nuevo departamento...">
+        <button class="btn btn-primary" onclick="agregarDepartamento()">Agregar</button>
+      </div>
     </div>
-    <table>
-      <thead><tr>
-        <th>Nombre</th><th>Correo</th><th>Cargo</th><th>Departamento</th><th>Ciudad</th><th>Lugar</th><th>VPN</th><th>Estado</th><th></th>
-      </tr></thead>
-      <tbody id="tbody-empleados"></tbody>
-    </table>
-    <p class="empty hidden" id="empleados-vacio">Sin empleados todavia.</p>
-  </div>
-
-  <div id="vista-equipos" class="hidden">
-    <div class="toolbar">
-      <input type="text" id="buscar-equipos" placeholder="Buscar..." style="max-width:260px" oninput="pintarEquipos()">
-      <button class="primary" onclick="abrirModalEquipo()">+ Agregar equipo</button>
+    <div class="catalogo-col" style="flex:1; min-width:260px;">
+      <h3 class="muted" style="text-transform:uppercase; font-size:13px; letter-spacing:0.04em; margin-bottom:8px;">Ciudades</h3>
+      <ul class="catalogo-list" id="lista-ciudades" style="list-style:none; padding:0; display:flex; flex-direction:column; gap:6px; margin-bottom:10px;"></ul>
+      <div style="display:flex; gap:8px;">
+        <input type="text" id="nueva-ciudad" class="admin-buscador" placeholder="Nueva ciudad...">
+        <button class="btn btn-primary" onclick="agregarCiudad()">Agregar</button>
+      </div>
     </div>
-    <table>
-      <thead><tr>
-        <th>Hostname</th><th>IP</th><th>Marca/Modelo</th><th>Responsable</th><th>Ciudad</th><th>OS</th><th></th>
-      </tr></thead>
-      <tbody id="tbody-equipos"></tbody>
-    </table>
-    <p class="empty hidden" id="equipos-vacio">Sin equipos todavia.</p>
   </div>
 </div>
 
-</main>
+<div id="vista-infraestructura" style="display:none">
+  <div class="admin-toolbar">
+    <input type="text" id="buscar-dispositivos" class="admin-buscador" placeholder="Buscar por nombre, tipo, marca, IP o ciudad..." oninput="pintarDispositivos()">
+    <button class="btn btn-primary" onclick="abrirModalDispositivo()">+ Agregar dispositivo</button>
+  </div>
+  <p class="empty" style="margin-bottom:14px; padding:12px 16px;">El mapa visual de puertos y las luces de estado solo se ven en el sistema local (dependen del escaneo). Aqui puedes cargar y editar los datos del dispositivo para que ya esten listos cuando llegues a la oficina.</p>
+  <div class="fichas-grid" id="grid-dispositivos"></div>
+  <p class="empty" id="dispositivos-vacio" style="display:none; margin-top:14px;">Sin dispositivos todavia. Agrega el primero arriba.</p>
+</div>
 
-<div class="modal-overlay hidden" id="modal-empleado">
+</div>
+
+<!-- Modal: empleado -->
+<div class="modal-overlay" id="modal-empleado" onclick="if(event.target===this) cerrarModalEmpleado()">
   <div class="modal-box">
-    <h3 id="modal-empleado-titulo">Agregar empleado</h3>
-    <input type="hidden" id="emp-key">
-    <label>Nombre</label><input type="text" id="emp-nombre">
-    <label>Correo</label><input type="email" id="emp-correo">
-    <label>Cargo</label><input type="text" id="emp-cargo">
-    <label>Telefono</label><input type="text" id="emp-telefono">
-    <label>Departamento</label><input type="text" id="emp-departamento">
-    <label>Ciudad</label><input type="text" id="emp-ciudad">
-    <label>Lugar de trabajo</label>
-    <select id="emp-lugar"><option>Presencial</option><option>Remoto</option><option>Hibrido</option></select>
-    <label>Tipo VPN</label><input type="text" id="emp-vpn">
-    <label>Activo</label>
-    <select id="emp-activo"><option value="1">Si</option><option value="0">No</option></select>
-    <div class="modal-actions">
-      <button class="danger hidden" id="btn-borrar-empleado" onclick="borrarEmpleado()">Eliminar</button>
-      <button onclick="cerrarModalEmpleado()">Cancelar</button>
-      <button class="primary" onclick="guardarEmpleado()">Guardar</button>
+    <div class="modal-header">
+      <h3 id="modal-empleado-titulo">Agregar empleado</h3>
+      <button class="modal-close" onclick="cerrarModalEmpleado()">&times;</button>
+    </div>
+    <div class="modal-form">
+      <input type="hidden" id="emp-key">
+      <label class="full">Nombre <input type="text" id="emp-nombre"></label>
+      <div class="modal-grid">
+        <label>Correo <input type="email" id="emp-correo"></label>
+        <label>Cargo <input type="text" id="emp-cargo"></label>
+        <label>Telefono <input type="text" id="emp-telefono"></label>
+        <label>Sucursal <input type="text" id="emp-sucursal"></label>
+        <label>Departamento <input type="text" id="emp-departamento"></label>
+        <label>Ciudad <input type="text" id="emp-ciudad"></label>
+        <label>Lugar de trabajo
+          <select id="emp-lugar"><option>Presencial</option><option>Remoto</option><option>Hibrido</option></select>
+        </label>
+        <label>Tipo VPN <input type="text" id="emp-vpn"></label>
+        <label>Estado
+          <select id="emp-activo"><option value="1">Activo</option><option value="0">Inactivo</option></select>
+        </label>
+        <label class="checkbox-label" style="flex-direction:row; align-items:center; gap:8px; text-transform:none; font-size:13px; color:var(--text);">
+          <input type="checkbox" id="emp-vpn-activa" style="width:auto;"> VPN activa
+        </label>
+      </div>
+      <label class="full">Sistemas autorizados <input type="text" id="emp-sistemas" placeholder="Ej: ERP, Correo, Facturacion"></label>
+      <div class="modal-footer">
+        <button class="btn btn-dark" id="btn-borrar-empleado" onclick="borrarEmpleado()" style="display:none;">Eliminar</button>
+        <button class="btn btn-ghost" onclick="cerrarModalEmpleado()">Cancelar</button>
+        <button class="btn btn-primary" onclick="guardarEmpleado()">Guardar</button>
+      </div>
     </div>
   </div>
 </div>
 
-<div class="modal-overlay hidden" id="modal-equipo">
+<!-- Modal: equipo -->
+<div class="modal-overlay" id="modal-equipo" onclick="if(event.target===this) cerrarModalEquipo()">
   <div class="modal-box">
-    <h3 id="modal-equipo-titulo">Agregar equipo</h3>
-    <input type="hidden" id="eq-key">
-    <label>Hostname</label><input type="text" id="eq-hostname">
-    <label>IP (o "Dinamica" si no tiene fija)</label><input type="text" id="eq-ip">
-    <label>Marca</label><input type="text" id="eq-marca">
-    <label>Modelo</label><input type="text" id="eq-modelo">
-    <label>N&deg; Serie</label><input type="text" id="eq-serie">
-    <label>Responsable (nombre)</label><input type="text" id="eq-responsable">
-    <label>Ciudad</label><input type="text" id="eq-ciudad">
-    <label>OS</label><input type="text" id="eq-os">
-    <label>Office</label><input type="text" id="eq-office">
-    <label>Antivirus</label><input type="text" id="eq-antivirus">
-    <label>Notas</label><textarea id="eq-notas" rows="2"></textarea>
-    <div class="modal-actions">
-      <button class="danger hidden" id="btn-borrar-equipo" onclick="borrarEquipo()">Eliminar</button>
-      <button onclick="cerrarModalEquipo()">Cancelar</button>
-      <button class="primary" onclick="guardarEquipo()">Guardar</button>
+    <div class="modal-header">
+      <h3 id="modal-equipo-titulo">Agregar equipo</h3>
+      <button class="modal-close" onclick="cerrarModalEquipo()">&times;</button>
+    </div>
+    <div class="modal-form">
+      <input type="hidden" id="eq-key">
+      <div class="modal-grid">
+        <label>Hostname <input type="text" id="eq-hostname"></label>
+        <label>IP (o vacio si es dinamica) <input type="text" id="eq-ip"></label>
+        <label>Marca <input type="text" id="eq-marca"></label>
+        <label>Modelo <input type="text" id="eq-modelo"></label>
+        <label>N&deg; Serie <input type="text" id="eq-serie"></label>
+        <label>Responsable (nombre) <input type="text" id="eq-responsable"></label>
+        <label>Correo responsable <input type="text" id="eq-correo-responsable"></label>
+        <label>Sucursal <input type="text" id="eq-sucursal"></label>
+        <label>Ciudad <input type="text" id="eq-ciudad"></label>
+        <label>Departamento <input type="text" id="eq-departamento"></label>
+        <label>OS <input type="text" id="eq-os"></label>
+        <label>Office <input type="text" id="eq-office"></label>
+        <label>Antivirus <input type="text" id="eq-antivirus"></label>
+        <label>CPU <input type="text" id="eq-cpu"></label>
+        <label>RAM <input type="text" id="eq-ram"></label>
+        <label>Almacenamiento <input type="text" id="eq-almacenamiento"></label>
+        <label>GPU <input type="text" id="eq-gpu"></label>
+        <label>Placa madre <input type="text" id="eq-placa"></label>
+        <label>Fecha adquisicion <input type="text" id="eq-fecha-adq" placeholder="AAAA-MM-DD"></label>
+        <label>Garantia hasta <input type="text" id="eq-garantia" placeholder="AAAA-MM-DD"></label>
+        <label>Estado del ciclo de vida
+          <select id="eq-ciclo-vida">
+            <option value="activo">activo</option>
+            <option value="en_reparacion">en_reparacion</option>
+            <option value="bodega">bodega</option>
+            <option value="retirado">retirado</option>
+          </select>
+        </label>
+        <label>Conectado a (switch/router)
+          <select id="eq-dispositivo"><option value="">-- Sin asignar --</option></select>
+        </label>
+        <label>Puerto <input type="text" id="eq-puerto" placeholder="Ej: 12 o SFP1"></label>
+      </div>
+      <div style="display:flex; gap:20px; margin-top:2px;">
+        <label class="checkbox-label" style="flex-direction:row; align-items:center; gap:8px; text-transform:none; font-size:13px; color:var(--text);">
+          <input type="checkbox" id="eq-critico" style="width:auto;"> Equipo critico
+        </label>
+        <label class="checkbox-label" style="flex-direction:row; align-items:center; gap:8px; text-transform:none; font-size:13px; color:var(--text);">
+          <input type="checkbox" id="eq-gestionado" style="width:auto;"> Gestionado por TI
+        </label>
+      </div>
+      <label class="full">Notas <textarea id="eq-notas" rows="2"></textarea></label>
+      <div class="modal-footer">
+        <button class="btn btn-dark" id="btn-borrar-equipo" onclick="borrarEquipo()" style="display:none;">Eliminar</button>
+        <button class="btn btn-ghost" onclick="cerrarModalEquipo()">Cancelar</button>
+        <button class="btn btn-primary" onclick="guardarEquipo()">Guardar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: dispositivo de red -->
+<div class="modal-overlay" id="modal-dispositivo" onclick="if(event.target===this) cerrarModalDispositivo()">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3 id="modal-dispositivo-titulo">Agregar dispositivo</h3>
+      <button class="modal-close" onclick="cerrarModalDispositivo()">&times;</button>
+    </div>
+    <div class="modal-form">
+      <input type="hidden" id="disp-key">
+      <div class="modal-grid">
+        <label class="full">Nombre <input type="text" id="disp-nombre" placeholder="Ej: Switch-Imprenta-01"></label>
+        <label>Tipo
+          <select id="disp-tipo">
+            <option value="switch">Switch administrable</option>
+            <option value="router">Router</option>
+            <option value="fortinet">Firewall Fortinet</option>
+            <option value="otro">Otro dispositivo</option>
+          </select>
+        </label>
+        <label>Estado
+          <select id="disp-estado">
+            <option>Nuevo</option><option selected>Usado</option><option>En reparacion</option><option>Fuera de servicio</option>
+          </select>
+        </label>
+        <label>Marca <input type="text" id="disp-marca"></label>
+        <label>Modelo <input type="text" id="disp-modelo"></label>
+        <label>N&deg; Serie <input type="text" id="disp-serie"></label>
+        <label>Cantidad de bocas <input type="text" id="disp-bocas"></label>
+        <label>Bocas de fibra <input type="text" id="disp-bocas-fibra"></label>
+        <label>IP <input type="text" id="disp-ip"></label>
+        <label>MAC <input type="text" id="disp-mac"></label>
+        <label>Sucursal <input type="text" id="disp-sucursal"></label>
+        <label>Ciudad <input type="text" id="disp-ciudad"></label>
+        <label>Ubicacion <input type="text" id="disp-ubicacion" placeholder="Ej: Rack principal"></label>
+        <label>Piso <input type="text" id="disp-piso"></label>
+        <label>Fecha de ingreso <input type="text" id="disp-fecha-ingreso" placeholder="AAAA-MM-DD"></label>
+        <label>Enlace / proveedor ISP <input type="text" id="disp-enlace"></label>
+      </div>
+      <label class="full">Notas <textarea id="disp-notas" rows="2"></textarea></label>
+      <div class="modal-footer">
+        <button class="btn btn-dark" id="btn-borrar-dispositivo" onclick="borrarDispositivo()" style="display:none;">Eliminar</button>
+        <button class="btn btn-ghost" onclick="cerrarModalDispositivo()">Cancelar</button>
+        <button class="btn btn-primary" onclick="guardarDispositivo()">Guardar</button>
+      </div>
     </div>
   </div>
 </div>
@@ -164,9 +246,8 @@ import {
   getDatabase, ref, onValue, push, update, remove,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
-// Configuracion del proyecto Firebase (el apiKey de un SDK web no es secreto,
-// esta protegido por las reglas de seguridad de la base de datos, no por
-// esconder esta clave).
+// El apiKey de un SDK web no es secreto -- esta protegido por las reglas de
+// seguridad de la base de datos, no por esconder esta clave.
 const firebaseConfig = {
   apiKey: "AIzaSyDGQUvsES_fhkVQwRXWRcfPEz6wOEni6tk",
   authDomain: "gestion-usuarios-equipos.firebaseapp.com",
@@ -183,87 +264,116 @@ const dbRef = getDatabase(app);
 
 let empleados = {};
 let equipos = {};
+let dispositivos = {};
+let departamentos = {};
+let ciudades = {};
 
-// --- login -----------------------------------------------------------
 window.iniciarSesion = function () {
   const email = document.getElementById('login-email').value.trim();
   const password = document.getElementById('login-password').value;
   const err = document.getElementById('login-error');
   err.textContent = '';
-  signInWithEmailAndPassword(auth, email, password).catch((e) => {
+  signInWithEmailAndPassword(auth, email, password).catch(function () {
     err.textContent = 'No se pudo entrar: revisa correo y contrasena.';
   });
 };
 
 window.cerrarSesion = function () { signOut(auth); };
 
-onAuthStateChanged(auth, (user) => {
+onAuthStateChanged(auth, function (user) {
   const login = document.getElementById('caja-login');
   const panel = document.getElementById('panel-admin');
-  const barra = document.getElementById('barra-usuario');
   if (user) {
-    login.classList.add('hidden');
-    panel.classList.remove('hidden');
-    barra.classList.remove('hidden');
+    login.style.display = 'none';
+    panel.style.display = 'block';
     document.getElementById('texto-usuario').textContent = user.email;
     escucharDatos();
   } else {
-    login.classList.remove('hidden');
-    panel.classList.add('hidden');
-    barra.classList.add('hidden');
+    login.style.display = 'block';
+    panel.style.display = 'none';
   }
 });
 
 function escucharDatos() {
-  onValue(ref(dbRef, 'empleados'), (snap) => {
+  onValue(ref(dbRef, 'empleados'), function (snap) {
     empleados = snap.val() || {};
     pintarEmpleados();
   });
-  onValue(ref(dbRef, 'equipos'), (snap) => {
+  onValue(ref(dbRef, 'equipos'), function (snap) {
     equipos = snap.val() || {};
     pintarEquipos();
   });
+  onValue(ref(dbRef, 'dispositivos'), function (snap) {
+    dispositivos = snap.val() || {};
+    pintarDispositivos();
+    pintarSelectDispositivos();
+  });
+  onValue(ref(dbRef, 'departamentos'), function (snap) {
+    departamentos = snap.val() || {};
+    pintarCatalogo('departamentos', departamentos, 'lista-departamentos');
+  });
+  onValue(ref(dbRef, 'ciudades'), function (snap) {
+    ciudades = snap.val() || {};
+    pintarCatalogo('ciudades', ciudades, 'lista-ciudades');
+  });
 }
 
-// --- tabs --------------------------------------------------------------
 window.mostrarTab = function (nombre) {
-  document.getElementById('vista-empleados').classList.toggle('hidden', nombre !== 'empleados');
-  document.getElementById('vista-equipos').classList.toggle('hidden', nombre !== 'equipos');
-  document.getElementById('tab-empleados').classList.toggle('active', nombre === 'empleados');
-  document.getElementById('tab-equipos').classList.toggle('active', nombre === 'equipos');
+  ['empleados', 'equipos', 'parametros', 'infraestructura'].forEach(function (n) {
+    document.getElementById('vista-' + n).style.display = n === nombre ? 'block' : 'none';
+    document.getElementById('tab-' + n).classList.toggle('active', n === nombre);
+  });
 };
 
-// --- empleados -----------------------------------------------------------
+function escapeHtml(s) {
+  return (s || '').toString().replace(/[&<>"']/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+  });
+}
+
+// --- empleados: tarjetas tipo ficha ---------------------------------------
 window.pintarEmpleados = function () {
   const q = (document.getElementById('buscar-empleados').value || '').trim().toLowerCase();
-  const tbody = document.getElementById('tbody-empleados');
-  tbody.innerHTML = '';
-  const entradas = Object.entries(empleados).sort((a, b) => (a[1].nombre || '').localeCompare(b[1].nombre || ''));
+  const grid = document.getElementById('grid-empleados');
+  grid.innerHTML = '';
+  const entradas = Object.entries(empleados).sort(function (a, b) {
+    return (a[1].nombre || '').localeCompare(b[1].nombre || '');
+  });
   let visibles = 0;
-  entradas.forEach(([key, e]) => {
+  entradas.forEach(function (par) {
+    const key = par[0], e = par[1];
     const texto = [e.nombre, e.correo, e.departamento, e.ciudad, e.telefono].join(' ').toLowerCase();
     if (q && texto.indexOf(q) === -1) return;
     visibles++;
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td>${e.nombre || '-'}</td>
-      <td>${e.correo || '-'}</td>
-      <td>${e.cargo || '-'}</td>
-      <td>${e.departamento || '-'}</td>
-      <td>${e.ciudad || '-'}</td>
-      <td>${e.lugar_trabajo || '-'}</td>
-      <td>${e.tipo_vpn || '-'}</td>
-      <td><span class="badge ${e.activo ? 'badge-on' : 'badge-off'}">${e.activo ? 'Activo' : 'Inactivo'}</span></td>
-      <td><button onclick="abrirModalEmpleado('${key}')">Editar</button></td>
-    `;
-    tbody.appendChild(tr);
+    const activo = e.activo !== false && e.activo !== 0;
+    const card = document.createElement('div');
+    card.className = 'ficha-card ' + (activo ? 'ficha-activo' : 'ficha-inactivo');
+    card.onclick = function () { abrirModalEmpleado(key); };
+    card.innerHTML = ''
+      + '<div class="ficha-eyebrow"><span>' + escapeHtml(e.departamento || 'Sin departamento') + '</span>'
+      + '<span class="ficha-eyebrow-empresa">' + escapeHtml(e.lugar_trabajo || '') + '</span></div>'
+      + '<div class="ficha-card-head">'
+      + '<span class="ficha-nombre">' + escapeHtml(e.nombre || 'Sin nombre') + '</span>'
+      + '<span class="tag ' + (activo ? 'tag-confirmado' : 'tag-descartado') + '"><span class="dot ' + (activo ? 'dot-on' : 'dot-off') + '"></span>' + (activo ? 'Activo' : 'Inactivo') + '</span>'
+      + '</div>'
+      + '<div class="ficha-divider"></div>'
+      + '<div class="ficha-linea"><span class="ficha-k">Correo</span><span class="ficha-v">' + escapeHtml(e.correo || '-') + '</span></div>'
+      + '<div class="ficha-linea"><span class="ficha-k">Cargo</span><span class="ficha-v">' + escapeHtml(e.cargo || '-') + '</span></div>'
+      + '<div class="ficha-linea"><span class="ficha-k">Telefono</span><span class="ficha-v">' + escapeHtml(e.telefono || '-') + '</span></div>'
+      + '<div class="ficha-linea"><span class="ficha-k">Sucursal</span><span class="ficha-v">' + escapeHtml(e.sucursal || '-') + '</span></div>'
+      + '<div class="ficha-linea"><span class="ficha-k">Ciudad</span><span class="ficha-v">' + escapeHtml(e.ciudad || '-') + '</span></div>'
+      + '<div class="ficha-card-foot">'
+      + (e.tipo_vpn ? '<span class="badge badge-vpn">' + escapeHtml(e.tipo_vpn) + (e.vpn_activa ? ' (activa)' : '') + '</span>' : '<span></span>')
+      + '<button class="btn btn-ghost btn-sm" onclick="event.stopPropagation(); abrirModalEmpleado(\'' + key + '\')">Editar</button>'
+      + '</div>';
+    grid.appendChild(card);
   });
-  document.getElementById('empleados-vacio').classList.toggle('hidden', visibles > 0);
+  document.getElementById('empleados-vacio').style.display = visibles === 0 ? 'block' : 'none';
 };
 
 window.abrirModalEmpleado = function (key) {
   const modal = document.getElementById('modal-empleado');
-  document.getElementById('btn-borrar-empleado').classList.toggle('hidden', !key);
+  document.getElementById('btn-borrar-empleado').style.display = key ? 'inline-flex' : 'none';
   document.getElementById('emp-key').value = key || '';
   const e = key ? (empleados[key] || {}) : {};
   document.getElementById('modal-empleado-titulo').textContent = key ? 'Editar empleado' : 'Agregar empleado';
@@ -271,30 +381,36 @@ window.abrirModalEmpleado = function (key) {
   document.getElementById('emp-correo').value = e.correo || '';
   document.getElementById('emp-cargo').value = e.cargo || '';
   document.getElementById('emp-telefono').value = e.telefono || '';
+  document.getElementById('emp-sucursal').value = e.sucursal || '';
   document.getElementById('emp-departamento').value = e.departamento || '';
   document.getElementById('emp-ciudad').value = e.ciudad || '';
   document.getElementById('emp-lugar').value = e.lugar_trabajo || 'Presencial';
   document.getElementById('emp-vpn').value = e.tipo_vpn || '';
-  document.getElementById('emp-activo').value = e.activo === false || e.activo === 0 ? '0' : '1';
-  modal.classList.remove('hidden');
+  document.getElementById('emp-activo').value = (e.activo === false || e.activo === 0) ? '0' : '1';
+  document.getElementById('emp-vpn-activa').checked = !!e.vpn_activa;
+  document.getElementById('emp-sistemas').value = e.sistemas_autorizados || '';
+  modal.classList.add('modal-open');
 };
 
-window.cerrarModalEmpleado = function () { document.getElementById('modal-empleado').classList.add('hidden'); };
+window.cerrarModalEmpleado = function () { document.getElementById('modal-empleado').classList.remove('modal-open'); };
 
 window.guardarEmpleado = function () {
   const nombre = document.getElementById('emp-nombre').value.trim();
   if (!nombre) { alert('El nombre es obligatorio.'); return; }
   const key = document.getElementById('emp-key').value;
   const datos = {
-    nombre,
+    nombre: nombre,
     correo: document.getElementById('emp-correo').value.trim(),
     cargo: document.getElementById('emp-cargo').value.trim(),
     telefono: document.getElementById('emp-telefono').value.trim(),
+    sucursal: document.getElementById('emp-sucursal').value.trim(),
     departamento: document.getElementById('emp-departamento').value.trim(),
     ciudad: document.getElementById('emp-ciudad').value.trim(),
     lugar_trabajo: document.getElementById('emp-lugar').value,
     tipo_vpn: document.getElementById('emp-vpn').value.trim(),
     activo: document.getElementById('emp-activo').value === '1',
+    vpn_activa: document.getElementById('emp-vpn-activa').checked,
+    sistemas_autorizados: document.getElementById('emp-sistemas').value.trim(),
   };
   if (key) {
     update(ref(dbRef, 'empleados/' + key), datos);
@@ -312,35 +428,60 @@ window.borrarEmpleado = function () {
   cerrarModalEmpleado();
 };
 
-// --- equipos -------------------------------------------------------------
+// --- equipos: tarjetas tipo ficha ------------------------------------------
 window.pintarEquipos = function () {
   const q = (document.getElementById('buscar-equipos').value || '').trim().toLowerCase();
-  const tbody = document.getElementById('tbody-equipos');
-  tbody.innerHTML = '';
-  const entradas = Object.entries(equipos).sort((a, b) => (a[1].hostname || '').localeCompare(b[1].hostname || ''));
+  const grid = document.getElementById('grid-equipos');
+  grid.innerHTML = '';
+  const entradas = Object.entries(equipos).sort(function (a, b) {
+    return (a[1].hostname || '').localeCompare(b[1].hostname || '');
+  });
   let visibles = 0;
-  entradas.forEach(([key, e]) => {
+  entradas.forEach(function (par) {
+    const key = par[0], e = par[1];
     const texto = [e.hostname, e.ip, e.marca, e.modelo, e.responsable, e.ciudad].join(' ').toLowerCase();
     if (q && texto.indexOf(q) === -1) return;
     visibles++;
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td>${e.hostname || '-'}</td>
-      <td>${e.ip || '-'}</td>
-      <td>${(e.marca || '-')} ${e.modelo || ''}</td>
-      <td>${e.responsable || '-'}</td>
-      <td>${e.ciudad || '-'}</td>
-      <td>${e.os || '-'}</td>
-      <td><button onclick="abrirModalEquipo('${key}')">Editar</button></td>
-    `;
-    tbody.appendChild(tr);
+    const card = document.createElement('div');
+    card.className = 'ficha-card';
+    card.onclick = function () { abrirModalEquipo(key); };
+    card.innerHTML = ''
+      + '<div class="ficha-eyebrow"><span>' + escapeHtml(e.ciudad || 'Sin ciudad') + '</span>'
+      + '<span class="ficha-eyebrow-empresa">' + escapeHtml(e.marca || '') + '</span></div>'
+      + '<div class="ficha-card-head"><span class="ficha-nombre">' + escapeHtml(e.hostname || e.ip || 'Sin nombre') + '</span></div>'
+      + '<div class="ficha-linea"><span class="ficha-k">IP</span><span class="ficha-v">' + escapeHtml(e.ip || '-') + '</span></div>'
+      + '<div class="ficha-divider"></div>'
+      + '<div class="ficha-linea"><span class="ficha-k">Modelo</span><span class="ficha-v">' + escapeHtml(e.modelo || '-') + '</span></div>'
+      + '<div class="ficha-linea"><span class="ficha-k">Responsable</span><span class="ficha-v">' + escapeHtml(e.responsable || '-') + '</span></div>'
+      + '<div class="ficha-linea"><span class="ficha-k">OS</span><span class="ficha-v">' + escapeHtml(e.os || '-') + '</span></div>'
+      + (e.dispositivo_nombre ? '<div class="ficha-linea"><span class="ficha-k">Conectado a</span><span class="ficha-v">' + escapeHtml(e.dispositivo_nombre) + (e.puerto ? ' / ' + escapeHtml(e.puerto) : '') + '</span></div>' : '')
+      + '<div class="ficha-card-foot"><span></span>'
+      + '<button class="btn btn-ghost btn-sm" onclick="event.stopPropagation(); abrirModalEquipo(\'' + key + '\')">Editar</button>'
+      + '</div>';
+    grid.appendChild(card);
   });
-  document.getElementById('equipos-vacio').classList.toggle('hidden', visibles > 0);
+  document.getElementById('equipos-vacio').style.display = visibles === 0 ? 'block' : 'none';
 };
+
+function pintarSelectDispositivos() {
+  const sel = document.getElementById('eq-dispositivo');
+  const actual = sel.value;
+  sel.innerHTML = '<option value="">-- Sin asignar --</option>';
+  Object.values(dispositivos).sort(function (a, b) {
+    return (a.nombre || '').localeCompare(b.nombre || '');
+  }).forEach(function (d) {
+    if (!d.nombre) return;
+    const opt = document.createElement('option');
+    opt.value = d.nombre;
+    opt.textContent = d.nombre;
+    sel.appendChild(opt);
+  });
+  sel.value = actual;
+}
 
 window.abrirModalEquipo = function (key) {
   const modal = document.getElementById('modal-equipo');
-  document.getElementById('btn-borrar-equipo').classList.toggle('hidden', !key);
+  document.getElementById('btn-borrar-equipo').style.display = key ? 'inline-flex' : 'none';
   document.getElementById('eq-key').value = key || '';
   const e = key ? (equipos[key] || {}) : {};
   document.getElementById('modal-equipo-titulo').textContent = key ? 'Editar equipo' : 'Agregar equipo';
@@ -350,15 +491,31 @@ window.abrirModalEquipo = function (key) {
   document.getElementById('eq-modelo').value = e.modelo || '';
   document.getElementById('eq-serie').value = e.numero_serie || '';
   document.getElementById('eq-responsable').value = e.responsable || '';
+  document.getElementById('eq-correo-responsable').value = e.correo_responsable || '';
+  document.getElementById('eq-sucursal').value = e.sucursal || '';
   document.getElementById('eq-ciudad').value = e.ciudad || '';
+  document.getElementById('eq-departamento').value = e.departamento || '';
   document.getElementById('eq-os').value = e.os || '';
   document.getElementById('eq-office').value = e.office || '';
   document.getElementById('eq-antivirus').value = e.antivirus || '';
+  document.getElementById('eq-cpu').value = e.cpu || '';
+  document.getElementById('eq-ram').value = e.ram || '';
+  document.getElementById('eq-almacenamiento').value = e.almacenamiento || '';
+  document.getElementById('eq-gpu').value = e.gpu || '';
+  document.getElementById('eq-placa').value = e.placa_madre || '';
+  document.getElementById('eq-fecha-adq').value = e.fecha_adquisicion || '';
+  document.getElementById('eq-garantia').value = e.garantia_hasta || '';
+  document.getElementById('eq-ciclo-vida').value = e.estado_ciclo_vida || 'activo';
+  document.getElementById('eq-puerto').value = e.puerto || '';
+  document.getElementById('eq-critico').checked = !!e.critico;
+  document.getElementById('eq-gestionado').checked = !!e.gestionado;
   document.getElementById('eq-notas').value = e.notas || '';
-  modal.classList.remove('hidden');
+  pintarSelectDispositivos();
+  document.getElementById('eq-dispositivo').value = e.dispositivo_nombre || '';
+  modal.classList.add('modal-open');
 };
 
-window.cerrarModalEquipo = function () { document.getElementById('modal-equipo').classList.add('hidden'); };
+window.cerrarModalEquipo = function () { document.getElementById('modal-equipo').classList.remove('modal-open'); };
 
 window.guardarEquipo = function () {
   const hostname = document.getElementById('eq-hostname').value.trim();
@@ -366,15 +523,30 @@ window.guardarEquipo = function () {
   if (!hostname && !ip) { alert('Ingresa al menos hostname o IP.'); return; }
   const key = document.getElementById('eq-key').value;
   const datos = {
-    hostname, ip,
+    hostname: hostname, ip: ip,
     marca: document.getElementById('eq-marca').value.trim(),
     modelo: document.getElementById('eq-modelo').value.trim(),
     numero_serie: document.getElementById('eq-serie').value.trim(),
     responsable: document.getElementById('eq-responsable').value.trim(),
+    correo_responsable: document.getElementById('eq-correo-responsable').value.trim(),
+    sucursal: document.getElementById('eq-sucursal').value.trim(),
     ciudad: document.getElementById('eq-ciudad').value.trim(),
+    departamento: document.getElementById('eq-departamento').value.trim(),
     os: document.getElementById('eq-os').value.trim(),
     office: document.getElementById('eq-office').value.trim(),
     antivirus: document.getElementById('eq-antivirus').value.trim(),
+    cpu: document.getElementById('eq-cpu').value.trim(),
+    ram: document.getElementById('eq-ram').value.trim(),
+    almacenamiento: document.getElementById('eq-almacenamiento').value.trim(),
+    gpu: document.getElementById('eq-gpu').value.trim(),
+    placa_madre: document.getElementById('eq-placa').value.trim(),
+    fecha_adquisicion: document.getElementById('eq-fecha-adq').value.trim(),
+    garantia_hasta: document.getElementById('eq-garantia').value.trim(),
+    estado_ciclo_vida: document.getElementById('eq-ciclo-vida').value,
+    dispositivo_nombre: document.getElementById('eq-dispositivo').value,
+    puerto: document.getElementById('eq-puerto').value.trim(),
+    critico: document.getElementById('eq-critico').checked,
+    gestionado: document.getElementById('eq-gestionado').checked,
     notas: document.getElementById('eq-notas').value.trim(),
   };
   if (key) {
@@ -391,6 +563,149 @@ window.borrarEquipo = function () {
   if (!confirm('Eliminar este equipo de la nube? Esto no borra nada en el sistema local.')) return;
   remove(ref(dbRef, 'equipos/' + key));
   cerrarModalEquipo();
+};
+
+// --- infraestructura: switches/routers -------------------------------------
+window.pintarDispositivos = function () {
+  const q = (document.getElementById('buscar-dispositivos').value || '').trim().toLowerCase();
+  const grid = document.getElementById('grid-dispositivos');
+  grid.innerHTML = '';
+  const entradas = Object.entries(dispositivos).sort(function (a, b) {
+    return (a[1].nombre || '').localeCompare(b[1].nombre || '');
+  });
+  let visibles = 0;
+  entradas.forEach(function (par) {
+    const key = par[0], d = par[1];
+    const texto = [d.nombre, d.tipo, d.marca, d.ip, d.ciudad].join(' ').toLowerCase();
+    if (q && texto.indexOf(q) === -1) return;
+    visibles++;
+    const card = document.createElement('div');
+    card.className = 'ficha-card';
+    card.onclick = function () { abrirModalDispositivo(key); };
+    card.innerHTML = ''
+      + '<div class="ficha-eyebrow"><span>' + escapeHtml(d.tipo || 'switch') + '</span>'
+      + '<span class="ficha-eyebrow-empresa">' + escapeHtml(d.ciudad || '') + '</span></div>'
+      + '<div class="ficha-card-head"><span class="ficha-nombre">' + escapeHtml(d.nombre || 'Sin nombre') + '</span>'
+      + '<span class="tag tag-confirmado">' + escapeHtml(d.estado || 'Usado') + '</span></div>'
+      + '<div class="ficha-linea"><span class="ficha-k">Marca/Modelo</span><span class="ficha-v">' + escapeHtml((d.marca || '-') + ' ' + (d.modelo || '')) + '</span></div>'
+      + '<div class="ficha-divider"></div>'
+      + '<div class="ficha-linea"><span class="ficha-k">IP</span><span class="ficha-v">' + escapeHtml(d.ip || '-') + '</span></div>'
+      + '<div class="ficha-linea"><span class="ficha-k">Ubicacion</span><span class="ficha-v">' + escapeHtml(d.ubicacion || '-') + '</span></div>'
+      + '<div class="ficha-linea"><span class="ficha-k">Enlace</span><span class="ficha-v">' + escapeHtml(d.enlace || '-') + '</span></div>'
+      + '<div class="ficha-card-foot"><span></span>'
+      + '<button class="btn btn-ghost btn-sm" onclick="event.stopPropagation(); abrirModalDispositivo(\'' + key + '\')">Editar</button>'
+      + '</div>';
+    grid.appendChild(card);
+  });
+  document.getElementById('dispositivos-vacio').style.display = visibles === 0 ? 'block' : 'none';
+};
+
+window.abrirModalDispositivo = function (key) {
+  const modal = document.getElementById('modal-dispositivo');
+  document.getElementById('btn-borrar-dispositivo').style.display = key ? 'inline-flex' : 'none';
+  document.getElementById('disp-key').value = key || '';
+  const d = key ? (dispositivos[key] || {}) : {};
+  document.getElementById('modal-dispositivo-titulo').textContent = key ? 'Editar dispositivo' : 'Agregar dispositivo';
+  document.getElementById('disp-nombre').value = d.nombre || '';
+  document.getElementById('disp-tipo').value = d.tipo || 'switch';
+  document.getElementById('disp-estado').value = d.estado || 'Usado';
+  document.getElementById('disp-marca').value = d.marca || '';
+  document.getElementById('disp-modelo').value = d.modelo || '';
+  document.getElementById('disp-serie').value = d.numero_serie || '';
+  document.getElementById('disp-bocas').value = d.cantidad_bocas || '';
+  document.getElementById('disp-bocas-fibra').value = d.bocas_fibra || '';
+  document.getElementById('disp-ip').value = d.ip || '';
+  document.getElementById('disp-mac').value = d.mac || '';
+  document.getElementById('disp-sucursal').value = d.sucursal || '';
+  document.getElementById('disp-ciudad').value = d.ciudad || '';
+  document.getElementById('disp-ubicacion').value = d.ubicacion || '';
+  document.getElementById('disp-piso').value = d.piso || '';
+  document.getElementById('disp-fecha-ingreso').value = d.fecha_ingreso || '';
+  document.getElementById('disp-enlace').value = d.enlace || '';
+  document.getElementById('disp-notas').value = d.notas || '';
+  modal.classList.add('modal-open');
+};
+
+window.cerrarModalDispositivo = function () { document.getElementById('modal-dispositivo').classList.remove('modal-open'); };
+
+window.guardarDispositivo = function () {
+  const nombre = document.getElementById('disp-nombre').value.trim();
+  if (!nombre) { alert('El nombre es obligatorio.'); return; }
+  const key = document.getElementById('disp-key').value;
+  const datos = {
+    nombre: nombre,
+    tipo: document.getElementById('disp-tipo').value,
+    estado: document.getElementById('disp-estado').value,
+    marca: document.getElementById('disp-marca').value.trim(),
+    modelo: document.getElementById('disp-modelo').value.trim(),
+    numero_serie: document.getElementById('disp-serie').value.trim(),
+    cantidad_bocas: document.getElementById('disp-bocas').value.trim(),
+    bocas_fibra: document.getElementById('disp-bocas-fibra').value.trim(),
+    ip: document.getElementById('disp-ip').value.trim(),
+    mac: document.getElementById('disp-mac').value.trim(),
+    sucursal: document.getElementById('disp-sucursal').value.trim(),
+    ciudad: document.getElementById('disp-ciudad').value.trim(),
+    ubicacion: document.getElementById('disp-ubicacion').value.trim(),
+    piso: document.getElementById('disp-piso').value.trim(),
+    fecha_ingreso: document.getElementById('disp-fecha-ingreso').value.trim(),
+    enlace: document.getElementById('disp-enlace').value.trim(),
+    notas: document.getElementById('disp-notas').value.trim(),
+  };
+  if (key) {
+    update(ref(dbRef, 'dispositivos/' + key), datos);
+  } else {
+    push(ref(dbRef, 'dispositivos'), datos);
+  }
+  cerrarModalDispositivo();
+};
+
+window.borrarDispositivo = function () {
+  const key = document.getElementById('disp-key').value;
+  if (!key) return;
+  if (!confirm('Eliminar este dispositivo de la nube? Esto no borra nada en el sistema local.')) return;
+  remove(ref(dbRef, 'dispositivos/' + key));
+  cerrarModalDispositivo();
+};
+
+// --- parametros y red: catalogos simples (departamentos/ciudades) --------
+function pintarCatalogo(nodo, datos, elementoId) {
+  const ul = document.getElementById(elementoId);
+  ul.innerHTML = '';
+  const entradas = Object.entries(datos).filter(function (p) { return p[1]; })
+    .sort(function (a, b) { return (a[1] || '').localeCompare(b[1] || ''); });
+  if (entradas.length === 0) {
+    ul.innerHTML = '<li class="muted" style="padding:8px 0;">Sin registros todavia.</li>';
+    return;
+  }
+  entradas.forEach(function (par) {
+    const key = par[0], nombre = par[1];
+    const li = document.createElement('li');
+    li.style.cssText = 'display:flex; justify-content:space-between; align-items:center; background:#0f1420; border:1px solid var(--border); border-radius:6px; padding:6px 10px; font-size:13px;';
+    li.innerHTML = '<span>' + escapeHtml(nombre) + '</span>'
+      + '<button class="btn btn-dark btn-sm" onclick="borrarDeCatalogo(\'' + nodo + '\', \'' + key + '\')">Eliminar</button>';
+    ul.appendChild(li);
+  });
+}
+
+window.agregarDepartamento = function () {
+  const input = document.getElementById('nuevo-departamento');
+  const nombre = input.value.trim();
+  if (!nombre) return;
+  push(ref(dbRef, 'departamentos'), nombre);
+  input.value = '';
+};
+
+window.agregarCiudad = function () {
+  const input = document.getElementById('nueva-ciudad');
+  const nombre = input.value.trim();
+  if (!nombre) return;
+  push(ref(dbRef, 'ciudades'), nombre);
+  input.value = '';
+};
+
+window.borrarDeCatalogo = function (nodo, key) {
+  if (!confirm('Eliminar de la nube? Esto no borra nada en el sistema local.')) return;
+  remove(ref(dbRef, nodo + '/' + key));
 };
 </script>
 

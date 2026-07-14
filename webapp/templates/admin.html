@@ -95,9 +95,17 @@
 <div class="admin-toolbar">
   <input type="text" id="buscador-empleados" class="admin-buscador" placeholder="Buscar por nombre, email, departamento, ciudad o telefono...">
   <button type="button" class="btn btn-ghost" onclick="netwatchMarcarSospechosos()">Marcar posibles equipos/dispositivos</button>
-  <form method="post" action="{{ url_for('sincronizar_firebase') }}" style="display:inline">
-    <button type="submit" class="btn btn-ghost" title="Trae los cambios hechos en el sitio de administracion remoto y sube lo nuevo creado aqui">Sincronizar con la nube</button>
-  </form>
+  <button type="button" class="btn btn-ghost" id="btn-sincronizar-nube" onclick="netwatchSincronizarNube()"
+          title="Trae los cambios hechos en el sitio de administracion remoto y sube lo nuevo creado aqui">Sincronizar con la nube</button>
+</div>
+
+<div class="import-resumen" id="barra-sync-progreso" style="display:none;">
+  <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
+    <span id="sync-progreso-texto">Sincronizando...</span>
+  </div>
+  <div style="background:#0f1420; border-radius:6px; height:8px; overflow:hidden;">
+    <div id="sync-progreso-fill" style="background:var(--blue); height:100%; width:0%; transition: width 0.25s;"></div>
+  </div>
 </div>
 
 <div class="import-resumen" id="barra-seleccion" style="display:none; align-items:center; justify-content:space-between; gap:12px;">
@@ -594,6 +602,77 @@ if (netwatchBuscadorEmpleados) {
     if (vacio) vacio.style.display = visibles === 0 ? 'block' : 'none';
     netwatchActualizarSeleccion();
   });
+}
+
+// --- sincronizar con la nube (Firebase), con barra de progreso ----------
+const NETWATCH_SYNC_FASES = {
+  conectando: 'Conectando con Firebase...',
+  leyendo_firebase: 'Leyendo datos de la nube...',
+  sincronizando: 'Sincronizando...',
+};
+
+function netwatchSincronizarNube() {
+  const btn = document.getElementById('btn-sincronizar-nube');
+  const barra = document.getElementById('barra-sync-progreso');
+  const texto = document.getElementById('sync-progreso-texto');
+  const fill = document.getElementById('sync-progreso-fill');
+  if (btn) btn.disabled = true;
+  barra.style.display = 'block';
+  fill.style.width = '0%';
+  texto.textContent = 'Conectando con Firebase...';
+
+  fetch('{{ url_for("sincronizar_firebase") }}', { method: 'POST' })
+    .then(function (r) { return r.json(); })
+    .then(function (r) {
+      if (!r.iniciado) {
+        texto.textContent = 'Ya hay una sincronizacion en curso, esperando a que termine...';
+      }
+      netwatchPollSync();
+    })
+    .catch(function () {
+      texto.textContent = 'No se pudo conectar con el servidor local. Revisa que NetWatch siga corriendo.';
+      if (btn) btn.disabled = false;
+    });
+}
+
+function netwatchPollSync() {
+  fetch('{{ url_for("sincronizar_firebase_estado") }}')
+    .then(function (r) { return r.json(); })
+    .then(function (estado) {
+      const texto = document.getElementById('sync-progreso-texto');
+      const fill = document.getElementById('sync-progreso-fill');
+      if (estado.total > 0) {
+        const pct = Math.min(100, Math.round((estado.procesados / estado.total) * 100));
+        fill.style.width = pct + '%';
+        texto.textContent = 'Sincronizando... ' + estado.procesados + ' / ' + estado.total;
+      } else {
+        texto.textContent = NETWATCH_SYNC_FASES[estado.fase] || 'Preparando...';
+      }
+      if (estado.corriendo) {
+        setTimeout(netwatchPollSync, 500);
+        return;
+      }
+      const btn = document.getElementById('btn-sincronizar-nube');
+      if (btn) btn.disabled = false;
+      if (estado.error) {
+        window.location.href = '{{ url_for("admin") }}?error=firebase_' + encodeURIComponent(estado.error);
+        return;
+      }
+      if (estado.resumen) {
+        const r = estado.resumen;
+        window.location.href = '{{ url_for("admin") }}?sincronizado=1'
+          + '&fu_bajados=' + r.usuarios.bajados_nuevos + '&fu_actualizados=' + r.usuarios.actualizados
+          + '&fu_subidos=' + r.usuarios.subidos
+          + '&fe_bajados=' + r.equipos.bajados_nuevos + '&fe_actualizados=' + r.equipos.actualizados
+          + '&fe_subidos=' + r.equipos.subidos;
+      }
+    })
+    .catch(function () {
+      const texto = document.getElementById('sync-progreso-texto');
+      texto.textContent = 'Se perdio la conexion con el servidor local mientras sincronizaba.';
+      const btn = document.getElementById('btn-sincronizar-nube');
+      if (btn) btn.disabled = false;
+    });
 }
 
 // --- seleccion multiple + eliminar en bloque --------------------------

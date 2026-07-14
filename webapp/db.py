@@ -212,6 +212,8 @@ def init_db():
         conn.execute("ALTER TABLE equipos ADD COLUMN firebase_id TEXT")
     if "actualizado_en" not in cols:
         conn.execute("ALTER TABLE equipos ADD COLUMN actualizado_en TEXT")
+    if "metodo_deteccion" not in cols:
+        conn.execute("ALTER TABLE equipos ADD COLUMN metodo_deteccion TEXT")
     disp_cols = {row["name"] for row in conn.execute("PRAGMA table_info(dispositivos_red)")}
     if disp_cols:
         if "marca" not in disp_cols:
@@ -238,6 +240,10 @@ def init_db():
             conn.execute("ALTER TABLE dispositivos_red ADD COLUMN fecha_ingreso TEXT")
         if "enlace" not in disp_cols:
             conn.execute("ALTER TABLE dispositivos_red ADD COLUMN enlace TEXT")
+        if "firebase_id" not in disp_cols:
+            conn.execute("ALTER TABLE dispositivos_red ADD COLUMN firebase_id TEXT")
+        if "actualizado_en" not in disp_cols:
+            conn.execute("ALTER TABLE dispositivos_red ADD COLUMN actualizado_en TEXT")
     usr_cols = {row["name"] for row in conn.execute("PRAGMA table_info(usuarios)")}
     if usr_cols:
         if "foto_perfil" not in usr_cols:
@@ -334,6 +340,7 @@ def apply_scan_results(subred, results, source="monitor", offline_after_misses=2
                            open_ports = ?,
                            confidence_score = ?,
                            confidence_label = ?,
+                           metodo_deteccion = ?,
                            ultima_deteccion = ?,
                            ultimo_scan_file = ?,
                            en_linea = 1,
@@ -344,7 +351,7 @@ def apply_scan_results(subred, results, source="monitor", offline_after_misses=2
                     """,
                     (
                         h.get("hostname"), h.get("mac"), subred, open_ports_json,
-                        h.get("confidence_score"), h.get("confidence_label"),
+                        h.get("confidence_score"), h.get("confidence_label"), h.get("metodo_deteccion"),
                         now, source, now, eq_id,
                     ),
                 )
@@ -378,13 +385,13 @@ def apply_scan_results(subred, results, source="monitor", offline_after_misses=2
                     """
                     INSERT INTO equipos (
                         ip, hostname, mac, subred, open_ports,
-                        confidence_score, confidence_label, estado_deteccion,
+                        confidence_score, confidence_label, metodo_deteccion, estado_deteccion,
                         en_linea, desde, primera_deteccion, ultima_deteccion, ultimo_scan_file
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pendiente', 1, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pendiente', 1, ?, ?, ?, ?)
                     """,
                     (
                         ip, h.get("hostname"), h.get("mac"), subred, open_ports_json,
-                        h.get("confidence_score"), h.get("confidence_label"),
+                        h.get("confidence_score"), h.get("confidence_label"), h.get("metodo_deteccion"),
                         now, now, now, source,
                     ),
                 )

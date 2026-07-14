@@ -171,11 +171,14 @@ def reverse_dns(ip, timeout=0.8):
 # --------------------------------------------------------------------------
 
 _arp_cache = None
+_arp_cache_time = 0.0
+_ARP_CACHE_TTL = 3.0  # segundos: se refresca varias veces durante un escaneo largo
 
 
 def _load_arp_table():
-    global _arp_cache
-    if _arp_cache is not None:
+    global _arp_cache, _arp_cache_time
+    now = time.time()
+    if _arp_cache is not None and (now - _arp_cache_time) < _ARP_CACHE_TTL:
         return _arp_cache
 
     table = {}
@@ -201,6 +204,7 @@ def _load_arp_table():
         pass
 
     _arp_cache = table
+    _arp_cache_time = now
     return table
 
 
@@ -212,11 +216,16 @@ def get_mac(ip):
 # Score de confianza
 # --------------------------------------------------------------------------
 
-def confidence_score(ping_alive, loss_pct, open_ports, hostname, mac):
+def confidence_score(ping_alive, loss_pct, open_ports, hostname, mac, arp_fallback=False):
     """
     El puerto abierto (RDP/SMB/RPC/WinRM) es la senal mas fuerte de que hay un
     equipo real detras de la IP: muchos firewalls corporativos bloquean ICMP
     pero dejan pasar estos puertos, asi que pesa mas que el ping.
+
+    Si ping y puertos fallaron pero el equipo aparece en la tabla ARP local
+    (arp_fallback=True), es la unica senal que tenemos de que esta vivo -- se
+    le da un bonus fuerte para que no quede enterrado en "no_confiable" solo
+    por tener el firewall bien cerrado.
     """
     score = 0
     if ping_alive:
@@ -224,6 +233,7 @@ def confidence_score(ping_alive, loss_pct, open_ports, hostname, mac):
     score += 50 if open_ports else 0
     score += 10 if hostname else 0
     score += 10 if mac else 0
+    score += 25 if arp_fallback else 0
 
     if score >= 45:
         label = "confiable"
@@ -253,16 +263,42 @@ def scan_host(ip, config):
 
     alive = ping_alive or bool(open_ports)
 
+    # Ultimo recurso: PCs de usuario normales (no servidores) suelen tener
+    # RDP desactivado y el firewall bloqueando SMB/NetBIOS/RPC/WinRM por
+    # defecto, ademas de ICMP. Si el equipo esta en la misma red local, el
+    # intento de ping de recien mismo ya obligo al sistema operativo a
+    # resolver su MAC via ARP -- eso pasa a nivel de tarjeta de red, antes de
+    # que el Firewall de Windows pueda bloquear nada. Si aparece en la tabla
+    # ARP, el equipo esta fisicamente prendido y conectado aunque todo lo
+    # demas este cerrado (este era el caso de 172.30.100.100: firewall
+    # cerrado + RDP apagado, marcado offline por error).
+    arp_fallback = False
+    mac = None
+    if not alive:
+        mac = get_mac(ip)
+        if mac:
+            alive = True
+            arp_fallback = True
+
     if not alive:
         return {
             "ip": ip, "alive": False, "latency_ms": None, "loss_pct": loss_pct,
             "open_ports": [], "hostname": None, "mac": None,
             "confidence_score": 0, "confidence_label": "sin_respuesta",
+            "metodo_deteccion": None,
         }
 
     hostname = reverse_dns(ip)
-    mac = get_mac(ip)
-    score, label = confidence_score(ping_alive, loss_pct, open_ports, hostname, mac)
+    if mac is None:
+        mac = get_mac(ip)
+    score, label = confidence_score(ping_alive, loss_pct, open_ports, hostname, mac, arp_fallback)
+
+    if ping_alive:
+        metodo = "ping"
+    elif open_ports:
+        metodo = "puertos"
+    else:
+        metodo = "arp"
 
     return {
         "ip": ip, "alive": True,
@@ -270,6 +306,7 @@ def scan_host(ip, config):
         "loss_pct": loss_pct if ping_alive else None,
         "open_ports": open_ports, "hostname": hostname, "mac": mac,
         "confidence_score": score, "confidence_label": label,
+        "metodo_deteccion": metodo,
     }
 
 
