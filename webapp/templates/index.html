@@ -48,6 +48,9 @@
   <button type="button" class="card tickets card-btn" data-filtro-tipo="tickets" onclick="netwatchSetFiltro('tickets')">
     <span class="num" data-num="tickets_abiertos">{{ summary.tickets_abiertos }}</span><span class="label">Tickets abiertos</span>
   </button>
+  <button type="button" class="card critico card-btn" data-filtro-tipo="critico" onclick="netwatchSetFiltro('critico')">
+    <span class="num" data-num="criticos">0</span><span class="label">Criticos</span>
+  </button>
 </section>
 
 <div class="layout">
@@ -113,10 +116,12 @@ function netwatchSetFiltro(tipo, valor) {
 }
 
 function netwatchRenderResumen() {
+  const criticos = NETWATCH_EQUIPOS.filter(function (e) { return e.critico; }).length;
   const mapa = {
     total: NETWATCH_SUMMARY.total, en_linea: NETWATCH_SUMMARY.en_linea, fuera_de_linea: NETWATCH_SUMMARY.fuera_de_linea,
     confirmados: NETWATCH_SUMMARY.confirmados, descartados: NETWATCH_SUMMARY.descartados,
     pendientes: NETWATCH_SUMMARY.pendientes, tickets_abiertos: NETWATCH_SUMMARY.tickets_abiertos,
+    criticos: criticos,
   };
   document.querySelectorAll('#resumen-cards [data-num]').forEach(function (el) {
     el.textContent = mapa[el.dataset.num];
@@ -148,6 +153,8 @@ function netwatchAplicarFiltros() {
       if (e.estado_deteccion !== netwatchFiltroValor) return false;
     } else if (netwatchFiltroTipo === 'tickets') {
       if (!e.tickets_abiertos) return false;
+    } else if (netwatchFiltroTipo === 'critico') {
+      if (!e.critico) return false;
     }
     if (q) {
       const campos = [e.hostname, e.ip, e.sucursal, e.ciudad, e.ubicacion, e.responsable, e.subred];
@@ -263,6 +270,12 @@ function netwatchTiempoRelativo(iso) {
 // asi el badge visual y el aviso real cuentan la misma historia.
 const NETWATCH_UMBRAL_POSIBLE_FALLA_MIN = 15;
 
+// Equipos manuales (notebooks/torres en casa, VPN) a veces no tienen una IP
+// de red real -- en ese caso el campo "ip" en realidad guarda un identificador
+// de texto libre (ej. el mismo nombre del empleado). Esto detecta ese caso
+// para no mostrar el mismo texto duplicado en la ficha-card.
+const NETWATCH_IPV4_RE = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/;
+
 function netwatchMinutosDesde(iso) {
   if (!iso) return null;
   const entonces = new Date(iso.replace(' ', 'T'));
@@ -297,8 +310,23 @@ function netwatchFichaHtml(e) {
   html += '<span class="ficha-nombre">' + netwatchEscapeHtml(titulo) + '</span>';
   html += '<span class="tag tag-' + e.estado_deteccion + '">' + netwatchEscapeHtml(e.estado_deteccion) + '</span>';
   html += '</div>';
-  html += '<div class="ficha-equipo-sub"><span class="ficha-mono">' + netwatchEscapeHtml(e.ip) + '</span>' +
-    (tieneResponsable ? '<span>&middot; Equipo: ' + netwatchEscapeHtml(e.hostname || e.ip) + '</span>' : '') + '</div>';
+  // linea de identificacion: nombre del equipo (si tiene) + IP. Si el "ip"
+  // guardado no es una IP de red real (equipos manuales sin IP fija, como
+  // notebooks/torres en casa), se usa como nombre en vez de duplicarlo.
+  const esIpReal = NETWATCH_IPV4_RE.test(e.ip || '');
+  const nombreEquipo = e.hostname || (esIpReal ? null : e.ip);
+  html += '<div class="ficha-equipo-sub">';
+  if (nombreEquipo) {
+    html += '<span class="ficha-mono">' + netwatchEscapeHtml(nombreEquipo) + '</span>';
+    html += esIpReal
+      ? '<span>&middot; ' + netwatchEscapeHtml(e.ip) + '</span>'
+      : '<span class="muted">&middot; IP dinamica</span>';
+  } else if (esIpReal) {
+    html += '<span class="ficha-mono">' + netwatchEscapeHtml(e.ip) + '</span>';
+  } else {
+    html += '<span class="muted">Sin datos</span>';
+  }
+  html += '</div>';
 
   html += '<div class="ficha-divider"></div>';
 
@@ -474,25 +502,59 @@ function netwatchReproducirSonido(tipo) {
 }
 
 // --- toasts ------------------------------------------------------------
+// Los toasts de equipos criticos que se cayeron NO se autocierran a los 6s
+// como el resto -- se quedan fijos en pantalla hasta que el equipo vuelva
+// online (o alguien los cierre a mano con la x), asi no se pierden entre
+// los demas avisos mientras se investiga que paso.
+let netwatchToastsCriticosActivos = {}; // equipo_id -> elemento <div> del toast fijo
+
+function netwatchCerrarToast(div, equipoId) {
+  div.classList.remove('toast-show');
+  setTimeout(function () { div.remove(); }, 400);
+  if (equipoId && netwatchToastsCriticosActivos[equipoId] === div) {
+    delete netwatchToastsCriticosActivos[equipoId];
+  }
+}
+
 function netwatchMostrarToast(ev) {
   const cont = document.getElementById('toast-container');
   const tipo = ev.tipo;
   const label = tipo === 'online' ? 'Volvio online' : tipo === 'offline' ? 'Paso a offline' : 'Nuevo equipo detectado';
   const titulo = ev.responsable || ev.hostname || ev.ip;
+  const equipo = ev.equipo_id ? NETWATCH_EQUIPOS.find(function (e) { return e.id === ev.equipo_id; }) : null;
+  const esCriticoOffline = tipo === 'offline' && !!(equipo && equipo.critico);
+
+  // Si el equipo critico que estaba caido volvio online, cerramos su toast fijo
+  if (tipo === 'online' && ev.equipo_id && netwatchToastsCriticosActivos[ev.equipo_id]) {
+    netwatchCerrarToast(netwatchToastsCriticosActivos[ev.equipo_id], ev.equipo_id);
+  }
+
   const div = document.createElement('div');
-  div.className = 'toast toast-' + tipo;
+  div.className = 'toast toast-' + tipo + (esCriticoOffline ? ' toast-critico' : '');
   if (ev.equipo_id) {
     div.classList.add('toast-clickeable');
-    div.onclick = function () { netwatchResaltarFicha(ev.equipo_id); };
+    div.addEventListener('click', function (evt) {
+      if (evt.target.closest('.toast-cerrar')) return;
+      netwatchResaltarFicha(ev.equipo_id);
+    });
   }
-  div.innerHTML = '<span class="toast-dot"></span><div><strong>' + netwatchEscapeHtml(titulo) +
-    '</strong><br><span class="toast-sub">' + label + ' &middot; ' + netwatchEscapeHtml(ev.ip) + '</span></div>';
+  const etiquetaCritico = esCriticoOffline ? '<span class="toast-tag-critico">CRITICO</span>' : '';
+  div.innerHTML = '<span class="toast-dot"></span><div class="toast-texto">' + etiquetaCritico + '<strong>' + netwatchEscapeHtml(titulo) +
+    '</strong><br><span class="toast-sub">' + label + ' &middot; ' + netwatchEscapeHtml(ev.ip) + '</span></div>' +
+    '<button type="button" class="toast-cerrar" title="Cerrar">&times;</button>';
+  const btnCerrar = div.querySelector('.toast-cerrar');
+  btnCerrar.addEventListener('click', function (evt) {
+    evt.stopPropagation();
+    netwatchCerrarToast(div, ev.equipo_id);
+  });
   cont.appendChild(div);
   requestAnimationFrame(function () { div.classList.add('toast-show'); });
-  setTimeout(function () {
-    div.classList.remove('toast-show');
-    setTimeout(function () { div.remove(); }, 400);
-  }, 6000);
+
+  if (esCriticoOffline) {
+    netwatchToastsCriticosActivos[ev.equipo_id] = div;
+  } else {
+    setTimeout(function () { netwatchCerrarToast(div, ev.equipo_id); }, 6000);
+  }
   netwatchReproducirSonido(tipo);
 }
 

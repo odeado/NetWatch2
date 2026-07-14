@@ -640,6 +640,10 @@ def confirm():
 @app.route("/equipo/<int:equipo_id>", methods=["GET", "POST"])
 def ficha(equipo_id):
     if request.method == "POST":
+        equipo_actual = db.get_equipo(equipo_id)
+        if not equipo_actual:
+            return redirect(url_for("index"))
+
         fields = {k: (request.form.get(k, "").strip() or None) for k in db.FICHA_FIELDS}
         fields["critico"] = 1 if request.form.get("critico") == "on" else 0
         fields["gestionado"] = 1 if request.form.get("gestionado") == "on" else 0
@@ -659,7 +663,23 @@ def ficha(equipo_id):
         dispositivo_id = request.form.get("dispositivo_id") or None
         fields["dispositivo_id"] = int(dispositivo_id) if dispositivo_id else None
 
+        # La IP es la clave unica que usa el escaner para hacer match con cada
+        # fila -- validamos que no quede vacia ni choque con otro equipo antes
+        # de guardar (equipos.ip es NOT NULL UNIQUE en la base de datos).
+        ip_error = None
+        nueva_ip = request.form.get("ip", "").strip()
+        if not nueva_ip:
+            ip_error = "ip_requerida"
+        elif nueva_ip != equipo_actual["ip"]:
+            existente = db.get_equipo_by_ip(nueva_ip)
+            if existente and existente != equipo_id:
+                ip_error = "ip_duplicada"
+            else:
+                fields["ip"] = nueva_ip
+
         db.update_ficha(equipo_id, fields)
+        if ip_error:
+            return redirect(url_for("ficha", equipo_id=equipo_id, error=ip_error))
         return redirect(url_for("ficha", equipo_id=equipo_id))
 
     equipo = db.get_equipo(equipo_id)
@@ -673,7 +693,7 @@ def ficha(equipo_id):
     disponibilidad = db.calcular_disponibilidad(equipo_id, dias=30) if equipo.get("origen") != "manual" else None
     return render_template(
         "ficha.html", e=equipo, tickets=tickets, rdp_history=rdp_history, usuarios=usuarios,
-        dispositivos=dispositivos, disponibilidad=disponibilidad,
+        dispositivos=dispositivos, disponibilidad=disponibilidad, error=request.args.get("error"),
     )
 
 
@@ -1681,4 +1701,10 @@ def disponibilidad():
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5001, threaded=True)
+    # use_reloader=False es a proposito: con el reloader activo, Flask lanza
+    # DOS procesos python.exe (uno vigilante + uno de trabajo). Si "Detener
+    # NetWatch.bat" alcanza a matar solo uno, el otro lo vuelve a levantar
+    # solo y la pagina sigue respondiendo aunque se haya presionado Detener
+    # (visto en la practica el 2026-07-14). Al desactivar el reloader queda
+    # un solo proceso, que se cierra de verdad con Stop-Process.
+    app.run(debug=True, port=5001, threaded=True, use_reloader=False)

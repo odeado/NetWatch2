@@ -44,7 +44,23 @@
     <input type="text" id="buscar-empleados" class="admin-buscador" placeholder="Buscar por nombre, email, departamento, ciudad o telefono..." oninput="pintarEmpleados()">
     <button class="btn btn-primary" onclick="abrirModalEmpleado()">+ Agregar empleado</button>
   </div>
-  <div class="fichas-grid" id="grid-empleados"></div>
+  <div class="table-scroll">
+  <table class="usuarios-table" id="tabla-empleados">
+    <thead>
+      <tr>
+        <th>Empleado</th>
+        <th>Email</th>
+        <th>Departamento</th>
+        <th>Lugar Trabajo</th>
+        <th>Telefono</th>
+        <th>VPN</th>
+        <th>Estado</th>
+        <th>Acciones</th>
+      </tr>
+    </thead>
+    <tbody id="tbody-empleados"></tbody>
+  </table>
+  </div>
   <p class="empty" id="empleados-vacio" style="display:none; margin-top:14px;">Sin empleados todavia. Agrega el primero arriba.</p>
 </div>
 
@@ -53,7 +69,23 @@
     <input type="text" id="buscar-equipos" class="admin-buscador" placeholder="Buscar por hostname, IP, marca, modelo o responsable..." oninput="pintarEquipos()">
     <button class="btn btn-primary" onclick="abrirModalEquipo()">+ Agregar equipo</button>
   </div>
-  <div class="fichas-grid" id="grid-equipos"></div>
+  <div class="table-scroll">
+  <table class="usuarios-table" id="tabla-equipos">
+    <thead>
+      <tr>
+        <th>Equipo</th>
+        <th>IP</th>
+        <th>MAC</th>
+        <th>Marca / Modelo</th>
+        <th>Responsable</th>
+        <th>Ubicacion</th>
+        <th>Conectado a</th>
+        <th>Acciones</th>
+      </tr>
+    </thead>
+    <tbody id="tbody-equipos"></tbody>
+  </table>
+  </div>
   <p class="empty" id="equipos-vacio" style="display:none; margin-top:14px;">Sin equipos todavia. Agrega el primero arriba.</p>
 </div>
 
@@ -84,7 +116,23 @@
     <button class="btn btn-primary" onclick="abrirModalDispositivo()">+ Agregar dispositivo</button>
   </div>
   <p class="empty" style="margin-bottom:14px; padding:12px 16px;">El mapa visual de puertos y las luces de estado solo se ven en el sistema local (dependen del escaneo). Aqui puedes cargar y editar los datos del dispositivo para que ya esten listos cuando llegues a la oficina.</p>
-  <div class="fichas-grid" id="grid-dispositivos"></div>
+  <div class="table-scroll">
+  <table class="usuarios-table" id="tabla-dispositivos">
+    <thead>
+      <tr>
+        <th>Nombre</th>
+        <th>Tipo</th>
+        <th>Marca / Modelo</th>
+        <th>MAC</th>
+        <th>IP</th>
+        <th>Ciudad</th>
+        <th>Estado</th>
+        <th>Acciones</th>
+      </tr>
+    </thead>
+    <tbody id="tbody-dispositivos"></tbody>
+  </table>
+  </div>
   <p class="empty" id="dispositivos-vacio" style="display:none; margin-top:14px;">Sin dispositivos todavia. Agrega el primero arriba.</p>
 </div>
 
@@ -140,6 +188,7 @@
       <div class="modal-grid">
         <label>Hostname <input type="text" id="eq-hostname"></label>
         <label>IP (o vacio si es dinamica) <input type="text" id="eq-ip"></label>
+        <label>MAC <input type="text" id="eq-mac"></label>
         <label>Marca <input type="text" id="eq-marca"></label>
         <label>Modelo <input type="text" id="eq-modelo"></label>
         <label>N&deg; Serie <input type="text" id="eq-serie"></label>
@@ -228,8 +277,9 @@
         <label>Enlace / proveedor ISP <input type="text" id="disp-enlace"></label>
       </div>
       <label class="full">Notas <textarea id="disp-notas" rows="2"></textarea></label>
+      <p class="field-hint">Este formulario es solo para agregar un dispositivo nuevo. Para asignar equipos a sus puertos, guarda primero y usa el boton "Editar puertos" en la tabla de abajo.</p>
+
       <div class="modal-footer">
-        <button class="btn btn-dark" id="btn-borrar-dispositivo" onclick="borrarDispositivo()" style="display:none;">Eliminar</button>
         <button class="btn btn-ghost" onclick="cerrarModalDispositivo()">Cancelar</button>
         <button class="btn btn-primary" onclick="guardarDispositivo()">Guardar</button>
       </div>
@@ -334,8 +384,8 @@ function escapeHtml(s) {
 // --- empleados: tarjetas tipo ficha ---------------------------------------
 window.pintarEmpleados = function () {
   const q = (document.getElementById('buscar-empleados').value || '').trim().toLowerCase();
-  const grid = document.getElementById('grid-empleados');
-  grid.innerHTML = '';
+  const tbody = document.getElementById('tbody-empleados');
+  tbody.innerHTML = '';
   const entradas = Object.entries(empleados).sort(function (a, b) {
     return (a[1].nombre || '').localeCompare(b[1].nombre || '');
   });
@@ -346,29 +396,31 @@ window.pintarEmpleados = function () {
     if (q && texto.indexOf(q) === -1) return;
     visibles++;
     const activo = e.activo !== false && e.activo !== 0;
-    const card = document.createElement('div');
-    card.className = 'ficha-card ' + (activo ? 'ficha-activo' : 'ficha-inactivo');
-    card.onclick = function () { abrirModalEmpleado(key); };
-    card.innerHTML = ''
-      + '<div class="ficha-eyebrow"><span>' + escapeHtml(e.departamento || 'Sin departamento') + '</span>'
-      + '<span class="ficha-eyebrow-empresa">' + escapeHtml(e.lugar_trabajo || '') + '</span></div>'
-      + '<div class="ficha-card-head">'
-      + '<span class="ficha-nombre">' + escapeHtml(e.nombre || 'Sin nombre') + '</span>'
-      + '<span class="tag ' + (activo ? 'tag-confirmado' : 'tag-descartado') + '"><span class="dot ' + (activo ? 'dot-on' : 'dot-off') + '"></span>' + (activo ? 'Activo' : 'Inactivo') + '</span>'
-      + '</div>'
-      + '<div class="ficha-divider"></div>'
-      + '<div class="ficha-linea"><span class="ficha-k">Correo</span><span class="ficha-v">' + escapeHtml(e.correo || '-') + '</span></div>'
-      + '<div class="ficha-linea"><span class="ficha-k">Cargo</span><span class="ficha-v">' + escapeHtml(e.cargo || '-') + '</span></div>'
-      + '<div class="ficha-linea"><span class="ficha-k">Telefono</span><span class="ficha-v">' + escapeHtml(e.telefono || '-') + '</span></div>'
-      + '<div class="ficha-linea"><span class="ficha-k">Sucursal</span><span class="ficha-v">' + escapeHtml(e.sucursal || '-') + '</span></div>'
-      + '<div class="ficha-linea"><span class="ficha-k">Ciudad</span><span class="ficha-v">' + escapeHtml(e.ciudad || '-') + '</span></div>'
-      + '<div class="ficha-card-foot">'
-      + (e.tipo_vpn ? '<span class="badge badge-vpn">' + escapeHtml(e.tipo_vpn) + (e.vpn_activa ? ' (activa)' : '') + '</span>' : '<span></span>')
-      + '<button class="btn btn-ghost btn-sm" onclick="event.stopPropagation(); abrirModalEmpleado(\'' + key + '\')">Editar</button>'
-      + '</div>';
-    grid.appendChild(card);
+    const tr = document.createElement('tr');
+    tr.className = 'fila-clickeable' + (activo ? '' : ' usuario-row-inactivo');
+    tr.onclick = function () { abrirModalEmpleado(key); };
+    tr.innerHTML = ''
+      + '<td class="empleado-cell"><span class="avatar-thumb avatar-placeholder">' + escapeHtml((e.nombre || '?').charAt(0).toUpperCase()) + '</span>'
+      + '<span class="empleado-nombre">' + escapeHtml(e.nombre || 'Sin nombre') + '</span></td>'
+      + '<td>' + escapeHtml(e.correo || '-') + '</td>'
+      + '<td>' + escapeHtml(e.departamento || '-') + '</td>'
+      + '<td>' + (e.lugar_trabajo ? '<span class="badge badge-lugar">' + escapeHtml(e.lugar_trabajo) + '</span>' : '<span class="muted">-</span>') + '</td>'
+      + '<td>' + escapeHtml(e.telefono || '-') + '</td>'
+      + '<td>' + (e.tipo_vpn ? '<span class="badge badge-vpn">' + escapeHtml(e.tipo_vpn) + (e.vpn_activa ? ' (activa)' : '') + '</span>' : '<span class="muted">-</span>') + '</td>'
+      + '<td><span class="tag ' + (activo ? 'tag-confirmado' : 'tag-descartado') + '"><span class="dot ' + (activo ? 'dot-on' : 'dot-off') + '"></span> ' + (activo ? 'Activo' : 'Inactivo') + '</span></td>'
+      + '<td class="actions" onclick="event.stopPropagation()">'
+      + '<button type="button" class="btn btn-confirm" onclick="abrirModalEmpleado(\'' + key + '\')">Editar</button>'
+      + '<button type="button" class="btn btn-dark" onclick="netwatchBorrarEmpleadoDesdeTabla(\'' + key + '\')">Eliminar</button>'
+      + '</td>';
+    tbody.appendChild(tr);
   });
   document.getElementById('empleados-vacio').style.display = visibles === 0 ? 'block' : 'none';
+};
+
+window.netwatchBorrarEmpleadoDesdeTabla = function (key) {
+  const e = empleados[key] || {};
+  if (!confirm('Eliminar a ' + (e.nombre || 'este empleado') + ' de la nube? Esto no borra nada en el sistema local.')) return;
+  remove(ref(dbRef, 'empleados/' + key));
 };
 
 window.abrirModalEmpleado = function (key) {
@@ -431,8 +483,8 @@ window.borrarEmpleado = function () {
 // --- equipos: tarjetas tipo ficha ------------------------------------------
 window.pintarEquipos = function () {
   const q = (document.getElementById('buscar-equipos').value || '').trim().toLowerCase();
-  const grid = document.getElementById('grid-equipos');
-  grid.innerHTML = '';
+  const tbody = document.getElementById('tbody-equipos');
+  tbody.innerHTML = '';
   const entradas = Object.entries(equipos).sort(function (a, b) {
     return (a[1].hostname || '').localeCompare(b[1].hostname || '');
   });
@@ -442,25 +494,30 @@ window.pintarEquipos = function () {
     const texto = [e.hostname, e.ip, e.marca, e.modelo, e.responsable, e.ciudad].join(' ').toLowerCase();
     if (q && texto.indexOf(q) === -1) return;
     visibles++;
-    const card = document.createElement('div');
-    card.className = 'ficha-card';
-    card.onclick = function () { abrirModalEquipo(key); };
-    card.innerHTML = ''
-      + '<div class="ficha-eyebrow"><span>' + escapeHtml(e.ciudad || 'Sin ciudad') + '</span>'
-      + '<span class="ficha-eyebrow-empresa">' + escapeHtml(e.marca || '') + '</span></div>'
-      + '<div class="ficha-card-head"><span class="ficha-nombre">' + escapeHtml(e.hostname || e.ip || 'Sin nombre') + '</span></div>'
-      + '<div class="ficha-linea"><span class="ficha-k">IP</span><span class="ficha-v">' + escapeHtml(e.ip || '-') + '</span></div>'
-      + '<div class="ficha-divider"></div>'
-      + '<div class="ficha-linea"><span class="ficha-k">Modelo</span><span class="ficha-v">' + escapeHtml(e.modelo || '-') + '</span></div>'
-      + '<div class="ficha-linea"><span class="ficha-k">Responsable</span><span class="ficha-v">' + escapeHtml(e.responsable || '-') + '</span></div>'
-      + '<div class="ficha-linea"><span class="ficha-k">OS</span><span class="ficha-v">' + escapeHtml(e.os || '-') + '</span></div>'
-      + (e.dispositivo_nombre ? '<div class="ficha-linea"><span class="ficha-k">Conectado a</span><span class="ficha-v">' + escapeHtml(e.dispositivo_nombre) + (e.puerto ? ' / ' + escapeHtml(e.puerto) : '') + '</span></div>' : '')
-      + '<div class="ficha-card-foot"><span></span>'
-      + '<button class="btn btn-ghost btn-sm" onclick="event.stopPropagation(); abrirModalEquipo(\'' + key + '\')">Editar</button>'
-      + '</div>';
-    grid.appendChild(card);
+    const tr = document.createElement('tr');
+    tr.className = 'fila-clickeable';
+    tr.onclick = function () { abrirModalEquipo(key); };
+    tr.innerHTML = ''
+      + '<td class="empleado-nombre">' + escapeHtml(e.hostname || 'Sin nombre') + '</td>'
+      + '<td>' + escapeHtml(e.ip || '-') + '</td>'
+      + '<td>' + escapeHtml(e.mac || '-') + '</td>'
+      + '<td>' + escapeHtml((e.marca || '-') + (e.modelo ? ' ' + e.modelo : '')) + '</td>'
+      + '<td>' + escapeHtml(e.responsable || '-') + '</td>'
+      + '<td>' + escapeHtml(e.ciudad || e.sucursal || '-') + '</td>'
+      + '<td>' + (e.dispositivo_nombre ? escapeHtml(e.dispositivo_nombre) + (e.puerto ? ' / ' + escapeHtml(e.puerto) : '') : '<span class="muted">-</span>') + '</td>'
+      + '<td class="actions" onclick="event.stopPropagation()">'
+      + '<button type="button" class="btn btn-confirm" onclick="abrirModalEquipo(\'' + key + '\')">Editar</button>'
+      + '<button type="button" class="btn btn-dark" onclick="netwatchBorrarEquipoDesdeTabla(\'' + key + '\')">Eliminar</button>'
+      + '</td>';
+    tbody.appendChild(tr);
   });
   document.getElementById('equipos-vacio').style.display = visibles === 0 ? 'block' : 'none';
+};
+
+window.netwatchBorrarEquipoDesdeTabla = function (key) {
+  const e = equipos[key] || {};
+  if (!confirm('Eliminar ' + (e.hostname || e.ip || 'este equipo') + ' de la nube? Esto no borra nada en el sistema local.')) return;
+  remove(ref(dbRef, 'equipos/' + key));
 };
 
 function pintarSelectDispositivos() {
@@ -487,6 +544,7 @@ window.abrirModalEquipo = function (key) {
   document.getElementById('modal-equipo-titulo').textContent = key ? 'Editar equipo' : 'Agregar equipo';
   document.getElementById('eq-hostname').value = e.hostname || '';
   document.getElementById('eq-ip').value = e.ip || '';
+  document.getElementById('eq-mac').value = e.mac || '';
   document.getElementById('eq-marca').value = e.marca || '';
   document.getElementById('eq-modelo').value = e.modelo || '';
   document.getElementById('eq-serie').value = e.numero_serie || '';
@@ -524,6 +582,7 @@ window.guardarEquipo = function () {
   const key = document.getElementById('eq-key').value;
   const datos = {
     hostname: hostname, ip: ip,
+    mac: document.getElementById('eq-mac').value.trim(),
     marca: document.getElementById('eq-marca').value.trim(),
     modelo: document.getElementById('eq-modelo').value.trim(),
     numero_serie: document.getElementById('eq-serie').value.trim(),
@@ -566,63 +625,260 @@ window.borrarEquipo = function () {
 };
 
 // --- infraestructura: switches/routers -------------------------------------
+// Mismos tipos/etiquetas que TIPOS_DISPOSITIVO / TIPO_DISPOSITIVO_LABELS del
+// sistema local (webapp/db.py) -- si se agrega un tipo nuevo alla, agregarlo aca tambien.
+const NETWATCH_TIPO_LABELS = {
+  switch: 'Switch administrable',
+  router: 'Router',
+  fortinet: 'Firewall Fortinet',
+  otro: 'Otro dispositivo',
+};
+
+function netwatchTipoBadgeHtml(tipo) {
+  const clave = NETWATCH_TIPO_LABELS[tipo] ? tipo : 'otro';
+  const etiqueta = NETWATCH_TIPO_LABELS[tipo] || (tipo || 'Otro dispositivo');
+  return '<span class="tipo-badge tipo-badge-' + clave + '">' + escapeHtml(etiqueta) + '</span>';
+}
+
+// Un solo panel acordeon abierto a la vez (mismo patron que topologia.html local).
+window.netwatchToggleAcordeon = function (id) {
+  const panel = document.getElementById('panel-' + id);
+  if (!panel) return;
+  const yaAbierto = panel.style.display !== 'none';
+  document.querySelectorAll('.acordeon-panel').forEach(function (p) { p.style.display = 'none'; });
+  if (!yaAbierto) {
+    panel.style.display = '';
+    requestAnimationFrame(function () { panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); });
+  }
+}
+
 window.pintarDispositivos = function () {
   const q = (document.getElementById('buscar-dispositivos').value || '').trim().toLowerCase();
-  const grid = document.getElementById('grid-dispositivos');
-  grid.innerHTML = '';
-  const entradas = Object.entries(dispositivos).sort(function (a, b) {
-    return (a[1].nombre || '').localeCompare(b[1].nombre || '');
+  const tbody = document.getElementById('tbody-dispositivos');
+  tbody.innerHTML = '';
+
+  const entradas = Object.entries(dispositivos).filter(function (par) {
+    const d = par[1];
+    if (!q) return true;
+    const texto = [d.nombre, d.tipo, d.marca, d.ip, d.mac, d.ciudad, d.sucursal].join(' ').toLowerCase();
+    return texto.indexOf(q) !== -1;
   });
-  let visibles = 0;
+
+  // Agrupar por ciudad -> sucursal, igual que la tabla de Infraestructura local.
+  const porCiudad = {};
   entradas.forEach(function (par) {
-    const key = par[0], d = par[1];
-    const texto = [d.nombre, d.tipo, d.marca, d.ip, d.ciudad].join(' ').toLowerCase();
-    if (q && texto.indexOf(q) === -1) return;
-    visibles++;
-    const card = document.createElement('div');
-    card.className = 'ficha-card';
-    card.onclick = function () { abrirModalDispositivo(key); };
-    card.innerHTML = ''
-      + '<div class="ficha-eyebrow"><span>' + escapeHtml(d.tipo || 'switch') + '</span>'
-      + '<span class="ficha-eyebrow-empresa">' + escapeHtml(d.ciudad || '') + '</span></div>'
-      + '<div class="ficha-card-head"><span class="ficha-nombre">' + escapeHtml(d.nombre || 'Sin nombre') + '</span>'
-      + '<span class="tag tag-confirmado">' + escapeHtml(d.estado || 'Usado') + '</span></div>'
-      + '<div class="ficha-linea"><span class="ficha-k">Marca/Modelo</span><span class="ficha-v">' + escapeHtml((d.marca || '-') + ' ' + (d.modelo || '')) + '</span></div>'
-      + '<div class="ficha-divider"></div>'
-      + '<div class="ficha-linea"><span class="ficha-k">IP</span><span class="ficha-v">' + escapeHtml(d.ip || '-') + '</span></div>'
-      + '<div class="ficha-linea"><span class="ficha-k">Ubicacion</span><span class="ficha-v">' + escapeHtml(d.ubicacion || '-') + '</span></div>'
-      + '<div class="ficha-linea"><span class="ficha-k">Enlace</span><span class="ficha-v">' + escapeHtml(d.enlace || '-') + '</span></div>'
-      + '<div class="ficha-card-foot"><span></span>'
-      + '<button class="btn btn-ghost btn-sm" onclick="event.stopPropagation(); abrirModalDispositivo(\'' + key + '\')">Editar</button>'
-      + '</div>';
-    grid.appendChild(card);
+    const d = par[1];
+    const ciudad = d.ciudad || 'Sin ciudad';
+    const sucursal = d.sucursal || 'Sin sucursal';
+    if (!porCiudad[ciudad]) porCiudad[ciudad] = {};
+    if (!porCiudad[ciudad][sucursal]) porCiudad[ciudad][sucursal] = [];
+    porCiudad[ciudad][sucursal].push(par);
   });
+  const ciudadesOrdenadas = Object.keys(porCiudad).sort();
+
+  let visibles = 0;
+  let html = '';
+  ciudadesOrdenadas.forEach(function (ciudad) {
+    const sucursales = porCiudad[ciudad];
+    const totalCiudad = Object.values(sucursales).reduce(function (n, arr) { return n + arr.length; }, 0);
+    html += '<tr class="banner-fila banner-ciudad-fila"><td colspan="8">'
+      + '<span class="banner-ciudad">' + escapeHtml(ciudad) + '</span>'
+      + '<span class="banner-count">' + totalCiudad + ' dispositivo' + (totalCiudad !== 1 ? 's' : '') + '</span></td></tr>';
+    Object.keys(sucursales).sort().forEach(function (sucursal) {
+      const lista = sucursales[sucursal];
+      html += '<tr class="banner-fila banner-sucursal-fila"><td colspan="8">'
+        + '<span class="banner-sucursal">' + escapeHtml(sucursal) + '</span>'
+        + '<span class="banner-count">' + lista.length + '</span></td></tr>';
+      lista.sort(function (a, b) { return (a[1].nombre || '').localeCompare(b[1].nombre || ''); }).forEach(function (par) {
+        const key = par[0], d = par[1];
+        visibles++;
+        const idEditar = 'editar-' + key;
+        const idPuertos = 'puertos-' + key;
+        html += '<tr>'
+          + '<td class="empleado-nombre">' + escapeHtml(d.nombre || 'Sin nombre') + '</td>'
+          + '<td>' + netwatchTipoBadgeHtml(d.tipo) + '</td>'
+          + '<td>' + escapeHtml((d.marca || '-') + (d.modelo ? ' ' + d.modelo : '')) + '</td>'
+          + '<td>' + escapeHtml(d.mac || '-') + '</td>'
+          + '<td>' + escapeHtml(d.ip || '-') + '</td>'
+          + '<td>' + escapeHtml(d.ciudad || '-') + '</td>'
+          + '<td><span class="badge badge-lugar">' + escapeHtml(d.estado || 'Usado') + '</span></td>'
+          + '<td class="actions">'
+          + '<button type="button" class="btn btn-confirm" onclick="netwatchToggleAcordeon(\'' + idEditar + '\')">Editar</button>'
+          + '<button type="button" class="btn btn-primary" onclick="netwatchToggleAcordeon(\'' + idPuertos + '\'); netwatchPintarPuertosInline(\'' + key + '\')">Editar puertos</button>'
+          + '<button type="button" class="btn btn-dark" onclick="netwatchBorrarDispositivoDesdeTabla(\'' + key + '\')">Eliminar</button>'
+          + '</td>'
+          + '</tr>'
+          + '<tr class="acordeon-panel" id="panel-' + idEditar + '" style="display:none"><td colspan="8">'
+          + netwatchCamposDispositivoHtml(key, d) + '</td></tr>'
+          + '<tr class="acordeon-panel" id="panel-' + idPuertos + '" style="display:none"><td colspan="8">'
+          + '<div class="acordeon-puertos"><p class="modal-subtitle">Elige que equipo esta conectado a cada boca.</p>'
+          + '<div id="puertos-lista-' + key + '" style="display:flex; flex-direction:column; gap:6px;"></div></div>'
+          + '</td></tr>';
+      });
+    });
+  });
+
+  tbody.innerHTML = html;
   document.getElementById('dispositivos-vacio').style.display = visibles === 0 ? 'block' : 'none';
 };
 
-window.abrirModalDispositivo = function (key) {
+function netwatchCamposDispositivoHtml(key, d) {
+  return ''
+    + '<div class="modal-form acordeon-form">'
+    + '<div class="modal-grid">'
+    + '<label class="full">Nombre <input type="text" id="disp-nombre-' + key + '" value="' + escapeHtml(d.nombre || '') + '"></label>'
+    + '<label>Tipo<select id="disp-tipo-' + key + '">'
+    + Object.keys(NETWATCH_TIPO_LABELS).map(function (t) {
+        return '<option value="' + t + '"' + (d.tipo === t ? ' selected' : '') + '>' + escapeHtml(NETWATCH_TIPO_LABELS[t]) + '</option>';
+      }).join('')
+    + '</select></label>'
+    + '<label>Estado<select id="disp-estado-' + key + '">'
+    + ['Nuevo', 'Usado', 'En reparacion', 'Fuera de servicio'].map(function (e) {
+        return '<option' + ((d.estado || 'Usado') === e ? ' selected' : '') + '>' + e + '</option>';
+      }).join('')
+    + '</select></label>'
+    + '<label>Marca <input type="text" id="disp-marca-' + key + '" value="' + escapeHtml(d.marca || '') + '"></label>'
+    + '<label>Modelo <input type="text" id="disp-modelo-' + key + '" value="' + escapeHtml(d.modelo || '') + '"></label>'
+    + '<label>N&deg; Serie <input type="text" id="disp-serie-' + key + '" value="' + escapeHtml(d.numero_serie || '') + '"></label>'
+    + '<label>Cantidad de bocas <input type="text" id="disp-bocas-' + key + '" value="' + escapeHtml(d.cantidad_bocas || '') + '"></label>'
+    + '<label>Bocas de fibra <input type="text" id="disp-bocas-fibra-' + key + '" value="' + escapeHtml(d.bocas_fibra || '') + '"></label>'
+    + '<label>IP <input type="text" id="disp-ip-' + key + '" value="' + escapeHtml(d.ip || '') + '"></label>'
+    + '<label>MAC <input type="text" id="disp-mac-' + key + '" value="' + escapeHtml(d.mac || '') + '"></label>'
+    + '<label>Sucursal <input type="text" id="disp-sucursal-' + key + '" value="' + escapeHtml(d.sucursal || '') + '"></label>'
+    + '<label>Ciudad <input type="text" id="disp-ciudad-' + key + '" value="' + escapeHtml(d.ciudad || '') + '"></label>'
+    + '<label>Ubicacion <input type="text" id="disp-ubicacion-' + key + '" value="' + escapeHtml(d.ubicacion || '') + '"></label>'
+    + '<label>Piso <input type="text" id="disp-piso-' + key + '" value="' + escapeHtml(d.piso || '') + '"></label>'
+    + '<label>Fecha de ingreso <input type="text" id="disp-fecha-ingreso-' + key + '" value="' + escapeHtml(d.fecha_ingreso || '') + '"></label>'
+    + '<label>Enlace / proveedor ISP <input type="text" id="disp-enlace-' + key + '" value="' + escapeHtml(d.enlace || '') + '"></label>'
+    + '</div>'
+    + '<label class="full">Notas <textarea id="disp-notas-' + key + '" rows="2">' + escapeHtml(d.notas || '') + '</textarea></label>'
+    + '<div class="modal-footer">'
+    + '<button type="button" class="btn btn-reset" onclick="netwatchToggleAcordeon(\'editar-' + key + '\')">Cancelar</button>'
+    + '<button type="button" class="btn btn-primary" onclick="netwatchGuardarDispositivoInline(\'' + key + '\')">Guardar Cambios</button>'
+    + '</div>'
+    + '</div>';
+}
+
+window.netwatchGuardarDispositivoInline = function (key) {
+  const g = function (id) { return document.getElementById(id + '-' + key); };
+  const nombre = g('disp-nombre').value.trim();
+  if (!nombre) { alert('El nombre es obligatorio.'); return; }
+  const datos = {
+    nombre: nombre,
+    tipo: g('disp-tipo').value,
+    estado: g('disp-estado').value,
+    marca: g('disp-marca').value.trim(),
+    modelo: g('disp-modelo').value.trim(),
+    numero_serie: g('disp-serie').value.trim(),
+    cantidad_bocas: g('disp-bocas').value.trim(),
+    bocas_fibra: g('disp-bocas-fibra').value.trim(),
+    ip: g('disp-ip').value.trim(),
+    mac: g('disp-mac').value.trim(),
+    sucursal: g('disp-sucursal').value.trim(),
+    ciudad: g('disp-ciudad').value.trim(),
+    ubicacion: g('disp-ubicacion').value.trim(),
+    piso: g('disp-piso').value.trim(),
+    fecha_ingreso: g('disp-fecha-ingreso').value.trim(),
+    enlace: g('disp-enlace').value.trim(),
+    notas: g('disp-notas').value.trim(),
+  };
+  update(ref(dbRef, 'dispositivos/' + key), datos);
+  netwatchToggleAcordeon('editar-' + key);
+};
+
+window.netwatchBorrarDispositivoDesdeTabla = function (key) {
+  const d = dispositivos[key] || {};
+  if (!confirm('Eliminar ' + (d.nombre || 'este dispositivo') + ' de la nube? Esto no borra nada en el sistema local.')) return;
+  remove(ref(dbRef, 'dispositivos/' + key));
+};
+
+// --- puertos del dispositivo (panel acordeon "Editar puertos") -----------
+function netwatchEtiquetasPuertos(d) {
+  const bocas = parseInt(d.cantidad_bocas, 10) || 0;
+  const fibra = parseInt(d.bocas_fibra, 10) || 0;
+  const etiquetas = [];
+  for (let i = 1; i <= bocas; i++) etiquetas.push({ label: String(i), tipo: 'cobre' });
+  for (let i = 1; i <= fibra; i++) etiquetas.push({ label: 'F' + i, tipo: 'fibra' });
+  return etiquetas;
+}
+
+window.netwatchPintarPuertosInline = function (key) {
+  const cont = document.getElementById('puertos-lista-' + key);
+  if (!cont) return;
+  const d = dispositivos[key] || {};
+  const nombreSwitch = d.nombre;
+  const etiquetas = netwatchEtiquetasPuertos(d);
+  if (!etiquetas.length) {
+    cont.innerHTML = '<p class="muted" style="font-size:12px; margin:4px 0;">Este dispositivo no tiene "Cantidad de bocas" ni "Bocas de fibra" definidas -- editalo primero.</p>';
+    return;
+  }
+  const ocupacion = {};
+  Object.entries(equipos).forEach(function (par) {
+    const k = par[0], e = par[1];
+    if (e.dispositivo_nombre === nombreSwitch && e.puerto) ocupacion[e.puerto] = k;
+  });
+  // Agrupados por sucursal y ordenados por IP: mas facil de escanear cuando
+  // varios equipos del mismo cliente comparten hostname (ej. "Emelnor" x9).
+  const opcionesEquipos = Object.entries(equipos).sort(function (a, b) {
+    const sucA = a[1].sucursal || '', sucB = b[1].sucursal || '';
+    if (sucA !== sucB) return sucA.localeCompare(sucB);
+    return (a[1].ip || '').localeCompare(b[1].ip || '', undefined, { numeric: true });
+  });
+  cont.innerHTML = etiquetas.map(function (p) {
+    const equipoKeyActual = ocupacion[p.label] || '';
+    const opciones = '<option value="">-- Vacio --</option>' + opcionesEquipos.map(function (par) {
+      const k = par[0], e = par[1];
+      const sel = k === equipoKeyActual ? ' selected' : '';
+      // La IP es lo unico garantizado unico por equipo -- muchos hostnames
+      // repiten el nombre del cliente (ej. "Emelnor" x9), asi que sin la IP
+      // quedan indistinguibles en la lista.
+      let etiqueta = e.hostname ? (e.hostname + ' -- ' + (e.ip || 'sin IP')) : (e.ip || 'Sin nombre');
+      if (e.responsable) etiqueta += ' (' + e.responsable + ')';
+      if (e.sucursal) etiqueta += ' [' + e.sucursal + ']';
+      return '<option value="' + k + '"' + sel + '>' + escapeHtml(etiqueta) + '</option>';
+    }).join('');
+    return '<div class="puerto-fila">' +
+      '<span class="puerto-label">' + escapeHtml(p.label) + (p.tipo === 'fibra' ? ' (fibra)' : '') + '</span>' +
+      '<select data-puerto="' + escapeHtml(p.label) + '" class="puerto-select">' + opciones + '</select>' +
+      '</div>';
+  }).join('') + '<div class="modal-footer"><button type="button" class="btn btn-primary" onclick="netwatchGuardarPuertosInline(\'' + key + '\')">Guardar Puertos</button></div>';
+};
+
+window.netwatchGuardarPuertosInline = async function (key) {
+  const d = dispositivos[key] || {};
+  const nombreSwitch = d.nombre;
+  const selects = document.querySelectorAll('#puertos-lista-' + key + ' .puerto-select');
+  const tareas = [];
+  selects.forEach(function (sel) {
+    const puertoLabel = sel.dataset.puerto;
+    const nuevoEquipoKey = sel.value || null;
+    let anteriorKey = null;
+    Object.entries(equipos).forEach(function (par) {
+      if (par[1].dispositivo_nombre === nombreSwitch && par[1].puerto === puertoLabel) anteriorKey = par[0];
+    });
+    if (anteriorKey === nuevoEquipoKey) return; // sin cambios en este puerto
+    if (anteriorKey) {
+      tareas.push(update(ref(dbRef, 'equipos/' + anteriorKey), { dispositivo_nombre: '', puerto: '' }));
+    }
+    if (nuevoEquipoKey) {
+      tareas.push(update(ref(dbRef, 'equipos/' + nuevoEquipoKey), { dispositivo_nombre: nombreSwitch, puerto: puertoLabel }));
+    }
+  });
+  await Promise.all(tareas);
+  netwatchToggleAcordeon('puertos-' + key);
+};
+
+window.abrirModalDispositivo = function () {
   const modal = document.getElementById('modal-dispositivo');
-  document.getElementById('btn-borrar-dispositivo').style.display = key ? 'inline-flex' : 'none';
-  document.getElementById('disp-key').value = key || '';
-  const d = key ? (dispositivos[key] || {}) : {};
-  document.getElementById('modal-dispositivo-titulo').textContent = key ? 'Editar dispositivo' : 'Agregar dispositivo';
-  document.getElementById('disp-nombre').value = d.nombre || '';
-  document.getElementById('disp-tipo').value = d.tipo || 'switch';
-  document.getElementById('disp-estado').value = d.estado || 'Usado';
-  document.getElementById('disp-marca').value = d.marca || '';
-  document.getElementById('disp-modelo').value = d.modelo || '';
-  document.getElementById('disp-serie').value = d.numero_serie || '';
-  document.getElementById('disp-bocas').value = d.cantidad_bocas || '';
-  document.getElementById('disp-bocas-fibra').value = d.bocas_fibra || '';
-  document.getElementById('disp-ip').value = d.ip || '';
-  document.getElementById('disp-mac').value = d.mac || '';
-  document.getElementById('disp-sucursal').value = d.sucursal || '';
-  document.getElementById('disp-ciudad').value = d.ciudad || '';
-  document.getElementById('disp-ubicacion').value = d.ubicacion || '';
-  document.getElementById('disp-piso').value = d.piso || '';
-  document.getElementById('disp-fecha-ingreso').value = d.fecha_ingreso || '';
-  document.getElementById('disp-enlace').value = d.enlace || '';
-  document.getElementById('disp-notas').value = d.notas || '';
+  document.getElementById('disp-key').value = '';
+  document.getElementById('modal-dispositivo-titulo').textContent = 'Agregar dispositivo';
+  ['disp-nombre', 'disp-marca', 'disp-modelo', 'disp-serie', 'disp-bocas', 'disp-bocas-fibra',
+   'disp-ip', 'disp-mac', 'disp-sucursal', 'disp-ciudad', 'disp-ubicacion', 'disp-piso',
+   'disp-fecha-ingreso', 'disp-enlace', 'disp-notas'].forEach(function (id) {
+    document.getElementById(id).value = '';
+  });
+  document.getElementById('disp-tipo').value = 'switch';
+  document.getElementById('disp-estado').value = 'Usado';
   modal.classList.add('modal-open');
 };
 
@@ -631,7 +887,6 @@ window.cerrarModalDispositivo = function () { document.getElementById('modal-dis
 window.guardarDispositivo = function () {
   const nombre = document.getElementById('disp-nombre').value.trim();
   if (!nombre) { alert('El nombre es obligatorio.'); return; }
-  const key = document.getElementById('disp-key').value;
   const datos = {
     nombre: nombre,
     tipo: document.getElementById('disp-tipo').value,
@@ -651,19 +906,7 @@ window.guardarDispositivo = function () {
     enlace: document.getElementById('disp-enlace').value.trim(),
     notas: document.getElementById('disp-notas').value.trim(),
   };
-  if (key) {
-    update(ref(dbRef, 'dispositivos/' + key), datos);
-  } else {
-    push(ref(dbRef, 'dispositivos'), datos);
-  }
-  cerrarModalDispositivo();
-};
-
-window.borrarDispositivo = function () {
-  const key = document.getElementById('disp-key').value;
-  if (!key) return;
-  if (!confirm('Eliminar este dispositivo de la nube? Esto no borra nada en el sistema local.')) return;
-  remove(ref(dbRef, 'dispositivos/' + key));
+  push(ref(dbRef, 'dispositivos'), datos);
   cerrarModalDispositivo();
 };
 

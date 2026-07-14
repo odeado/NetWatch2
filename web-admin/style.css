@@ -11,6 +11,59 @@
   --teal: #2dd4bf;
 }
 * { box-sizing: border-box; }
+table { width: 100%; border-collapse: collapse; background: var(--panel); border-radius: 10px; overflow: hidden; }
+th, td { padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 13px; text-align: left; }
+th { color: var(--muted); font-weight: 500; text-transform: uppercase; font-size: 11px; letter-spacing: 0.04em; }
+.table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; margin-bottom: 20px; }
+.table-scroll table { min-width: 640px; margin-bottom: 0; }
+.usuarios-table td { vertical-align: middle; }
+.usuario-row-inactivo { opacity: 0.55; }
+.empleado-cell { display: flex; align-items: center; gap: 10px; }
+.empleado-nombre { font-weight: 600; }
+.avatar-thumb {
+  width: 30px; height: 30px; border-radius: 50%; object-fit: cover; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.avatar-placeholder { background: #2a3348; color: var(--muted); font-size: 13px; font-weight: 600; }
+.actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.fila-clickeable { cursor: pointer; }
+.fila-clickeable:hover td { background: rgba(96, 165, 250, 0.05); }
+
+/* banners de agrupacion Ciudad/Sucursal (tabla de Infraestructura) */
+.banner-fila td { padding: 0; border: none; }
+.banner-ciudad-fila td {
+  background: linear-gradient(90deg, rgba(96,165,250,0.16), rgba(96,165,250,0.02));
+  border-top: 1px solid var(--border); border-bottom: 1px solid var(--blue);
+  padding: 10px 14px !important;
+}
+.banner-ciudad { font-size: 13px; font-weight: 700; color: var(--blue); text-transform: uppercase; letter-spacing: 0.05em; }
+.banner-sucursal-fila td {
+  background: #171e2e; border-bottom: 1px solid var(--border); padding: 6px 14px 6px 28px !important;
+}
+.banner-sucursal { font-size: 11.5px; font-weight: 600; color: var(--muted); }
+.banner-count {
+  font-size: 10.5px; color: var(--muted); margin-left: 10px; background: rgba(255,255,255,0.06);
+  border-radius: 10px; padding: 1px 8px;
+}
+
+/* acordeon inline para editar dispositivo / puertos en Infraestructura */
+.acordeon-panel td {
+  background: #10141f; border-top: 2px solid var(--blue); border-bottom: 1px solid var(--border);
+  padding: 20px 28px 26px;
+}
+.acordeon-panel .modal-form { margin-top: 0; }
+.acordeon-form .modal-footer { margin-top: 4px; }
+.acordeon-puertos { width: 100%; }
+
+/* insignia de tipo de dispositivo -- para reconocer que es de un vistazo */
+.tipo-badge {
+  display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 12px;
+  font-size: 11px; font-weight: 600; white-space: nowrap;
+}
+.tipo-badge-switch { background: rgba(96, 165, 250, 0.15); color: var(--blue); }
+.tipo-badge-router { background: rgba(167, 139, 250, 0.18); color: #a78bfa; }
+.tipo-badge-fortinet { background: rgba(251, 146, 60, 0.18); color: #fb923c; }
+.tipo-badge-otro { background: rgba(138, 147, 168, 0.18); color: var(--muted); }
 body {
   margin: 0;
   font-family: -apple-system, Segoe UI, Roboto, sans-serif;
@@ -168,6 +221,13 @@ header .subtitle { margin: 0 0 20px; color: var(--muted); font-size: 14px; }
   border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; font-size: 13px; line-height: 1.6;
 }
 .import-resumen-error { background: rgba(248, 113, 113, 0.1); border-color: var(--red); }
+
+.puerto-fila { display: flex; align-items: center; gap: 8px; }
+.puerto-label { min-width: 60px; font-size: 12px; color: var(--muted); flex-shrink: 0; }
+.puerto-select {
+  flex: 1; background: #0f1420; color: var(--text); border: 1px solid var(--border);
+  border-radius: 6px; padding: 6px 8px; font-size: 12px; font-family: inherit;
+}
 
 @media (max-width: 640px) {
   body { padding: 16px 14px 50px; }

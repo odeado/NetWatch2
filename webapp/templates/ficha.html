@@ -75,6 +75,16 @@
     <p class="field-hint">Si el escaneo no detecto hostname o MAC (comun cuando el equipo esta en otra
       VLAN o conectas por VPN), puedes escribirlos aqui a mano. Si el escaneo los detecta despues,
       se van a actualizar solos con el valor real.</p>
+    {% if error == 'ip_duplicada' %}
+    <p class="empty small">Ya existe otro equipo con esa IP/identificador -- no se guardo el cambio de IP (el resto de los campos si se guardaron).</p>
+    {% elif error == 'ip_requerida' %}
+    <p class="empty small">La IP/identificador no puede quedar vacio -- no se guardo ese cambio (el resto de los campos si se guardaron).</p>
+    {% endif %}
+    <label>IP / identificador <input type="text" name="ip" value="{{ e.ip or '' }}" required></label>
+    <p class="field-hint">Para equipos en la red esto deberia ser su IP real. Para notebooks/torres en
+      casa sin IP fija (VPN, dinamica), usa un identificador unico en vez de una IP
+      (ej. nombre-empleado) -- ojo que si este equipo SI esta siendo escaneado, el proximo
+      escaneo puede volver a crear una fila con la IP anterior si el equipo responde ahi.</p>
     <label>Hostname <input type="text" name="hostname" value="{{ e.hostname or '' }}" placeholder="Ej: PC-RECEPCION"></label>
     <label>MAC <input type="text" name="mac" value="{{ e.mac or '' }}" placeholder="Ej: AA:BB:CC:DD:EE:FF"></label>
   </fieldset>
