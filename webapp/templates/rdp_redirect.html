@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="refresh" content="0;url=netwatchrdp://{{ equipo.ip }}">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Abriendo Escritorio Remoto...</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<div class="rdp-redirect-box">
+  <h1>Abriendo Escritorio Remoto...</h1>
+  <p class="subtitle">Conectando a {{ equipo.hostname or equipo.ip }} ({{ equipo.ip }})</p>
+  <p class="rdp-redirect-note">
+    Si no se abrio automaticamente, tu navegador probablemente te esta
+    pidiendo permiso para abrir "NetWatch RDP Protocol" - acepta esa ventana.
+    ¿Todavia no instalaste el protocolo? Corre <code>tools\instalar_protocolo_rdp.bat</code>
+    una sola vez en esta PC.
+  </p>
+  <p>
+    <a href="netwatchrdp://{{ equipo.ip }}" class="btn btn-primary">Intentar de nuevo</a>
+    <a href="{{ url_for('download_rdp', equipo_id=equipo.id) }}" class="btn btn-reset">Descargar .rdp en su lugar</a>
+  </p>
+  <p class="back"><a href="{{ url_for('ficha', equipo_id=equipo.id) }}">&larr; Volver a la ficha</a></p>
+</div>
+</body>
+</html>

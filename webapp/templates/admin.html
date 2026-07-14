@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Win NetWatch RMM - Administracion</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<header>
+  <p class="back"><a href="{{ url_for('index') }}">&larr; Volver al inventario</a></p>
+  <div class="header-row">
+    <div>
+      <h1>Administracion</h1>
+      <p class="subtitle">Directorio de empleados &mdash; haz clic en un empleado para ver su ficha y los equipos que tiene asignados.</p>
+    </div>
+    <button type="button" class="btn btn-primary" onclick="netwatchAbrirModalEmpleado()">+ Agregar Nuevo Empleado</button>
+  </div>
+</header>
+
+<nav class="admin-tabs">
+  <a href="{{ url_for('admin') }}" class="{{ 'active' if active_tab == 'empleados' else '' }}">Gestion de Empleados</a>
+  <a href="{{ url_for('admin_equipos') }}" class="{{ 'active' if active_tab == 'equipos' else '' }}">Inventario de Equipos</a>
+  <a href="{{ url_for('admin_parametros') }}" class="{{ 'active' if active_tab == 'parametros' else '' }}">Parametros y Red</a>
+  <a href="{{ url_for('topologia') }}" class="{{ 'active' if active_tab == 'infraestructura' else '' }}">Infraestructura (Switches/Monitores)</a>
+</nav>
+
+{% if resumen_importacion %}
+<div class="import-resumen">
+  <strong>Importacion de empleados completa:</strong>
+  {{ resumen_importacion.creados }} empleado(s) nuevo(s) creado(s),
+  {{ resumen_importacion.actualizados }} completado(s) con datos que faltaban,
+  {{ resumen_importacion.sin_cambios }} sin cambios (ya estaban completos),
+  {{ resumen_importacion.omitidos }} omitido(s) (sin nombre) &mdash; de {{ resumen_importacion.total }} filas en el archivo.
+</div>
+{% elif error == 'archivo_requerido' %}
+<div class="import-resumen import-resumen-error">Selecciona un archivo antes de importar.</div>
+{% elif error == 'archivo_sin_filas' %}
+<div class="import-resumen import-resumen-error">No se encontraron filas de datos en ese archivo (revisa que sea la tabla exportada correcta).</div>
+{% elif error == 'archivo_invalido' %}
+<div class="import-resumen import-resumen-error">Ese archivo no se pudo leer como .xlsx (revisa que sea el archivo original, sin renombrar la extension).</div>
+{% elif error == 'firebase_config_faltante' %}
+<div class="import-resumen import-resumen-error">Falta el archivo webapp/firebase_config.json con tus credenciales de Firebase. Usa firebase_config.json.example como plantilla.</div>
+{% elif error == 'firebase_config_incompleta' %}
+<div class="import-resumen import-resumen-error">webapp/firebase_config.json existe pero le falta apiKey, databaseURL, email o password.</div>
+{% elif error and error.startswith('firebase_') %}
+<div class="import-resumen import-resumen-error">No se pudo sincronizar con Firebase ({{ error.replace('firebase_', '') }}). Revisa tu conexion y las credenciales en firebase_config.json.</div>
+{% endif %}
+
+{% if resumen_firebase %}
+<div class="import-resumen">
+  <strong>Sincronizacion con la nube completa:</strong>
+  Empleados: {{ resumen_firebase.usuarios.bajados_nuevos }} nuevo(s) desde la nube, {{ resumen_firebase.usuarios.actualizados }} actualizado(s), {{ resumen_firebase.usuarios.subidos }} subido(s) a la nube.
+  Equipos: {{ resumen_firebase.equipos.bajados_nuevos }} nuevo(s) desde la nube, {{ resumen_firebase.equipos.actualizados }} actualizado(s), {{ resumen_firebase.equipos.subidos }} subido(s) a la nube.
+</div>
+{% endif %}
+
+{% if resumen_importacion_gestion %}
+<div class="import-resumen">
+  <strong>Importacion desde otro sistema completa:</strong>
+  Usuarios: {{ resumen_importacion_gestion.usuarios.creados }} nuevo(s), {{ resumen_importacion_gestion.usuarios.actualizados }} completado(s) con datos que faltaban.
+  Equipos: {{ resumen_importacion_gestion.equipos.creados }} nuevo(s), {{ resumen_importacion_gestion.equipos.actualizados }} completado(s) con datos que faltaban.
+  Nada de lo que ya tenias cargado en NetWatch se modifico.
+</div>
+{% endif %}
+
+<details class="manual-add">
+  <summary>+ Importar directorio completo (Excel/archivo exportado de otro sistema)</summary>
+  <p class="field-hint">Sube un directorio de empleados ya escrito a mano (correo, cargo, VPN, etc). Si el
+    nombre ya esta en el sistema, solo completa los campos que esten vacios -- nunca pisa lo que ya tengas
+    cargado. Si el nombre no existe, crea el empleado nuevo. Sirve para este archivo y para cualquier otro
+    que traigas a futuro con las mismas columnas (Nombre Completo, Email, Departamento, Ciudad, Telefono,
+    Lugar de Trabajo, VPN Activa, Tipo de VPN, Cargo, Sistemas Autorizados).</p>
+  <form method="post" action="{{ url_for('importar_empleados') }}" enctype="multipart/form-data" class="ticket-form">
+    <label>Archivo <input type="file" name="archivo" accept=".xls,.xlsx,.html,.htm,.csv" required></label>
+    <button type="submit" class="btn btn-primary">Importar directorio</button>
+  </form>
+</details>
+
+<details class="manual-add">
+  <summary>+ Importar desde otro sistema de gestion (usuarios y equipos, archivo .xlsx)</summary>
+  <p class="field-hint">Para archivos .xlsx reales de otro sistema (hojas "Usuarios", "Equipos" y
+    "Departamentos"), como el que exporta el sistema de gestion de usuarios/equipos. Matchea usuarios por
+    nombre y equipos por IP (si tiene una real) o por hostname si es "Dinamica" (notebook remoto/VPN).
+    Solo completa los campos que esten vacios en tu inventario actual -- nunca pisa ni borra lo que ya
+    tengas cargado en NetWatch. Si un equipo tiene varios usuarios asignados, el primero queda como
+    responsable y el resto se anota en las notas del equipo para no perder el dato.</p>
+  <form method="post" action="{{ url_for('importar_gestion') }}" enctype="multipart/form-data" class="ticket-form">
+    <label>Archivo <input type="file" name="archivo" accept=".xlsx" required></label>
+    <button type="submit" class="btn btn-primary">Importar</button>
+  </form>
+</details>
+
+{% if usuarios %}
+<div class="admin-toolbar">
+  <input type="text" id="buscador-empleados" class="admin-buscador" placeholder="Buscar por nombre, email, departamento, ciudad o telefono...">
+  <button type="button" class="btn btn-ghost" onclick="netwatchMarcarSospechosos()">Marcar posibles equipos/dispositivos</button>
+  <form method="post" action="{{ url_for('sincronizar_firebase') }}" style="display:inline">
+    <button type="submit" class="btn btn-ghost" title="Trae los cambios hechos en el sitio de administracion remoto y sube lo nuevo creado aqui">Sincronizar con la nube</button>
+  </form>
+</div>
+
+<div class="import-resumen" id="barra-seleccion" style="display:none; align-items:center; justify-content:space-between; gap:12px;">
+  <span id="contador-seleccion">0 seleccionados</span>
+  <form id="form-eliminar-masivo" method="post" action="{{ url_for('eliminar_usuarios_masivo') }}"
+        onsubmit="return confirm('Eliminar ' + document.querySelectorAll('.usuario-check:checked').length + ' empleado(s)? Esta accion no se puede deshacer.')">
+    <button type="submit" class="btn btn-dark">Eliminar seleccionados</button>
+  </form>
+</div>
+{% endif %}
+
+{% if not usuarios %}
+  <p class="empty">Todavia no hay empleados cargados. Agrega el primero con el boton de arriba.</p>
+{% else %}
+<div class="table-scroll">
+<table class="usuarios-table" id="tabla-empleados">
+  <thead>
+    <tr>
+      <th><input type="checkbox" id="check-todos" onclick="netwatchToggleTodos(this)" title="Seleccionar todos"></th>
+      <th>Empleado</th>
+      <th>Email</th>
+      <th>Departamento</th>
+      <th>Lugar Trabajo</th>
+      <th>Telefono</th>
+      <th>VPN</th>
+      <th>Estado</th>
+      <th>Equipos</th>
+      <th>Agregado</th>
+      <th>Acciones</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for u in usuarios %}
+    <tr class="{{ '' if u.activo else 'usuario-row-inactivo' }} empleado-row"
+        data-buscar="{{ (u.nombre or '') ~ ' ' ~ (u.correo or '') ~ ' ' ~ (u.departamento or '') ~ ' ' ~ (u.ciudad or '') ~ ' ' ~ (u.telefono or '') ~ ' ' ~ (u.lugar_trabajo or '') | lower }}"
+        onclick="netwatchAbrirPerfil({{ u.id }})">
+      <td onclick="event.stopPropagation()">
+        <input type="checkbox" class="usuario-check" name="usuario_ids" value="{{ u.id }}"
+               form="form-eliminar-masivo" onchange="netwatchActualizarSeleccion()">
+      </td>
+      <td class="empleado-cell">
+        {% if u.foto_perfil %}
+        <img class="avatar-thumb" src="{{ u.foto_perfil if u.foto_perfil.startswith('http') else url_for('static', filename=u.foto_perfil) }}" alt="">
+        {% else %}
+        <span class="avatar-thumb avatar-placeholder">?</span>
+        {% endif %}
+        <span class="empleado-nombre">{{ u.nombre }}</span>
+      </td>
+      <td>
+        {% if u.correo %}<a href="mailto:{{ u.correo }}" class="contacto-link" onclick="event.stopPropagation()" title="Preparar correo">{{ u.correo }}</a>{% else %}-{% endif %}
+      </td>
+      <td>{{ u.departamento or '-' }}</td>
+      <td>
+        {% if u.lugar_trabajo %}<span class="badge badge-lugar">{{ u.lugar_trabajo }}</span>{% else %}<span class="muted">-</span>{% endif %}
+      </td>
+      <td>
+        {% if u.telefono %}<a href="{{ u.telefono | whatsapp_link }}" class="contacto-link" onclick="event.stopPropagation()" title="Abrir WhatsApp">{{ u.telefono }}</a>{% else %}-{% endif %}
+      </td>
+      <td>
+        {% if u.tipo_vpn %}<span class="badge badge-vpn">{{ u.tipo_vpn }}</span>{% else %}<span class="muted">-</span>{% endif %}
+      </td>
+      <td><span class="tag {{ 'tag-confirmado' if u.activo else 'tag-descartado' }}"><span class="dot {{ 'dot-on' if u.activo else 'dot-off' }}"></span> {{ 'Activo' if u.activo else 'Inactivo' }}</span></td>
+      <td>{{ u.equipos_count }}</td>
+      <td>
+        {% if u.creado_en %}
+          <span class="{{ 'badge badge-confiable' if u.creado_en[:10] == hoy else 'muted' }}">{{ u.creado_en[:10] }}</span>
+        {% else %}
+          <span class="muted">-</span>
+        {% endif %}
+      </td>
+      <td class="actions" onclick="event.stopPropagation()">
+        <button type="button" class="btn btn-confirm" onclick="netwatchAbrirModalEmpleado({{ u.id }})">Editar</button>
+        <form method="post" action="{{ url_for('eliminar_usuario', usuario_id=u.id) }}" onsubmit="return confirm('Eliminar a {{ u.nombre }}? Esta accion no se puede deshacer.')">
+          <button type="submit" class="btn btn-dark">Eliminar</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+<p id="empleados-vacio" class="empty" style="display:none; margin-top: 14px;">Ningun empleado coincide con la busqueda.</p>
+{% endif %}
+
+<!-- Modal: perfil de empleado (solo lectura + equipos asignados) -->
+<div class="modal-overlay" id="modal-perfil" onclick="if(event.target===this) netwatchCerrarPerfil()">
+  <div class="modal-box modal-perfil-box">
+    <div class="perfil-banner">
+      <span class="perfil-avatar">
+        <img id="perfil-foto" style="display:none" alt="">
+        <span id="perfil-foto-placeholder">?</span>
+      </span>
+      <span class="tag perfil-estado-badge" id="perfil-estado-badge"></span>
+      <button type="button" class="modal-close perfil-close" onclick="netwatchCerrarPerfil()">&times;</button>
+    </div>
+    <div class="perfil-body">
+      <h3 id="perfil-nombre"></h3>
+      <p class="muted"><a href="#" id="perfil-correo" class="contacto-link" title="Preparar correo"></a></p>
+
+      <div class="perfil-grid">
+        <div><p class="perfil-label">Telefono</p><p class="perfil-valor"><a href="#" id="perfil-telefono" class="contacto-link" title="Abrir WhatsApp">-</a></p></div>
+        <div><p class="perfil-label">Cargo</p><p class="perfil-valor" id="perfil-cargo">-</p></div>
+        <div><p class="perfil-label">Lugar de trabajo</p><p class="perfil-valor" id="perfil-lugar">-</p></div>
+        <div><p class="perfil-label">Departamento</p><p class="perfil-valor" id="perfil-departamento">-</p></div>
+        <div><p class="perfil-label">Ciudad</p><p class="perfil-valor" id="perfil-ciudad">-</p></div>
+        <div><p class="perfil-label">Sistemas autorizados</p><p class="perfil-valor" id="perfil-sistemas">-</p></div>
+      </div>
+
+      <div class="perfil-vpn-row">
+        <span class="perfil-label">Conexion VPN</span>
+        <span class="badge" id="perfil-vpn-badge"></span>
+      </div>
+
+      <div class="perfil-equipos-section">
+        <h4 id="perfil-equipos-titulo">Equipos asignados (0)</h4>
+        <div class="table-scroll">
+        <table class="mapa-table" id="perfil-equipos-tabla">
+          <thead><tr><th>Equipo</th><th>IP</th><th>Estado</th><th>Accion</th></tr></thead>
+          <tbody id="perfil-equipos-tbody"></tbody>
+        </table>
+        </div>
+        <p class="empty small" id="perfil-equipos-vacio" style="display:none">Sin equipos asignados.</p>
+
+        <details class="perfil-vincular">
+          <summary>+ Vincular/Asignar Equipo disponible...</summary>
+          <form id="form-vincular-equipo" method="post" class="perfil-vincular-form">
+            <select name="equipo_id" id="perfil-select-equipo"></select>
+            <button type="submit" class="btn btn-primary">Vincular</button>
+          </form>
+        </details>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-reset" onclick="netwatchCerrarPerfil()">Cerrar</button>
+        <button type="button" class="btn btn-confirm" id="perfil-editar-btn">Editar Datos</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: agregar/editar empleado -->
+<div class="modal-overlay" id="modal-empleado" onclick="if(event.target===this) netwatchCerrarModalEmpleado()">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3 id="modal-empleado-titulo">Agregar Nuevo Empleado</h3>
+      <button type="button" class="modal-close" onclick="netwatchCerrarModalEmpleado()">&times;</button>
+    </div>
+
+    <form id="form-empleado" method="post" enctype="multipart/form-data" class="modal-form">
+      <div class="modal-grid">
+        <label>Nombre completo *
+          <input type="text" name="nombre" id="f-nombre" required placeholder="Ej: Juan Perez">
+        </label>
+        <label>Correo electronico
+          <input type="email" name="correo" id="f-correo" placeholder="Ej: jperez@empresa.com">
+        </label>
+      </div>
+
+      <div class="foto-upload-box">
+        <p class="foto-upload-label">Foto de perfil (subir archivo o pegar URL)</p>
+        <div class="foto-upload-row">
+          <span class="avatar-circle">
+            <img id="foto-preview" style="display:none">
+            <span id="foto-placeholder">?</span>
+          </span>
+          <button type="button" class="btn btn-confirm" onclick="document.getElementById('foto-archivo-input').click()">Seleccionar archivo</button>
+          <span id="foto-archivo-nombre" class="muted">Ningun archivo seleccionado</span>
+          <input type="file" name="foto_archivo" id="foto-archivo-input" accept="image/*" style="display:none" onchange="netwatchFotoSeleccionada(this)">
+        </div>
+        <input type="text" name="foto_url" id="foto-url-input" placeholder="O pega una URL directa de imagen..." oninput="netwatchFotoUrlCambiada(this)">
+      </div>
+
+      <div class="modal-grid">
+        <label>Departamento
+          <select name="departamento" id="f-departamento">
+            <option value="">-- Seleccionar Departamento --</option>
+            {% for d in departamentos %}
+            <option value="{{ d.nombre }}">{{ d.nombre }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>Ciudad
+          <select name="ciudad" id="f-ciudad">
+            <option value="">-- Seleccionar Ciudad --</option>
+            {% for c in ciudades %}
+            <option value="{{ c.nombre }}">{{ c.nombre }}</option>
+            {% endfor %}
+          </select>
+        </label>
+      </div>
+
+      <div class="modal-grid">
+        <label>Sucursal
+          <input type="text" name="sucursal" id="f-sucursal" placeholder="Ej: Centro / Sucursal Sur">
+        </label>
+        <label>Telefono
+          <input type="text" name="telefono" id="f-telefono" placeholder="Ej: +56912345678">
+        </label>
+      </div>
+
+      <div class="modal-grid">
+        <label>Lugar de trabajo
+          <select name="lugar_trabajo" id="f-lugar-trabajo">
+            <option value="Presencial">Presencial</option>
+            <option value="Remoto">Remoto</option>
+            <option value="Hibrido">Hibrido</option>
+          </select>
+        </label>
+        <label>Cargo (responsabilidad)
+          <input type="text" name="cargo" id="f-cargo" placeholder="Ej: Ejecutivo de Ventas / TI">
+        </label>
+      </div>
+
+      <label class="full">Sistemas autorizados / Aplicaciones
+        <input type="text" name="sistemas_autorizados" id="f-sistemas" placeholder="Ej: Milenium, CRM Ventas, ERP Contabilidad">
+      </label>
+
+      <div class="modal-grid modal-grid-vpn">
+        <label>Tipo VPN
+          <select name="tipo_vpn" id="f-tipo-vpn">
+            <option value="Agencia">Agencia</option>
+            <option value="Milenium">Milenium</option>
+            <option value="RDP">RDP</option>
+          </select>
+        </label>
+        <div class="vpn-flags">
+          <label class="checkbox-label"><input type="checkbox" name="vpn_activa" id="f-vpn-activa"> Tiene VPN Activa</label>
+          <label class="checkbox-label"><input type="checkbox" name="activo" id="f-activo" checked> Empleado Activo</label>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-reset" onclick="netwatchCerrarModalEmpleado()">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Guardar Cambios</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script type="application/json" id="usuarios-data">{{ usuarios | tojson }}</script>
+<script type="application/json" id="equipos-basico-data">{{ equipos_basico | tojson }}</script>
+<script>
+const NETWATCH_USUARIOS = JSON.parse(document.getElementById('usuarios-data').textContent);
+const NETWATCH_EQUIPOS_BASICO = JSON.parse(document.getElementById('equipos-basico-data').textContent);
+const NETWATCH_URL_CREAR_USUARIO = "{{ url_for('crear_usuario') }}";
+const NETWATCH_PERFIL_ABIERTO = {{ (perfil_abierto | tojson) if perfil_abierto else 'null' }};
+
+function netwatchWhatsappLink(telefono) {
+  if (!telefono) return null;
+  let digitos = telefono.replace(/\D/g, '');
+  if (!digitos) return null;
+  if (digitos.startsWith('56') && (digitos.length === 10 || digitos.length === 11)) {
+    // ya viene con codigo de pais
+  } else if (digitos.length === 9 && digitos.startsWith('9')) {
+    digitos = '56' + digitos;
+  } else if (digitos.length === 8) {
+    digitos = '569' + digitos;
+  }
+  // whatsapp://send abre la app directo, sin pasar por la pagina de wa.me.
+  return 'whatsapp://send?phone=' + digitos;
+}
+
+function netwatchFotoSeleccionada(input) {
+  const nombreSpan = document.getElementById('foto-archivo-nombre');
+  if (input.files && input.files[0]) {
+    nombreSpan.textContent = input.files[0].name;
+    const reader = new FileReader();
+    reader.onload = function (e) { netwatchMostrarFotoPreview(e.target.result); };
+    reader.readAsDataURL(input.files[0]);
+    document.getElementById('foto-url-input').value = '';
+  } else {
+    nombreSpan.textContent = 'Ningun archivo seleccionado';
+  }
+}
+
+function netwatchFotoUrlCambiada(input) {
+  const valor = input.value.trim();
+  if (valor) {
+    netwatchMostrarFotoPreview(valor);
+    document.getElementById('foto-archivo-input').value = '';
+    document.getElementById('foto-archivo-nombre').textContent = 'Ningun archivo seleccionado';
+  }
+}
+
+function netwatchMostrarFotoPreview(src) {
+  const img = document.getElementById('foto-preview');
+  const placeholder = document.getElementById('foto-placeholder');
+  img.src = src;
+  img.style.display = 'block';
+  placeholder.style.display = 'none';
+}
+
+function netwatchResetFotoPreview() {
+  const img = document.getElementById('foto-preview');
+  const placeholder = document.getElementById('foto-placeholder');
+  img.src = '';
+  img.style.display = 'none';
+  placeholder.style.display = 'block';
+  document.getElementById('foto-archivo-input').value = '';
+  document.getElementById('foto-url-input').value = '';
+  document.getElementById('foto-archivo-nombre').textContent = 'Ningun archivo seleccionado';
+}
+
+function netwatchAbrirModalEmpleado(id) {
+  const form = document.getElementById('form-empleado');
+  form.reset();
+  netwatchResetFotoPreview();
+
+  if (id) {
+    const u = NETWATCH_USUARIOS.find(function (x) { return x.id === id; });
+    document.getElementById('modal-empleado-titulo').textContent = 'Editar Empleado';
+    form.action = '/admin/usuarios/' + id;
+    if (u) {
+      document.getElementById('f-nombre').value = u.nombre || '';
+      document.getElementById('f-correo').value = u.correo || '';
+      document.getElementById('f-departamento').value = u.departamento || '';
+      document.getElementById('f-ciudad').value = u.ciudad || '';
+      document.getElementById('f-sucursal').value = u.sucursal || '';
+      document.getElementById('f-telefono').value = u.telefono || '';
+      document.getElementById('f-lugar-trabajo').value = u.lugar_trabajo || 'Presencial';
+      document.getElementById('f-cargo').value = u.cargo || '';
+      document.getElementById('f-sistemas').value = u.sistemas_autorizados || '';
+      document.getElementById('f-tipo-vpn').value = u.tipo_vpn || 'Agencia';
+      document.getElementById('f-vpn-activa').checked = !!u.vpn_activa;
+      document.getElementById('f-activo').checked = !!u.activo;
+      if (u.foto_perfil) {
+        const src = u.foto_perfil.startsWith('http') ? u.foto_perfil : ('/static/' + u.foto_perfil);
+        netwatchMostrarFotoPreview(src);
+      }
+    }
+  } else {
+    document.getElementById('modal-empleado-titulo').textContent = 'Agregar Nuevo Empleado';
+    form.action = NETWATCH_URL_CREAR_USUARIO;
+    document.getElementById('f-activo').checked = true;
+  }
+
+  document.getElementById('modal-empleado').classList.add('modal-open');
+}
+
+function netwatchCerrarModalEmpleado() {
+  document.getElementById('modal-empleado').classList.remove('modal-open');
+}
+
+function netwatchAbrirPerfil(id) {
+  const u = NETWATCH_USUARIOS.find(function (x) { return x.id === id; });
+  if (!u) return;
+
+  document.getElementById('perfil-nombre').textContent = u.nombre;
+  const correoEl = document.getElementById('perfil-correo');
+  correoEl.textContent = u.correo || '';
+  correoEl.href = u.correo ? ('mailto:' + u.correo) : '#';
+
+  const telefonoEl = document.getElementById('perfil-telefono');
+  telefonoEl.textContent = u.telefono || '-';
+  const waLink = netwatchWhatsappLink(u.telefono);
+  telefonoEl.href = waLink || '#';
+  document.getElementById('perfil-cargo').textContent = u.cargo || '-';
+  document.getElementById('perfil-lugar').textContent = u.lugar_trabajo || '-';
+  document.getElementById('perfil-departamento').textContent = u.departamento || '-';
+  document.getElementById('perfil-ciudad').textContent = u.ciudad || '-';
+  document.getElementById('perfil-sistemas').textContent = u.sistemas_autorizados || '-';
+
+  const estadoBadge = document.getElementById('perfil-estado-badge');
+  estadoBadge.textContent = u.activo ? 'Activo' : 'Inactivo';
+  estadoBadge.className = 'tag perfil-estado-badge ' + (u.activo ? 'tag-confirmado' : 'tag-descartado');
+
+  const vpnBadge = document.getElementById('perfil-vpn-badge');
+  if (u.tipo_vpn) {
+    vpnBadge.textContent = (u.vpn_activa ? 'VPN Conectada' : 'VPN Desconectada') + ' (' + u.tipo_vpn + ')';
+    vpnBadge.className = 'badge ' + (u.vpn_activa ? 'badge-confiable' : 'badge-sin_respuesta');
+  } else {
+    vpnBadge.textContent = 'Sin VPN asignada';
+    vpnBadge.className = 'badge badge-sin_respuesta';
+  }
+
+  const fotoImg = document.getElementById('perfil-foto');
+  const fotoPlaceholder = document.getElementById('perfil-foto-placeholder');
+  if (u.foto_perfil) {
+    fotoImg.src = u.foto_perfil.startsWith('http') ? u.foto_perfil : ('/static/' + u.foto_perfil);
+    fotoImg.style.display = 'block';
+    fotoPlaceholder.style.display = 'none';
+  } else {
+    fotoImg.style.display = 'none';
+    fotoPlaceholder.style.display = 'block';
+  }
+
+  const equipos = u.equipos_asignados || [];
+  document.getElementById('perfil-equipos-titulo').textContent = 'Equipos asignados (' + equipos.length + ')';
+  const tbody = document.getElementById('perfil-equipos-tbody');
+  const tabla = document.getElementById('perfil-equipos-tabla');
+  const vacio = document.getElementById('perfil-equipos-vacio');
+  tbody.innerHTML = '';
+  if (equipos.length === 0) {
+    tabla.style.display = 'none';
+    vacio.style.display = 'block';
+  } else {
+    tabla.style.display = '';
+    vacio.style.display = 'none';
+    equipos.forEach(function (eq) {
+      const tr = document.createElement('tr');
+
+      const tdEquipo = document.createElement('td');
+      const a = document.createElement('a');
+      a.href = '/equipo/' + eq.id;
+      a.className = 'ip-link';
+      a.textContent = eq.hostname || eq.ip;
+      tdEquipo.appendChild(a);
+
+      const tdIp = document.createElement('td');
+      tdIp.textContent = eq.ip;
+
+      const tdEstado = document.createElement('td');
+      const tag = document.createElement('span');
+      tag.className = 'tag ' + (eq.en_linea ? 'tag-confirmado' : 'tag-descartado');
+      tag.textContent = eq.en_linea ? 'ONLINE' : 'OFFLINE';
+      tdEstado.appendChild(tag);
+
+      const tdAccion = document.createElement('td');
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'btn btn-discard';
+      btn.textContent = 'Desvincular';
+      btn.onclick = function () {
+        if (!confirm('Desvincular ' + (eq.hostname || eq.ip) + ' de ' + u.nombre + '?')) return;
+        const f = document.createElement('form');
+        f.method = 'POST';
+        f.action = '/admin/usuarios/' + id + '/equipos/' + eq.id + '/desvincular';
+        document.body.appendChild(f);
+        f.submit();
+      };
+      tdAccion.appendChild(btn);
+
+      tr.appendChild(tdEquipo);
+      tr.appendChild(tdIp);
+      tr.appendChild(tdEstado);
+      tr.appendChild(tdAccion);
+      tbody.appendChild(tr);
+    });
+  }
+
+  document.getElementById('form-vincular-equipo').action = '/admin/usuarios/' + id + '/equipos/vincular';
+  const select = document.getElementById('perfil-select-equipo');
+  select.innerHTML = '';
+  const nombrePorId = {};
+  NETWATCH_USUARIOS.forEach(function (x) { nombrePorId[x.id] = x.nombre; });
+  NETWATCH_EQUIPOS_BASICO.forEach(function (eq) {
+    if (eq.responsable_id === id) return;
+    const opt = document.createElement('option');
+    opt.value = eq.id;
+    let label = eq.ip + (eq.hostname ? ' - ' + eq.hostname : '');
+    if (eq.responsable_id && nombrePorId[eq.responsable_id]) {
+      label += ' (actualmente: ' + nombrePorId[eq.responsable_id] + ')';
+    }
+    opt.textContent = label;
+    select.appendChild(opt);
+  });
+
+  document.getElementById('perfil-editar-btn').onclick = function () {
+    netwatchCerrarPerfil();
+    netwatchAbrirModalEmpleado(id);
+  };
+
+  document.getElementById('modal-perfil').classList.add('modal-open');
+}
+
+function netwatchCerrarPerfil() {
+  document.getElementById('modal-perfil').classList.remove('modal-open');
+}
+
+document.addEventListener('keydown', function (e) {
+  if (e.key === 'Escape') {
+    netwatchCerrarPerfil();
+    netwatchCerrarModalEmpleado();
+  }
+});
+
+if (NETWATCH_PERFIL_ABIERTO) {
+  netwatchAbrirPerfil(NETWATCH_PERFIL_ABIERTO);
+}
+
+// --- buscador de empleados ---------------------------------------------
+const netwatchBuscadorEmpleados = document.getElementById('buscador-empleados');
+if (netwatchBuscadorEmpleados) {
+  netwatchBuscadorEmpleados.addEventListener('input', function (ev) {
+    const q = ev.target.value.trim().toLowerCase();
+    const filas = document.querySelectorAll('#tabla-empleados tbody tr');
+    let visibles = 0;
+    filas.forEach(function (tr) {
+      const coincide = !q || tr.dataset.buscar.indexOf(q) !== -1;
+      tr.style.display = coincide ? '' : 'none';
+      if (coincide) visibles++;
+    });
+    const vacio = document.getElementById('empleados-vacio');
+    if (vacio) vacio.style.display = visibles === 0 ? 'block' : 'none';
+    netwatchActualizarSeleccion();
+  });
+}
+
+// --- seleccion multiple + eliminar en bloque --------------------------
+function netwatchActualizarSeleccion() {
+  const marcados = document.querySelectorAll('.usuario-check:checked');
+  const barra = document.getElementById('barra-seleccion');
+  const contador = document.getElementById('contador-seleccion');
+  if (!barra || !contador) return;
+  if (marcados.length > 0) {
+    barra.style.display = 'flex';
+    contador.textContent = marcados.length + ' seleccionado' + (marcados.length > 1 ? 's' : '');
+  } else {
+    barra.style.display = 'none';
+  }
+  const checkTodos = document.getElementById('check-todos');
+  const visibles = Array.prototype.filter.call(
+    document.querySelectorAll('.usuario-check'),
+    function (cb) { const fila = cb.closest('tr'); return fila && fila.style.display !== 'none'; }
+  );
+  if (checkTodos) {
+    checkTodos.checked = visibles.length > 0 && visibles.every(function (cb) { return cb.checked; });
+  }
+}
+
+function netwatchToggleTodos(origen) {
+  document.querySelectorAll('.usuario-check').forEach(function (cb) {
+    const fila = cb.closest('tr');
+    if (fila && fila.style.display !== 'none') cb.checked = origen.checked;
+  });
+  netwatchActualizarSeleccion();
+}
+
+// Nombres de equipos/dispositivos que quedaron cargados como si fueran
+// empleados por una importacion vieja (ej. "Impresora Canon", "Switch
+// Juniper", "Servidor Sirio"). Marca el checkbox de los que calcen para que
+// Andres los revise de un vistazo antes de eliminar -- no borra nada solo.
+const NETWATCH_PATRON_SOSPECHOSO = /\b(impresora|switch|router|fortinet|servidor|server|radio|c[aá]mara|dvr|nvr|milenium|canopus|sirio|\bilo\b|pc virtual|sip|nortemil|ciclon|libre|garita|antena|modem|m[oó]dem|firewall|access ?point|^ap\s|administrador local)\b/i;
+
+function netwatchMarcarSospechosos() {
+  let marcados = 0;
+  NETWATCH_USUARIOS.forEach(function (u) {
+    if (NETWATCH_PATRON_SOSPECHOSO.test(u.nombre)) {
+      const cb = document.querySelector('.usuario-check[value="' + u.id + '"]');
+      if (cb) { cb.checked = true; marcados++; }
+    }
+  });
+  netwatchActualizarSeleccion();
+  if (marcados === 0) {
+    alert('No encontre nombres que parezcan equipos/dispositivos. Revisa la lista a mano si crees que falta alguno.');
+  }
+}
+</script>
+
+</body>
+</html>

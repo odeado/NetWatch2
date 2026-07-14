@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Win NetWatch RMM - Inventario</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<header>
+  <div class="header-row">
+    <div>
+      <h1>Win NetWatch RMM</h1>
+      <p class="subtitle">Inventario de equipos detectados &mdash; se actualiza solo, sin recargar la pagina</p>
+    </div>
+    <div class="nav-links">
+      <a href="{{ url_for('disponibilidad') }}" class="tickets-nav-link">Disponibilidad</a>
+      <a href="{{ url_for('admin') }}" class="tickets-nav-link">Administracion</a>
+      <a href="{{ url_for('tickets') }}" class="tickets-nav-link">
+        Tickets de soporte
+        {% if summary.tickets_abiertos %}<span class="pill">{{ summary.tickets_abiertos }}</span>{% endif %}
+      </a>
+    </div>
+  </div>
+</header>
+
+<section class="subredes-gauges" id="subredes-gauges"></section>
+
+<section class="summary" id="resumen-cards">
+  <button type="button" class="card total card-btn" data-filtro-tipo="total" onclick="netwatchSetFiltro('total')">
+    <span class="num" data-num="total">{{ summary.total }}</span><span class="label">Total en inventario</span>
+  </button>
+  <button type="button" class="card en-linea card-btn" data-filtro-tipo="online" data-filtro-valor="online" onclick="netwatchSetFiltro('online', 'online')">
+    <span class="num" data-num="en_linea">{{ summary.en_linea }}</span><span class="label">En linea</span>
+  </button>
+  <button type="button" class="card fuera-linea card-btn" data-filtro-tipo="online" data-filtro-valor="offline" onclick="netwatchSetFiltro('online', 'offline')">
+    <span class="num" data-num="fuera_de_linea">{{ summary.fuera_de_linea }}</span><span class="label">Fuera de linea</span>
+  </button>
+  <button type="button" class="card confirmado card-btn" data-filtro-tipo="estado" data-filtro-valor="confirmado" onclick="netwatchSetFiltro('estado', 'confirmado')">
+    <span class="num" data-num="confirmados">{{ summary.confirmados }}</span><span class="label">Confirmados</span>
+  </button>
+  <button type="button" class="card descartado card-btn" data-filtro-tipo="estado" data-filtro-valor="descartado" onclick="netwatchSetFiltro('estado', 'descartado')">
+    <span class="num" data-num="descartados">{{ summary.descartados }}</span><span class="label">Descartados</span>
+  </button>
+  <button type="button" class="card pendiente card-btn" data-filtro-tipo="estado" data-filtro-valor="pendiente" onclick="netwatchSetFiltro('estado', 'pendiente')">
+    <span class="num" data-num="pendientes">{{ summary.pendientes }}</span><span class="label">Pendientes</span>
+  </button>
+  <button type="button" class="card tickets card-btn" data-filtro-tipo="tickets" onclick="netwatchSetFiltro('tickets')">
+    <span class="num" data-num="tickets_abiertos">{{ summary.tickets_abiertos }}</span><span class="label">Tickets abiertos</span>
+  </button>
+</section>
+
+<div class="layout">
+<div class="main-col">
+  <div class="fichas-toolbar">
+    <input type="text" id="buscador" class="fichas-buscador" placeholder="Buscar por nombre, IP, sucursal, ciudad o responsable...">
+    <button type="button" id="btn-sonido" class="btn-sonido" onclick="netwatchToggleSonido()">Sonido: ON</button>
+  </div>
+  <div id="fichas-grid" class="fichas-grid"></div>
+  <p id="fichas-vacio" class="empty" style="display:none; margin-top: 14px;"></p>
+</div>
+
+<aside class="side-col">
+  <h2>Ultimos cambios</h2>
+  <ul class="eventos" id="eventos-lista"></ul>
+  <p id="eventos-vacio" class="empty small" style="display:none">Todavia no hay cambios registrados.</p>
+</aside>
+</div>
+
+<section class="monitor-consola" id="monitor-consola">
+  <div class="consola-header" onclick="netwatchToggleConsola()">
+    <span class="consola-titulo"><span class="consola-dot" id="consola-dot"></span>Consola del monitor</span>
+    <span class="consola-toggle" id="consola-toggle-icono">&#9662;</span>
+  </div>
+  <pre class="consola-body" id="consola-body"></pre>
+</section>
+
+<div class="toast-container" id="toast-container"></div>
+
+<script id="netwatch-equipos-data" type="application/json">{{ rows | tojson }}</script>
+<script id="netwatch-summary-data" type="application/json">{{ summary | tojson }}</script>
+<script id="netwatch-eventos-data" type="application/json">{{ eventos | tojson }}</script>
+<script>
+let NETWATCH_EQUIPOS = JSON.parse(document.getElementById('netwatch-equipos-data').textContent);
+let NETWATCH_SUMMARY = JSON.parse(document.getElementById('netwatch-summary-data').textContent);
+let NETWATCH_EVENTOS = JSON.parse(document.getElementById('netwatch-eventos-data').textContent);
+let NETWATCH_ULTIMO_EVENTO_ID = NETWATCH_EVENTOS.length ? Math.max.apply(null, NETWATCH_EVENTOS.map(function (e) { return e.id; })) : 0;
+
+let netwatchFiltroTipo = null;   // 'online' | 'estado' | 'tickets' | null (total)
+let netwatchFiltroValor = null;  // 'online'/'offline' o 'confirmado'/'descartado'/'pendiente'
+let netwatchBusqueda = '';
+let netwatchSonidoActivo = localStorage.getItem('netwatch_sonido') !== 'off';
+
+function netwatchEscapeHtml(s) {
+  if (s === null || s === undefined) return '';
+  return String(s).replace(/[&<>"']/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+  });
+}
+
+// --- resumen (tarjetas clickeables) -----------------------------------
+function netwatchSetFiltro(tipo, valor) {
+  if (tipo === 'total') {
+    netwatchFiltroTipo = null; netwatchFiltroValor = null;
+  } else if (netwatchFiltroTipo === tipo && netwatchFiltroValor === (valor || null)) {
+    // clic de nuevo sobre el mismo filtro activo -> lo saca (toggle)
+    netwatchFiltroTipo = null; netwatchFiltroValor = null;
+  } else {
+    netwatchFiltroTipo = tipo; netwatchFiltroValor = valor || null;
+  }
+  netwatchRenderResumen();
+  netwatchRenderFichas();
+}
+
+function netwatchRenderResumen() {
+  const mapa = {
+    total: NETWATCH_SUMMARY.total, en_linea: NETWATCH_SUMMARY.en_linea, fuera_de_linea: NETWATCH_SUMMARY.fuera_de_linea,
+    confirmados: NETWATCH_SUMMARY.confirmados, descartados: NETWATCH_SUMMARY.descartados,
+    pendientes: NETWATCH_SUMMARY.pendientes, tickets_abiertos: NETWATCH_SUMMARY.tickets_abiertos,
+  };
+  document.querySelectorAll('#resumen-cards [data-num]').forEach(function (el) {
+    el.textContent = mapa[el.dataset.num];
+  });
+  document.querySelectorAll('#resumen-cards .card-btn').forEach(function (btn) {
+    const tipo = btn.dataset.filtroTipo;
+    const valor = btn.dataset.filtroValor || null;
+    const activo = (tipo === 'total' && !netwatchFiltroTipo) ||
+                   (tipo === netwatchFiltroTipo && valor === netwatchFiltroValor);
+    btn.classList.toggle('active', !!activo);
+  });
+}
+
+// --- filtro + busqueda --------------------------------------------------
+function netwatchIpANumero(ip) {
+  if (!ip) return 0;
+  const partes = String(ip).split('.').map(function (n) { return parseInt(n, 10) || 0; });
+  return ((partes[0] || 0) * 16777216) + ((partes[1] || 0) * 65536) + ((partes[2] || 0) * 256) + (partes[3] || 0);
+}
+
+function netwatchAplicarFiltros() {
+  const q = netwatchBusqueda.trim().toLowerCase();
+  const filtrados = NETWATCH_EQUIPOS.filter(function (e) {
+    if (netwatchFiltroTipo === 'online') {
+      const enLinea = !!e.en_linea;
+      if (netwatchFiltroValor === 'online' && !enLinea) return false;
+      if (netwatchFiltroValor === 'offline' && enLinea) return false;
+    } else if (netwatchFiltroTipo === 'estado') {
+      if (e.estado_deteccion !== netwatchFiltroValor) return false;
+    } else if (netwatchFiltroTipo === 'tickets') {
+      if (!e.tickets_abiertos) return false;
+    }
+    if (q) {
+      const campos = [e.hostname, e.ip, e.sucursal, e.ciudad, e.ubicacion, e.responsable, e.subred];
+      const encontrado = campos.some(function (c) { return c && String(c).toLowerCase().indexOf(q) !== -1; });
+      if (!encontrado) return false;
+    }
+    return true;
+  });
+
+  // offline primero (para verlos sin tener que buscarlos), despues por IP ascendente
+  function grupoOrden(e) {
+    if (e.origen === 'manual') return 1; // los manuales no tienen deteccion real, van con los online
+    return e.en_linea ? 1 : 0;
+  }
+  filtrados.sort(function (a, b) {
+    const diff = grupoOrden(a) - grupoOrden(b);
+    if (diff !== 0) return diff;
+    return netwatchIpANumero(a.ip) - netwatchIpANumero(b.ip);
+  });
+  return filtrados;
+}
+
+// --- gauges de subred (nivel de agua = % de equipos caidos) ---------------
+function netwatchAgruparPorSubred() {
+  const grupos = {};
+  NETWATCH_EQUIPOS.forEach(function (e) {
+    if (e.origen === 'manual') return; // sin deteccion real, no aporta a la salud de la subred
+    const clave = e.subred || 'Sin subred';
+    if (!grupos[clave]) grupos[clave] = { subred: clave, total: 0, offline: 0, ciudad: e.ciudad || null };
+    grupos[clave].total++;
+    if (!e.en_linea) grupos[clave].offline++;
+  });
+  return Object.values(grupos).filter(function (g) { return g.total > 0; })
+    .map(function (g) { return Object.assign(g, { pct: Math.round((g.offline / g.total) * 100) }); })
+    .sort(function (a, b) { return b.pct - a.pct || b.total - a.total; });
+}
+
+function netwatchColorGauge(pct) {
+  if (pct >= 50) return 'gauge-mal';
+  if (pct >= 20) return 'gauge-alerta';
+  return 'gauge-bien';
+}
+
+let netwatchSubredActiva = null;
+
+function netwatchFiltrarPorSubred(subred) {
+  if (netwatchSubredActiva === subred) {
+    // clic de nuevo sobre la misma subred activa: la saca (toggle) y limpia la busqueda
+    netwatchSubredActiva = null;
+    netwatchBusqueda = '';
+  } else {
+    netwatchSubredActiva = subred;
+    netwatchBusqueda = subred === 'Sin subred' ? '' : subred;
+  }
+  const buscador = document.getElementById('buscador');
+  if (buscador) buscador.value = netwatchBusqueda;
+  netwatchRenderSubredes();
+  netwatchRenderFichas();
+  const grid = document.getElementById('fichas-grid');
+  if (grid) grid.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+const NETWATCH_GAUGE_RADIO = 18;
+const NETWATCH_GAUGE_CIRCUNFERENCIA = 2 * Math.PI * NETWATCH_GAUGE_RADIO;
+
+function netwatchRenderSubredes() {
+  const cont = document.getElementById('subredes-gauges');
+  if (!cont) return;
+  const grupos = netwatchAgruparPorSubred();
+  if (!grupos.length) { cont.innerHTML = ''; return; }
+
+  cont.innerHTML = grupos.map(function (g) {
+    const colorClase = netwatchColorGauge(g.pct);
+    const activoClase = netwatchSubredActiva === g.subred ? ' gauge-activo' : '';
+    const offset = NETWATCH_GAUGE_CIRCUNFERENCIA * (1 - g.pct / 100);
+    return '<button type="button" class="gauge-card' + activoClase + '" onclick="netwatchFiltrarPorSubred(\'' + g.subred.replace(/'/g, "\\'") + '\')" title="' +
+      netwatchEscapeHtml('Ver solo ' + g.offline + ' de ' + g.total + ' caidos en ' + g.subred + ' (clic de nuevo para quitar el filtro)') + '">' +
+      '<span class="gauge-ring-wrap">' +
+        '<svg viewBox="0 0 44 44" class="gauge-ring">' +
+          '<circle class="gauge-ring-bg" cx="22" cy="22" r="' + NETWATCH_GAUGE_RADIO + '"></circle>' +
+          '<circle class="gauge-ring-fg ' + colorClase + '" cx="22" cy="22" r="' + NETWATCH_GAUGE_RADIO + '" ' +
+            'stroke-dasharray="' + NETWATCH_GAUGE_CIRCUNFERENCIA + '" stroke-dashoffset="' + offset + '"></circle>' +
+        '</svg>' +
+        '<span class="gauge-ring-valor">' + g.pct + '%</span>' +
+      '</span>' +
+      '<span class="gauge-label">' + netwatchEscapeHtml(g.ciudad || g.subred) + '</span>' +
+      '<span class="gauge-sub">' + g.offline + '/' + g.total + ' caidos</span>' +
+      '</button>';
+  }).join('');
+}
+
+// --- fichas --------------------------------------------------------------
+const NETWATCH_RDP_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+  'stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="13" rx="2"></rect>' +
+  '<path d="M8 21h8"></path><path d="M12 17v4"></path></svg>';
+
+function netwatchTiempoRelativo(iso) {
+  if (!iso) return null;
+  const entonces = new Date(iso.replace(' ', 'T'));
+  if (isNaN(entonces.getTime())) return null;
+  const segundos = Math.max(0, Math.round((Date.now() - entonces.getTime()) / 1000));
+  if (segundos < 60) return 'hace segundos';
+  const minutos = Math.round(segundos / 60);
+  if (minutos < 60) return 'hace ' + minutos + ' min';
+  const horas = Math.round(minutos / 60);
+  if (horas < 24) return 'hace ' + horas + (horas === 1 ? ' hora' : ' horas');
+  const dias = Math.round(horas / 24);
+  return 'hace ' + dias + (dias === 1 ? ' dia' : ' dias');
+}
+
+// Umbral para escalar de "Offline" a "Posible falla" -- mismo umbral que
+// eligio Andres para el aviso por WhatsApp de equipos criticos (15 min),
+// asi el badge visual y el aviso real cuentan la misma historia.
+const NETWATCH_UMBRAL_POSIBLE_FALLA_MIN = 15;
+
+function netwatchMinutosDesde(iso) {
+  if (!iso) return null;
+  const entonces = new Date(iso.replace(' ', 'T'));
+  if (isNaN(entonces.getTime())) return null;
+  return (Date.now() - entonces.getTime()) / 60000;
+}
+
+function netwatchFichaHtml(e) {
+  const online = !!e.en_linea;
+  const esManual = e.origen === 'manual';
+  const cardClass = esManual ? '' : (online ? 'ficha-online' : 'ficha-offline');
+  const estadoClass = e.estado_deteccion === 'descartado' ? ' ficha-descartado' : '';
+  const tieneResponsable = !!e.responsable;
+  const titulo = tieneResponsable ? e.responsable : (e.hostname || e.ip);
+  const visto = netwatchTiempoRelativo(e.ultima_deteccion || e.desde);
+
+  let html = '<div class="ficha-card ' + cardClass + estadoClass + '" id="ficha-card-' + e.id + '" onclick="netwatchAbrirFicha(' + e.id + ')">';
+
+  if (e.tickets_abiertos) {
+    html += '<span class="ficha-ticket-banner">' + e.tickets_abiertos + ' ticket' + (e.tickets_abiertos > 1 ? 's' : '') + '</span>';
+  }
+
+  // eyebrow: subred/ciudad a la izquierda, dispositivo de red asociado a la derecha
+  html += '<div class="ficha-eyebrow"><span>' + netwatchEscapeHtml(e.subred || e.ciudad || '&nbsp;') + '</span>';
+  if (e.dispositivo_nombre) {
+    html += '<span class="ficha-eyebrow-empresa">' + netwatchEscapeHtml(e.dispositivo_nombre) + '</span>';
+  }
+  html += '</div>';
+
+  // titulo: el responsable es lo que uno recuerda, no la maquina
+  html += '<div class="ficha-card-head">';
+  html += '<span class="ficha-nombre">' + netwatchEscapeHtml(titulo) + '</span>';
+  html += '<span class="tag tag-' + e.estado_deteccion + '">' + netwatchEscapeHtml(e.estado_deteccion) + '</span>';
+  html += '</div>';
+  html += '<div class="ficha-equipo-sub"><span class="ficha-mono">' + netwatchEscapeHtml(e.ip) + '</span>' +
+    (tieneResponsable ? '<span>&middot; Equipo: ' + netwatchEscapeHtml(e.hostname || e.ip) + '</span>' : '') + '</div>';
+
+  html += '<div class="ficha-divider"></div>';
+
+  if (e.ubicacion) {
+    html += '<div class="ficha-linea"><span class="ficha-k">Ubicacion</span><span class="ficha-v">' + netwatchEscapeHtml(e.ubicacion) + '</span></div>';
+  }
+
+  html += '<div class="ficha-status-row">';
+  if (esManual) {
+    html += '<span class="status-pill status-pill-manual"><span class="status-dot"></span>Manual</span>';
+  } else {
+    html += '<span class="status-pill ' + (online ? 'status-pill-online' : 'status-pill-offline') + '">' +
+      '<span class="status-dot"></span>' + (online ? 'Online' : 'Offline') + '</span>';
+    if (!online) {
+      const minutosOffline = netwatchMinutosDesde(e.desde);
+      if (minutosOffline !== null && minutosOffline >= NETWATCH_UMBRAL_POSIBLE_FALLA_MIN) {
+        html += '<span class="status-pill status-pill-falla" title="Lleva offline hace rato, puede que no sea solo un corte">Posible falla</span>';
+      }
+    }
+  }
+  if (e.critico) {
+    html += '<span class="status-pill status-pill-critico" title="Marcado como critico">Critico</span>';
+  }
+  if (e.has_rdp) {
+    html += '<span class="status-pill status-pill-rdp">RDP habilitado</span>';
+  }
+  html += '</div>';
+
+  html += '<div class="ficha-card-foot" onclick="event.stopPropagation()">';
+  html += '<span class="ficha-visto">' + (visto ? 'Visto ' + visto : '&nbsp;') + '</span>';
+  html += '<div class="ficha-foot-acciones">';
+  if (e.estado_deteccion === 'pendiente') {
+    html += '<form onsubmit="return netwatchActualizarEstado(event, ' + e.id + ')">' +
+      '<button type="submit" name="action" value="confirmado" class="btn btn-confirm btn-sm">Confirmar</button>' +
+      '<button type="submit" name="action" value="descartado" class="btn btn-ghost btn-sm">Descartar</button>' +
+      '</form>';
+  } else if (e.estado_deteccion === 'descartado') {
+    html += '<form onsubmit="return netwatchActualizarEstado(event, ' + e.id + ')">' +
+      '<button type="submit" name="action" value="pendiente" class="btn btn-ghost btn-sm">Restaurar</button>' +
+      '</form>';
+  }
+  if (e.has_rdp) {
+    html += '<a href="/equipo/' + e.id + '/rdp-open" class="rdp-icon-btn" title="Conectar por RDP">' + NETWATCH_RDP_ICON + '</a>';
+  }
+  html += '</div>';
+  html += '</div>';
+  html += '</div>';
+  return html;
+}
+
+function netwatchAbrirFicha(id) {
+  window.location.href = '/equipo/' + id;
+}
+
+// Desde "Ultimos cambios"/toast: no editar, solo ubicar la ficha en la
+// grilla (limpia filtro/busqueda si estaban tapando la tarjeta) y resaltarla.
+function netwatchResaltarFicha(id) {
+  netwatchFiltroTipo = null;
+  netwatchFiltroValor = null;
+  netwatchBusqueda = '';
+  netwatchSubredActiva = null;
+  const buscador = document.getElementById('buscador');
+  if (buscador) buscador.value = '';
+  netwatchRenderResumen();
+  netwatchRenderSubredes();
+  netwatchRenderFichas();
+  requestAnimationFrame(function () {
+    const card = document.getElementById('ficha-card-' + id);
+    if (!card) return;
+    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    card.classList.add('ficha-resaltada');
+    setTimeout(function () { card.classList.remove('ficha-resaltada'); }, 2200);
+  });
+}
+
+// Confirmar/Descartar/Restaurar sin recargar la pagina, para no perder el
+// scroll donde estabas mirando (antes era un <form> normal que navegaba).
+const NETWATCH_CONTADOR_POR_ESTADO = { pendiente: 'pendientes', confirmado: 'confirmados', descartado: 'descartados' };
+
+async function netwatchActualizarEstado(ev, id) {
+  ev.preventDefault();
+  ev.stopPropagation();
+  const action = ev.submitter ? ev.submitter.value : null;
+  if (!action) return false;
+
+  const equipo = NETWATCH_EQUIPOS.find(function (e) { return e.id === id; });
+  const anterior = equipo ? equipo.estado_deteccion : null;
+
+  try {
+    await fetch('/confirm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest' },
+      body: 'id=' + encodeURIComponent(id) + '&action=' + encodeURIComponent(action),
+    });
+  } catch (err) {
+    // red caida momentaneamente: el proximo poll (7s) va a corregir el estado igual
+  }
+
+  if (equipo) equipo.estado_deteccion = action;
+  if (anterior && NETWATCH_CONTADOR_POR_ESTADO[anterior]) {
+    NETWATCH_SUMMARY[NETWATCH_CONTADOR_POR_ESTADO[anterior]] = Math.max(0, (NETWATCH_SUMMARY[NETWATCH_CONTADOR_POR_ESTADO[anterior]] || 0) - 1);
+  }
+  if (NETWATCH_CONTADOR_POR_ESTADO[action]) {
+    NETWATCH_SUMMARY[NETWATCH_CONTADOR_POR_ESTADO[action]] = (NETWATCH_SUMMARY[NETWATCH_CONTADOR_POR_ESTADO[action]] || 0) + 1;
+  }
+  netwatchRenderResumen();
+  netwatchRenderFichas();
+  return false;
+}
+
+function netwatchRenderFichas() {
+  const grid = document.getElementById('fichas-grid');
+  const vacio = document.getElementById('fichas-vacio');
+  const lista = netwatchAplicarFiltros();
+
+  if (!NETWATCH_EQUIPOS.length) {
+    grid.innerHTML = '';
+    vacio.style.display = 'block';
+    vacio.innerHTML = 'Todavia no hay equipos importados. Corre <code>python monitor.py</code> (recomendado, queda corriendo solo) o <code>python scanner.py</code> + boton "Importar" arriba.';
+    return;
+  }
+  if (!lista.length) {
+    grid.innerHTML = '';
+    vacio.style.display = 'block';
+    vacio.textContent = 'Ningun equipo coincide con el filtro o la busqueda actual.';
+    return;
+  }
+  vacio.style.display = 'none';
+  grid.innerHTML = lista.map(netwatchFichaHtml).join('');
+}
+
+// --- buscador ------------------------------------------------------------
+document.getElementById('buscador').addEventListener('input', function (ev) {
+  netwatchBusqueda = ev.target.value;
+  if (netwatchSubredActiva !== null) {
+    netwatchSubredActiva = null;
+    netwatchRenderSubredes();
+  }
+  netwatchRenderFichas();
+});
+
+// --- sonido ----------------------------------------------------------------
+let netwatchAudioCtx = null;
+function netwatchToggleSonido() {
+  netwatchSonidoActivo = !netwatchSonidoActivo;
+  localStorage.setItem('netwatch_sonido', netwatchSonidoActivo ? 'on' : 'off');
+  netwatchRenderBotonSonido();
+}
+function netwatchRenderBotonSonido() {
+  const btn = document.getElementById('btn-sonido');
+  btn.textContent = 'Sonido: ' + (netwatchSonidoActivo ? 'ON' : 'OFF');
+  btn.classList.toggle('muted', !netwatchSonidoActivo);
+}
+function netwatchReproducirSonido(tipo) {
+  if (!netwatchSonidoActivo) return;
+  try {
+    if (!netwatchAudioCtx) netwatchAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const ctx = netwatchAudioCtx;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.type = 'sine';
+    const freqs = tipo === 'online' ? [660, 880] : tipo === 'offline' ? [440, 300] : [520, 520];
+    const now = ctx.currentTime;
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.16, now + 0.02);
+    osc.frequency.setValueAtTime(freqs[0], now);
+    osc.frequency.setValueAtTime(freqs[1], now + 0.12);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.35);
+    osc.start(now);
+    osc.stop(now + 0.4);
+  } catch (err) { /* audio no disponible en este navegador, se ignora */ }
+}
+
+// --- toasts ------------------------------------------------------------
+function netwatchMostrarToast(ev) {
+  const cont = document.getElementById('toast-container');
+  const tipo = ev.tipo;
+  const label = tipo === 'online' ? 'Volvio online' : tipo === 'offline' ? 'Paso a offline' : 'Nuevo equipo detectado';
+  const titulo = ev.responsable || ev.hostname || ev.ip;
+  const div = document.createElement('div');
+  div.className = 'toast toast-' + tipo;
+  if (ev.equipo_id) {
+    div.classList.add('toast-clickeable');
+    div.onclick = function () { netwatchResaltarFicha(ev.equipo_id); };
+  }
+  div.innerHTML = '<span class="toast-dot"></span><div><strong>' + netwatchEscapeHtml(titulo) +
+    '</strong><br><span class="toast-sub">' + label + ' &middot; ' + netwatchEscapeHtml(ev.ip) + '</span></div>';
+  cont.appendChild(div);
+  requestAnimationFrame(function () { div.classList.add('toast-show'); });
+  setTimeout(function () {
+    div.classList.remove('toast-show');
+    setTimeout(function () { div.remove(); }, 400);
+  }, 6000);
+  netwatchReproducirSonido(tipo);
+}
+
+// --- eventos recientes (panel lateral) ------------------------------------
+function netwatchRenderEventos() {
+  const ul = document.getElementById('eventos-lista');
+  const vacio = document.getElementById('eventos-vacio');
+  const items = NETWATCH_EVENTOS.slice(0, 20);
+  if (!items.length) {
+    ul.innerHTML = '';
+    vacio.style.display = 'block';
+    return;
+  }
+  vacio.style.display = 'none';
+  ul.innerHTML = items.map(function (ev) {
+    const label = ev.tipo === 'online' ? 'Volvio online' : ev.tipo === 'offline' ? 'Paso a offline' : 'Nuevo equipo';
+    const titulo = ev.responsable || ev.hostname || ev.ip;
+    const clickeable = !!ev.equipo_id;
+    const onclick = clickeable ? ' onclick="netwatchResaltarFicha(' + ev.equipo_id + ')"' : '';
+    return '<li class="evento evento-' + ev.tipo + (clickeable ? ' evento-clickeable' : '') + '"' + onclick + '>' +
+      '<span class="evento-tipo">' + label + '</span>' +
+      '<span class="evento-detalle">' + netwatchEscapeHtml(titulo) + ' (' + netwatchEscapeHtml(ev.ip) + ')</span>' +
+      '<span class="evento-ts">' + netwatchEscapeHtml((ev.ts || '').slice(0, 16)) + '</span>' +
+      '</li>';
+  }).join('');
+}
+
+// --- polling en vivo -------------------------------------------------------
+async function netwatchPoll() {
+  try {
+    const res = await fetch('/api/estado', { cache: 'no-store' });
+    if (!res.ok) return;
+    const data = await res.json();
+    NETWATCH_EQUIPOS = data.equipos;
+    NETWATCH_SUMMARY = data.summary;
+
+    const nuevos = (data.eventos || []).filter(function (e) { return e.id > NETWATCH_ULTIMO_EVENTO_ID; })
+      .sort(function (a, b) { return a.id - b.id; });
+    nuevos.forEach(netwatchMostrarToast);
+    if (data.eventos && data.eventos.length) {
+      NETWATCH_ULTIMO_EVENTO_ID = Math.max(NETWATCH_ULTIMO_EVENTO_ID, Math.max.apply(null, data.eventos.map(function (e) { return e.id; })));
+    }
+    NETWATCH_EVENTOS = data.eventos || [];
+
+    netwatchRenderResumen();
+    netwatchRenderFichas();
+    netwatchRenderEventos();
+    netwatchRenderSubredes();
+  } catch (err) {
+    // red caida momentaneamente o servidor reiniciando: se reintenta en el siguiente ciclo
+  }
+}
+
+// --- consola del monitor embebida (en vez de la ventana negra aparte) -----
+let netwatchConsolaColapsada = localStorage.getItem('netwatch_consola_colapsada') === '1';
+
+function netwatchToggleConsola() {
+  netwatchConsolaColapsada = !netwatchConsolaColapsada;
+  localStorage.setItem('netwatch_consola_colapsada', netwatchConsolaColapsada ? '1' : '0');
+  netwatchAplicarColapsoConsola();
+}
+
+function netwatchAplicarColapsoConsola() {
+  const body = document.getElementById('consola-body');
+  const icono = document.getElementById('consola-toggle-icono');
+  if (body) body.style.display = netwatchConsolaColapsada ? 'none' : 'block';
+  if (icono) icono.innerHTML = netwatchConsolaColapsada ? '&#9656;' : '&#9662;';
+}
+
+async function netwatchPollConsola() {
+  try {
+    const res = await fetch('/api/monitor_log', { cache: 'no-store' });
+    if (!res.ok) return;
+    const data = await res.json();
+
+    const dot = document.getElementById('consola-dot');
+    if (dot) dot.className = 'consola-dot ' + (data.activo ? 'consola-dot-on' : 'consola-dot-off');
+
+    const body = document.getElementById('consola-body');
+    if (body) {
+      const yaEstabaAbajo = body.scrollTop + body.clientHeight >= body.scrollHeight - 20;
+      body.textContent = data.lineas && data.lineas.length ? data.lineas.join('\n') :
+        (data.existe ? '' : 'Todavia no hay log del monitor. Deja monitor.py corriendo para verlo aca.');
+      if (yaEstabaAbajo) body.scrollTop = body.scrollHeight;
+    }
+  } catch (err) {
+    // red caida momentaneamente: se reintenta en el proximo ciclo
+  }
+}
+
+netwatchAplicarColapsoConsola();
+netwatchPollConsola();
+setInterval(netwatchPollConsola, 5000);
+
+netwatchRenderBotonSonido();
+netwatchRenderResumen();
+netwatchRenderFichas();
+netwatchRenderEventos();
+netwatchRenderSubredes();
+setInterval(netwatchPoll, 7000);
+</script>
+
+</body>
+</html>

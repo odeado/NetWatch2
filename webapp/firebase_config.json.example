@@ -1,0 +1,6 @@
+{
+  "apiKey": "AIzaSyDGQUvsES_fhkVQwRXWRcfPEz6wOEni6tk",
+  "databaseURL": "https://gestion-usuarios-equipos-default-rtdb.firebaseio.com",
+  "email": "tu-correo@ejemplo.com",
+  "password": "la-contrasena-que-creaste-para-este-usuario-en-Firebase-Auth"
+}

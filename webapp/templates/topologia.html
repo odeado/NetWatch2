@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Win NetWatch RMM - Topologia</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+{% macro campos_dispositivo(d, accion_id) %}
+{% set tipo_actual = d.tipo if d else 'switch' %}
+{% set estado_actual = d.estado if d else 'Usado' %}
+{% set plantilla_actual = d.plantilla if d else 'generico' %}
+<div class="modal-grid">
+  <label>Nombre *
+    <input type="text" name="nombre" required placeholder="Ej: SW-Core-Arica" value="{{ (d.nombre or '') if d else '' }}" id="nombre-{{ accion_id }}">
+  </label>
+  <label>Tipo de elemento
+    <select name="tipo">
+      {% for t in tipos %}
+      <option value="{{ t }}" {% if t == tipo_actual %}selected{% endif %}>{{ tipo_labels.get(t, t) }}</option>
+      {% endfor %}
+    </select>
+  </label>
+</div>
+<div class="modal-grid">
+  <label>Marca
+    <input type="text" name="marca" placeholder="Ej: Cisco / Juniper / Fortinet" value="{{ (d.marca or '') if d else '' }}">
+  </label>
+  <label>Modelo
+    <input type="text" name="modelo" placeholder="Ej: Catalyst 2960-24 / EX2200 PoE" value="{{ (d.modelo or '') if d else '' }}">
+  </label>
+</div>
+<div class="modal-grid">
+  <label>Numero de serie
+    <input type="text" name="numero_serie" placeholder="Ej: FCW1234A5BC" value="{{ (d.numero_serie or '') if d else '' }}">
+  </label>
+  <label>Estado
+    <select name="estado">
+      {% for e in estados %}
+      <option value="{{ e }}" {% if e == estado_actual %}selected{% endif %}>{{ e }}</option>
+      {% endfor %}
+    </select>
+  </label>
+</div>
+<div class="modal-grid">
+  <label>Direccion IP
+    <input type="text" name="ip" placeholder="Ej: 172.30.100.2" value="{{ (d.ip or '') if d else '' }}">
+  </label>
+  <label>Direccion MAC
+    <input type="text" name="mac" placeholder="Ej: 78:fe:3d:35:21:40" value="{{ (d.mac or '') if d else '' }}">
+  </label>
+</div>
+<div class="modal-grid">
+  <label>Sucursal
+    <input type="text" name="sucursal" placeholder="Ej: Rendic Antofagasta" value="{{ (d.sucursal or '') if d else '' }}">
+  </label>
+  <label>Ciudad
+    <select name="ciudad">
+      <option value="">-- Seleccionar ciudad --</option>
+      {% for c in ciudades %}
+      <option value="{{ c.nombre }}" {% if d and d.ciudad == c.nombre %}selected{% endif %}>{{ c.nombre }}</option>
+      {% endfor %}
+    </select>
+  </label>
+</div>
+<div class="modal-grid">
+  <label>Ubicacion
+    <input type="text" name="ubicacion" placeholder="Ej: Rack sala servidores" value="{{ (d.ubicacion or '') if d else '' }}">
+  </label>
+  <label>Piso
+    <input type="text" name="piso" placeholder="Ej: Piso 2" value="{{ (d.piso or '') if d else '' }}">
+  </label>
+</div>
+<div class="modal-grid">
+  <label>Proveedor de enlace (ISP)
+    <input type="text" name="enlace" placeholder="Ej: Entel / Emelnor / Movistar / GTD" value="{{ (d.enlace or '') if d else '' }}">
+  </label>
+</div>
+<div class="modal-grid">
+  <label>Fecha de ingreso
+    <input type="date" name="fecha_ingreso" value="{{ (d.fecha_ingreso or '') if d else '' }}">
+  </label>
+  <label>Plantilla de puertos
+    <select name="plantilla">
+      <option value="generico" {% if plantilla_actual == 'generico' %}selected{% endif %}>Generico (bocas numeradas abajo)</option>
+      {% for pid, pdef in plantillas.items() %}
+      <option value="{{ pid }}" {% if plantilla_actual == pid %}selected{% endif %}>{{ pdef.nombre }}</option>
+      {% endfor %}
+    </select>
+  </label>
+</div>
+<div class="modal-grid">
+  <label>Bocas cobre (si es generico)
+    <input type="number" name="cantidad_bocas" min="0" placeholder="Ej: 24" value="{{ (d.cantidad_bocas or '') if d else '' }}">
+  </label>
+  <label>Bocas fibra (si es generico)
+    <input type="number" name="bocas_fibra" min="0" placeholder="Ej: 2 o 4" value="{{ (d.bocas_fibra or '') if d else '' }}">
+  </label>
+</div>
+<p class="field-hint">"Generico" usa las bocas cobre/fibra de arriba. Si eliges una plantilla real
+  (Cisco, Fortinet, Juniper, conversor, ONT), el mapa usa el layout exacto de ese modelo y esas dos
+  columnas se ignoran. Guarda primero para que aparezca el boton "Editar puertos" en la fila.</p>
+<label class="full">Observaciones
+  <input type="text" name="notas" placeholder="Notas libres" value="{{ (d.notas or '') if d else '' }}">
+</label>
+{% endmacro %}
+
+<header>
+  <p class="back"><a href="{{ url_for('index') }}">&larr; Volver al inventario</a></p>
+  <div class="header-row">
+    <div>
+      <h1>Administracion</h1>
+      <p class="subtitle">Dispositivos de red (switch/router/Fortinet) &mdash; mapeo manual, sin SNMP.
+        Elige una plantilla para que el mapa de puertos se parezca al equipo real. "Editar" despliega los
+        datos del equipo; "Editar puertos" despliega el mapa visual para conectar sus bocas a un equipo o a
+        otro dispositivo de red (switch-switch, fortinet-switch, etc).</p>
+    </div>
+    <div class="header-acciones">
+      <a href="{{ url_for('topologia_diagrama') }}" target="_blank" class="tickets-nav-link">Generar diagrama de flujo</a>
+      <a href="{{ url_for('topologia_resumen') }}" target="_blank" class="tickets-nav-link">Imprimir resumen de red</a>
+      <a href="{{ url_for('export_infraestructura_excel') }}" class="tickets-nav-link">Exportar Excel (con formato)</a>
+    </div>
+  </div>
+</header>
+
+<nav class="admin-tabs">
+  <a href="{{ url_for('admin') }}" class="{{ 'active' if active_tab == 'empleados' else '' }}">Gestion de Empleados</a>
+  <a href="{{ url_for('admin_equipos') }}" class="{{ 'active' if active_tab == 'equipos' else '' }}">Inventario de Equipos</a>
+  <a href="{{ url_for('admin_parametros') }}" class="{{ 'active' if active_tab == 'parametros' else '' }}">Parametros y Red</a>
+  <a href="{{ url_for('topologia') }}" class="{{ 'active' if active_tab == 'infraestructura' else '' }}">Infraestructura (Switches/Monitores)</a>
+</nav>
+
+{% if resumen_importacion %}
+<div class="import-resumen">
+  <strong>Importacion de infraestructura completa:</strong>
+  {{ resumen_importacion.creados }} dispositivo(s) nuevo(s) creado(s),
+  {{ resumen_importacion.actualizados }} actualizado(s) (coincidian por IP/MAC/N. Serie) &mdash;
+  de {{ resumen_importacion.total }} filas en el archivo.
+</div>
+{% elif error == 'archivo_requerido' %}
+<div class="import-resumen import-resumen-error">Selecciona un archivo antes de importar.</div>
+{% elif error == 'archivo_sin_filas' %}
+<div class="import-resumen import-resumen-error">No se encontraron filas de datos en ese archivo (revisa que sea la tabla exportada correcta).</div>
+{% endif %}
+
+<details class="manual-add">
+  <summary>+ Importar infraestructura completa (Excel/archivo exportado de otro sistema)</summary>
+  <p class="field-hint">Sube un inventario de switches/modems/routers ya escrito a mano. Matchea cada fila
+    contra un dispositivo existente por IP, MAC o N. de Serie: si lo encuentra, el archivo manda (actualiza sus
+    datos); si no, lo crea nuevo infiriendo el tipo y la plantilla de puertos por marca/modelo. Columnas
+    esperadas: Ciudad, Lugar, Piso, Observaciones, Marca, Modelo, Bocas, Direccion MAC, Numero de Serie,
+    Direccion IP, Enlace, Estado.</p>
+  <form method="post" action="{{ url_for('importar_infraestructura') }}" enctype="multipart/form-data" class="ticket-form">
+    <label>Archivo <input type="file" name="archivo" accept=".xls,.xlsx,.html,.htm,.csv" required></label>
+    <button type="submit" class="btn btn-primary">Importar infraestructura</button>
+  </form>
+</details>
+
+{% if not dispositivos %}
+  <p class="empty">Todavia no hay dispositivos de red cargados. Agrega el primero con el formulario de abajo.</p>
+{% else %}
+<div class="table-scroll">
+<table class="usuarios-table">
+  <thead>
+    <tr>
+      <th>Nombre</th>
+      <th>Tipo</th>
+      <th>Marca / Modelo</th>
+      <th>IP</th>
+      <th>Ciudad</th>
+      <th>Estado</th>
+      <th>Acciones</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for grupo in grupos_topologia %}
+    <tr class="banner-fila banner-ciudad-fila">
+      <td colspan="7">
+        <span class="banner-ciudad">{{ grupo.ciudad }}</span>
+        <span class="banner-count">{{ grupo.total }} dispositivo{{ 's' if grupo.total != 1 else '' }}</span>
+      </td>
+    </tr>
+    {% for sub in grupo.sucursales %}
+    <tr class="banner-fila banner-sucursal-fila">
+      <td colspan="7">
+        <span class="banner-sucursal">{{ sub.sucursal }}</span>
+        <span class="banner-count">{{ sub.total }}</span>
+      </td>
+    </tr>
+    {% for d in sub.dispositivos %}
+    <tr>
+      <td class="empleado-nombre">{{ d.nombre }}</td>
+      <td>{{ tipo_labels.get(d.tipo, d.tipo) }}</td>
+      <td>{{ (d.marca or '-') }} {{ d.modelo or '' }}</td>
+      <td>{{ d.ip or '-' }}</td>
+      <td>{{ d.ciudad or '-' }}</td>
+      <td><span class="badge badge-lugar">{{ d.estado or 'Usado' }}</span></td>
+      <td class="actions">
+        <button type="button" class="btn btn-confirm" onclick="netwatchToggleAcordeon('editar-{{ d.id }}')">Editar</button>
+        {% if d.puertos %}
+        <button type="button" class="btn btn-primary" onclick="netwatchToggleAcordeon('puertos-{{ d.id }}')">Editar puertos</button>
+        {% endif %}
+      </td>
+    </tr>
+    <tr class="acordeon-panel" id="panel-editar-{{ d.id }}" style="display:none">
+      <td colspan="7">
+        <form method="post" action="{{ url_for('editar_dispositivo', dispositivo_id=d.id) }}" class="modal-form acordeon-form">
+          {{ campos_dispositivo(d, 'editar-' + d.id|string) }}
+          <div class="modal-footer">
+            <button type="button" class="btn btn-reset" onclick="netwatchToggleAcordeon('editar-{{ d.id }}')">Cancelar</button>
+            <button type="submit" class="btn btn-primary">Guardar Cambios</button>
+          </div>
+        </form>
+      </td>
+    </tr>
+    {% if d.puertos %}
+    <tr class="acordeon-panel" id="panel-puertos-{{ d.id }}" style="display:none">
+      <td colspan="7">
+        <div class="acordeon-puertos">
+          <p class="modal-subtitle">
+            {% if d.sucursal %}Ubicacion: {{ d.sucursal }} &middot; {% endif %}
+            {% if d.numero_serie %}N&deg; Serie: {{ d.numero_serie }} &middot; {% endif %}
+            Capacidad: {{ d.puertos|length }} interfaces
+          </p>
+          <div class="modal-body">
+            <div class="modal-mapa">
+              <div class="chasis-legend">
+                <span class="legend-item"><span class="legend-dot legend-ocupado"></span>Ocupado</span>
+                <span class="legend-item"><span class="legend-dot legend-offline"></span>Offline</span>
+                <span class="legend-item"><span class="legend-dot legend-libre"></span>Libre</span>
+              </div>
+              <div class="chasis-bezel">
+                <span class="chasis-sys">SYS OK <span class="dot dot-on"></span></span>
+                <div class="puertos-row">
+                  {% for p in d.puertos %}
+                  <div class="puerto-box puerto-tipo-{{ p.tipo }} {{ 'puerto-ocupado' if (p.equipo or p.dispositivo_destino) else 'puerto-libre' }} {{ 'puerto-offline' if (p.equipo and not p.equipo.en_linea) else '' }}"
+                       data-device="{{ d.id }}" data-info='{{ p | tojson }}'
+                       onclick="netwatchSeleccionarPuerto(this)">{{ p.label }}</div>
+                  {% endfor %}
+                </div>
+              </div>
+            </div>
+            <div class="puerto-detalle" id="puerto-detalle-{{ d.id }}">
+              <p class="empty small">Haz clic en una boca para ver o editar su conexion.</p>
+            </div>
+          </div>
+        </div>
+      </td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+    {% endfor %}
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+
+{% for d in dispositivos %}
+{% if d.puertos_fuera_de_grilla %}
+<p class="field-hint">{{ d.nombre }}: estos equipos tienen un puerto asignado desde la ficha que no
+  calza con la plantilla/numeracion definida (por ejemplo texto libre tipo "Gi1/0/24"):</p>
+<div class="table-scroll">
+<table class="mapa-table">
+  <tbody>
+    {% for eq in d.puertos_fuera_de_grilla %}
+    <tr>
+      <td>{{ eq.puerto }}</td>
+      <td><a href="{{ url_for('ficha', equipo_id=eq.id) }}" class="ip-link">{{ eq.hostname or eq.ip }}</a></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+{% endfor %}
+
+<details class="manual-add">
+  <summary>+ Agregar dispositivo de red</summary>
+  <form method="post" action="{{ url_for('crear_dispositivo') }}" class="modal-form">
+    {{ campos_dispositivo(None, 'nuevo') }}
+    <div class="modal-footer">
+      <button type="submit" class="btn btn-primary">Agregar</button>
+    </div>
+  </form>
+</details>
+
+<script id="netwatch-equipos-data" type="application/json">{{ equipos | tojson }}</script>
+<script id="netwatch-dispositivos-data" type="application/json">{{ dispositivos | tojson }}</script>
+<script>
+const NETWATCH_EQUIPOS = JSON.parse(document.getElementById('netwatch-equipos-data').textContent);
+const NETWATCH_DISPOSITIVOS = JSON.parse(document.getElementById('netwatch-dispositivos-data').textContent);
+
+function netwatchEscapeHtml(s) {
+  if (s === null || s === undefined) return '';
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function netwatchToggleAcordeon(key) {
+  const panel = document.getElementById('panel-' + key);
+  if (!panel) return;
+  const abriendo = panel.style.display === 'none';
+  // acordeon: cierra cualquier otro panel abierto antes de abrir este
+  document.querySelectorAll('.acordeon-panel').forEach(function (p) {
+    p.style.display = 'none';
+  });
+  panel.style.display = abriendo ? 'table-row' : 'none';
+  if (abriendo) {
+    panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+}
+
+function netwatchSeleccionarPuerto(el) {
+  const deviceId = el.dataset.device;
+  const info = JSON.parse(el.dataset.info);
+
+  el.closest('.puertos-row').querySelectorAll('.puerto-box').forEach(function (b) {
+    b.classList.remove('puerto-selected');
+  });
+  el.classList.add('puerto-selected');
+
+  const panel = document.getElementById('puerto-detalle-' + deviceId);
+  const eq = info.equipo;
+  const disp = info.dispositivo_destino;
+  const ocupado = eq || disp;
+
+  let html = '<div class="puerto-detalle-card">';
+  html += '<p class="puerto-detalle-label">PUERTO SELECCIONADO</p>';
+  html += '<h4>Interfaz: ' + netwatchEscapeHtml(info.label) +
+          ' <span class="tag ' + (ocupado ? 'tag-confirmado' : 'tag-descartado') + '">' +
+          (ocupado ? 'Ocupado' : 'Libre') + '</span></h4>';
+
+  if (eq) {
+    html += '<div class="puerto-equipo-card">';
+    html += '<div class="puerto-equipo-nombre">' + netwatchEscapeHtml(eq.hostname || eq.ip) +
+            ' <span class="tag ' + (eq.en_linea ? 'tag-confirmado' : 'tag-offline') + '">' +
+            (eq.en_linea ? 'Online' : 'Offline') + '</span></div>';
+    html += '<div class="muted">' + netwatchEscapeHtml(eq.ip) + '</div>';
+    if (eq.responsable) {
+      html += '<div class="kv"><span class="k">Responsable</span><span class="v">' + netwatchEscapeHtml(eq.responsable) + '</span></div>';
+    }
+    if (eq.marca || eq.modelo) {
+      html += '<div class="kv"><span class="k">Marca / Modelo</span><span class="v">' +
+              netwatchEscapeHtml((eq.marca || '-') + ' ' + (eq.modelo || '')) + '</span></div>';
+    }
+    if (eq.numero_serie) {
+      html += '<div class="kv"><span class="k">N. Serie</span><span class="v">' + netwatchEscapeHtml(eq.numero_serie) + '</span></div>';
+    }
+    if (eq.mac) {
+      html += '<div class="kv"><span class="k">MAC</span><span class="v">' + netwatchEscapeHtml(eq.mac) + '</span></div>';
+    }
+    if (eq.notas) {
+      html += '<div class="kv"><span class="k">Notas</span><span class="v">' + netwatchEscapeHtml(eq.notas) + '</span></div>';
+    }
+    html += '<a href="/equipo/' + eq.id + '" class="ip-link">Ver ficha completa &rarr;</a>';
+    html += '</div>';
+  } else if (disp) {
+    html += '<div class="puerto-equipo-card">';
+    html += '<div class="puerto-equipo-nombre">' + netwatchEscapeHtml(disp.nombre) +
+            ' <span class="tag tag-confirmado">' + netwatchEscapeHtml(disp.tipo) + '</span></div>';
+    if (disp.marca || disp.modelo) {
+      html += '<div class="kv"><span class="k">Marca / Modelo</span><span class="v">' +
+              netwatchEscapeHtml((disp.marca || '-') + ' ' + (disp.modelo || '')) + '</span></div>';
+    }
+    if (disp.ip) {
+      html += '<div class="kv"><span class="k">IP</span><span class="v">' + netwatchEscapeHtml(disp.ip) + '</span></div>';
+    }
+    html += '<button type="button" class="btn btn-reset" onclick="netwatchToggleAcordeon(\'puertos-' + disp.id + '\')">Ver este dispositivo &rarr;</button>';
+    html += '</div>';
+  } else {
+    html += '<p class="empty small">Este puerto esta libre.</p>';
+  }
+
+  html += '<form method="post" action="/topologia/dispositivos/' + deviceId + '/puertos" class="puerto-assign-form">';
+  html += '<input type="hidden" name="puerto" value="' + netwatchEscapeHtml(info.label) + '">';
+  html += '<select name="destino">';
+  html += '<option value="">-- Libre --</option>';
+  html += '<optgroup label="Equipos">';
+  NETWATCH_EQUIPOS.forEach(function (e) {
+    const selected = (eq && eq.id === e.id) ? ' selected' : '';
+    html += '<option value="equipo:' + e.id + '"' + selected + '>' +
+            netwatchEscapeHtml(e.hostname || e.ip) + ' (' + netwatchEscapeHtml(e.ip) + ')</option>';
+  });
+  html += '</optgroup>';
+  html += '<optgroup label="Otros dispositivos de red">';
+  NETWATCH_DISPOSITIVOS.forEach(function (d) {
+    if (String(d.id) === String(deviceId)) return;
+    const selected = (disp && disp.id === d.id) ? ' selected' : '';
+    html += '<option value="dispositivo:' + d.id + '"' + selected + '>' +
+            netwatchEscapeHtml(d.nombre) + ' (' + netwatchEscapeHtml(d.tipo) + ')</option>';
+  });
+  html += '</optgroup>';
+  html += '</select>';
+  html += '<button type="submit" class="btn btn-confirm">Guardar</button>';
+  if (ocupado) {
+    html += '<button type="button" class="btn btn-discard" ' +
+            'onclick="this.form.destino.value=\'\'; this.form.submit();">Desconectar puerto</button>';
+  }
+  html += '</form>';
+
+  panel.innerHTML = html;
+}
+</script>
+
+</body>
+</html>

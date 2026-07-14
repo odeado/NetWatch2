@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ficha - {{ e.hostname or e.ip }}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<header>
+  <p class="back"><a href="{{ url_for('index') }}">&larr; Volver al inventario</a></p>
+  <div class="header-row">
+    <div>
+      <h1>{{ e.hostname or e.ip }}</h1>
+      <p class="subtitle">Ficha tecnica y administrativa</p>
+    </div>
+    {% if e.open_ports and e.open_ports|selectattr('port', 'equalto', 3389)|list %}
+    <a href="{{ url_for('open_rdp', equipo_id=e.id) }}" class="btn btn-rdp">Conectar por RDP</a>
+    {% endif %}
+  </div>
+</header>
+
+<section class="deteccion-info">
+  <div><span class="k">IP</span><span class="v">{{ e.ip }}</span></div>
+  <div><span class="k">Subred</span><span class="v">{{ e.subred or '-' }}</span></div>
+  <div><span class="k">Puertos</span><span class="v">
+    {% if e.open_ports %}{% for p in e.open_ports %}<span class="port">{{ p.port }}</span>{% endfor %}{% else %}-{% endif %}
+  </span></div>
+  <div><span class="k">Confianza</span><span class="v"><span class="badge badge-{{ e.confidence_label }}">{{ e.confidence_label }} ({{ e.confidence_score }})</span></span></div>
+  <div><span class="k">Estado deteccion</span><span class="v">
+    <span class="tag tag-{{ e.estado_deteccion }}">{{ e.estado_deteccion }}</span>
+    <span class="estado-cambiar">
+      {% for opcion, etiqueta in [('pendiente', 'Pendiente'), ('confirmado', 'Confirmado'), ('descartado', 'Descartado')] %}
+        {% if opcion != e.estado_deteccion %}
+        <form method="post" action="{{ url_for('confirm') }}" class="estado-cambiar-form">
+          <input type="hidden" name="id" value="{{ e.id }}">
+          <input type="hidden" name="origen" value="ficha">
+          <button type="submit" name="action" value="{{ opcion }}" class="btn btn-ghost btn-sm" title="Cambiar el estado de deteccion a {{ etiqueta }}">&rarr; {{ etiqueta }}</button>
+        </form>
+        {% endif %}
+      {% endfor %}
+    </span>
+  </span></div>
+  <div><span class="k">Primera deteccion</span><span class="v">{{ e.primera_deteccion[:16] if e.primera_deteccion else '-' }}</span></div>
+  <div><span class="k">Ultima deteccion</span><span class="v">{{ e.ultima_deteccion[:16] if e.ultima_deteccion else '-' }}</span></div>
+  {% if disponibilidad %}
+  <div><span class="k">Disponibilidad ({{ disponibilidad.dias }}d)</span><span class="v">
+    <span class="disp-barra-wrap"><div class="disp-barra {{ 'disp-mal' if disponibilidad.pct_online < 90 else ('disp-alerta' if disponibilidad.pct_online < 98 else 'disp-bien') }}" style="width:{{ disponibilidad.pct_online }}%"></div></span>
+    <span class="disp-pct">{{ disponibilidad.pct_online }}%</span>
+    <span class="muted">&middot; {{ disponibilidad.caidas }} caida{{ 's' if disponibilidad.caidas != 1 else '' }}</span>
+  </span></div>
+  {% endif %}
+</section>
+
+{% if rdp_history %}
+<section class="rdp-history">
+  <h2>Historial de conexiones RDP</h2>
+  <ul>
+    {% for h in rdp_history %}
+    <li><span class="evento-ts">{{ h.ts[:16] }}</span> - descargado desde {{ h.origen_ip }}</li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+<form method="post" class="ficha-form">
+  <fieldset>
+    <legend>Identificacion</legend>
+    <p class="field-hint">Si el escaneo no detecto hostname o MAC (comun cuando el equipo esta en otra
+      VLAN o conectas por VPN), puedes escribirlos aqui a mano. Si el escaneo los detecta despues,
+      se van a actualizar solos con el valor real.</p>
+    <label>Hostname <input type="text" name="hostname" value="{{ e.hostname or '' }}" placeholder="Ej: PC-RECEPCION"></label>
+    <label>MAC <input type="text" name="mac" value="{{ e.mac or '' }}" placeholder="Ej: AA:BB:CC:DD:EE:FF"></label>
+  </fieldset>
+
+  <fieldset>
+    <legend>Administrativo</legend>
+    <label>Marca <input type="text" name="marca" value="{{ e.marca or '' }}"></label>
+    <label>Modelo <input type="text" name="modelo" value="{{ e.modelo or '' }}"></label>
+    <label>N. de serie <input type="text" name="numero_serie" value="{{ e.numero_serie or '' }}"></label>
+    <label>Fecha adquisicion <input type="date" name="fecha_adquisicion" value="{{ e.fecha_adquisicion or '' }}"></label>
+    <label>Garantia hasta <input type="date" name="garantia_hasta" value="{{ e.garantia_hasta or '' }}"></label>
+    <label>Responsable
+      <select name="responsable_id">
+        <option value="">-- Sin asignar --</option>
+        {% for u in usuarios %}
+        <option value="{{ u.id }}" {% if e.responsable_id == u.id %}selected{% endif %}>{{ u.nombre }}{% if u.cargo %} ({{ u.cargo }}){% endif %}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Correo responsable <span class="v">{{ e.correo_responsable or '-' }}</span></label>
+    <label>Sucursal <input type="text" name="sucursal" value="{{ e.sucursal or '' }}"></label>
+    <label>Ciudad <input type="text" name="ciudad" value="{{ e.ciudad or '' }}"></label>
+    <label>Departamento <input type="text" name="departamento" value="{{ e.departamento or '' }}"></label>
+  </fieldset>
+
+  <fieldset>
+    <legend>Hardware</legend>
+    <label>CPU <input type="text" name="cpu" value="{{ e.cpu or '' }}"></label>
+    <label>RAM <input type="text" name="ram" value="{{ e.ram or '' }}"></label>
+    <label>Almacenamiento <input type="text" name="almacenamiento" value="{{ e.almacenamiento or '' }}"></label>
+    <label>GPU <input type="text" name="gpu" value="{{ e.gpu or '' }}"></label>
+    <label>Placa madre <input type="text" name="placa_madre" value="{{ e.placa_madre or '' }}"></label>
+  </fieldset>
+
+  <fieldset>
+    <legend>Software</legend>
+    <label>Sistema operativo <input type="text" name="os" value="{{ e.os or '' }}" placeholder="Ej: Windows 10 Pro"></label>
+    <label>Office <input type="text" name="office" value="{{ e.office or '' }}" placeholder="Ej: Office 2016"></label>
+    <label>Antivirus <input type="text" name="antivirus" value="{{ e.antivirus or '' }}" placeholder="Ej: ESET Security"></label>
+  </fieldset>
+
+  <fieldset>
+    <legend>Topologia</legend>
+    <label>Dispositivo de red
+      <select name="dispositivo_id">
+        <option value="">-- Sin asignar --</option>
+        {% for d in dispositivos %}
+        <option value="{{ d.id }}" {% if e.dispositivo_id == d.id %}selected{% endif %}>{{ d.nombre }} ({{ d.tipo }}){% if d.sucursal %} - {{ d.sucursal }}{% endif %}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Puerto <input type="text" name="puerto" value="{{ e.puerto or '' }}" placeholder="Ej: Gi1/0/24"></label>
+  </fieldset>
+
+  <fieldset>
+    <legend>Gestion</legend>
+    <label>Estado del ciclo de vida
+      <select name="estado_ciclo_vida">
+        {% for opt in ["activo", "en_reparacion", "retirado", "bodega"] %}
+          <option value="{{ opt }}" {% if e.estado_ciclo_vida == opt %}selected{% endif %}>{{ opt }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="checkbox"><input type="checkbox" name="critico" {% if e.critico %}checked{% endif %}> Critico</label>
+    <label class="checkbox"><input type="checkbox" name="gestionado" {% if e.gestionado %}checked{% endif %}> Gestionado</label>
+    <label class="full">Notas <textarea name="notas" rows="3">{{ e.notas or '' }}</textarea></label>
+  </fieldset>
+
+  <button type="submit" class="btn btn-primary">Guardar ficha</button>
+</form>
+
+<section class="tickets-section">
+  <h2>Tickets de soporte</h2>
+
+  {% if not tickets %}
+    <p class="empty small">Todavia no hay tickets para este equipo.</p>
+  {% else %}
+  <div class="table-scroll">
+  <table class="tickets-table">
+    <thead>
+      <tr>
+        <th>Prioridad</th>
+        <th>Titulo</th>
+        <th>Asignado a</th>
+        <th>Estado</th>
+        <th>Creado</th>
+        <th>Acciones</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for t in tickets %}
+      <tr class="ticket-row-{{ t.estado }}">
+        <td><span class="prio prio-{{ t.prioridad }}">{{ t.prioridad }}</span></td>
+        <td>
+          <div class="ticket-titulo">{{ t.titulo }}</div>
+          {% if t.descripcion %}<div class="ticket-desc">{{ t.descripcion }}</div>{% endif %}
+        </td>
+        <td>{{ t.asignado_a or '-' }}</td>
+        <td><span class="tag tag-ticket-{{ t.estado }}">{{ t.estado.replace('_', ' ') }}</span></td>
+        <td class="muted">{{ t.creado_en[:16] if t.creado_en else '-' }}</td>
+        <td class="actions">
+          <form method="post" action="{{ url_for('ticket_estado', ticket_id=t.id) }}">
+            <input type="hidden" name="equipo_id" value="{{ e.id }}">
+            {% if t.estado != 'abierto' %}<button name="estado" value="abierto" class="btn btn-reset">Abierto</button>{% endif %}
+            {% if t.estado != 'en_progreso' %}<button name="estado" value="en_progreso" class="btn btn-confirm">En progreso</button>{% endif %}
+            {% if t.estado != 'resuelto' %}<button name="estado" value="resuelto" class="btn btn-discard">Resolver</button>{% endif %}
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('create_ticket', equipo_id=e.id) }}" class="ticket-form">
+    <label class="full">Titulo <input type="text" name="titulo" required placeholder="Ej: Pantalla azul recurrente"></label>
+    <label class="full">Descripcion <textarea name="descripcion" rows="2"></textarea></label>
+    <label>Prioridad
+      <select name="prioridad">
+        <option value="baja">Baja</option>
+        <option value="normal" selected>Normal</option>
+        <option value="alta">Alta</option>
+      </select>
+    </label>
+    <label>Asignado a <input type="text" name="asignado_a" placeholder="Nombre del tecnico"></label>
+    <button type="submit" class="btn btn-primary">Crear ticket</button>
+  </form>
+</section>
+
+</body>
+</html>

@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="refresh" content="30">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Win NetWatch RMM - Tickets</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<header>
+  <p class="back"><a href="{{ url_for('index') }}">&larr; Volver al inventario</a></p>
+  <h1>Tickets de soporte</h1>
+  <p class="subtitle">{{ total_abiertos }} tickets abiertos en total &mdash; se actualiza sola cada 30s</p>
+</header>
+
+<nav class="filters">
+  <a href="{{ url_for('tickets') }}" class="{{ 'active' if not estado_filtro and not prioridad_filtro else '' }}">Todos</a>
+  <a href="{{ url_for('tickets', estado='abierto') }}" class="{{ 'active' if estado_filtro == 'abierto' else '' }}">Abiertos</a>
+  <a href="{{ url_for('tickets', estado='en_progreso') }}" class="{{ 'active' if estado_filtro == 'en_progreso' else '' }}">En progreso</a>
+  <a href="{{ url_for('tickets', estado='resuelto') }}" class="{{ 'active' if estado_filtro == 'resuelto' else '' }}">Resueltos</a>
+  <span class="filter-sep"></span>
+  <a href="{{ url_for('tickets', prioridad='alta') }}" class="{{ 'active' if prioridad_filtro == 'alta' else '' }}">Prioridad alta</a>
+</nav>
+
+{% if not tickets %}
+  <p class="empty">No hay tickets con este filtro. Abre uno desde la ficha de un equipo.</p>
+{% else %}
+<div class="table-scroll">
+<table>
+  <thead>
+    <tr>
+      <th>Prioridad</th>
+      <th>Titulo</th>
+      <th>Equipo</th>
+      <th>Asignado a</th>
+      <th>Estado</th>
+      <th>Creado</th>
+      <th>Acciones</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for t in tickets %}
+    <tr class="ticket-row-{{ t.estado }}">
+      <td><span class="prio prio-{{ t.prioridad }}">{{ t.prioridad }}</span></td>
+      <td>
+        <div class="ticket-titulo">{{ t.titulo }}</div>
+        {% if t.descripcion %}<div class="ticket-desc">{{ t.descripcion }}</div>{% endif %}
+      </td>
+      <td><a href="{{ url_for('ficha', equipo_id=t.equipo_id) }}" class="ip-link">{{ t.equipo_hostname or t.equipo_ip }}</a></td>
+      <td>{{ t.asignado_a or '-' }}</td>
+      <td><span class="tag tag-ticket-{{ t.estado }}">{{ t.estado.replace('_', ' ') }}</span></td>
+      <td class="muted">{{ t.creado_en[:16] if t.creado_en else '-' }}</td>
+      <td class="actions">
+        <form method="post" action="{{ url_for('ticket_estado', ticket_id=t.id) }}">
+          <input type="hidden" name="origen" value="tickets">
+          {% if t.estado != 'abierto' %}<button name="estado" value="abierto" class="btn btn-reset">Abierto</button>{% endif %}
+          {% if t.estado != 'en_progreso' %}<button name="estado" value="en_progreso" class="btn btn-confirm">En progreso</button>{% endif %}
+          {% if t.estado != 'resuelto' %}<button name="estado" value="resuelto" class="btn btn-discard">Resolver</button>{% endif %}
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+
+</body>
+</html>

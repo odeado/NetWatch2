@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Win NetWatch RMM - Administracion remota</title>
+<style>
+  :root {
+    --bg: #0f1420; --panel: #161d2e; --panel2: #1c2438; --border: #2a3348;
+    --blue: #4f8cff; --text: #e6e9f0; --muted: #8a92a6; --red: #e05a5a; --green: #3fbf72;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: -apple-system, Segoe UI, Roboto, sans-serif; }
+  header { padding: 18px 24px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+  header h1 { font-size: 18px; margin: 0; }
+  header p { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+  main { max-width: 1100px; margin: 0 auto; padding: 24px; }
+  .hidden { display: none !important; }
+  .login-box { max-width: 340px; margin: 80px auto; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 24px; }
+  .login-box h2 { margin-top: 0; font-size: 16px; }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 12px 0 4px; }
+  input, select, textarea { width: 100%; padding: 8px 10px; background: var(--panel2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 14px; }
+  button { cursor: pointer; border-radius: 6px; border: 1px solid var(--border); background: var(--panel2); color: var(--text); padding: 8px 14px; font-size: 13px; }
+  button.primary { background: var(--blue); border-color: var(--blue); color: #fff; }
+  button.danger { background: transparent; border-color: var(--red); color: var(--red); }
+  .error { color: var(--red); font-size: 13px; margin-top: 10px; min-height: 16px; }
+  .tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+  .tabs button { background: var(--panel); }
+  .tabs button.active { background: var(--blue); border-color: var(--blue); color: #fff; }
+  .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 12px; }
+  table { width: 100%; border-collapse: collapse; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  th, td { text-align: left; padding: 10px 12px; font-size: 13px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 500; }
+  tr:last-child td { border-bottom: none; }
+  tr.editing { background: var(--panel2); }
+  .row-actions { display: flex; gap: 6px; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 12px; }
+  .badge-on { background: rgba(63,191,114,0.15); color: var(--green); }
+  .badge-off { background: rgba(224,90,90,0.15); color: var(--red); }
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.55); display: flex; align-items: center; justify-content: center; z-index: 50; }
+  .modal-box { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 20px; width: 420px; max-height: 85vh; overflow-y: auto; }
+  .modal-box h3 { margin-top: 0; font-size: 15px; }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+  .empty { color: var(--muted); font-size: 13px; padding: 20px; text-align: center; }
+  .user-bar { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Win NetWatch RMM &mdash; Administracion remota</h1>
+    <p>Solo empleados y equipos (catalogo). El estado de escaneo/online-offline vive unicamente en el sistema local.</p>
+  </div>
+  <div class="user-bar hidden" id="barra-usuario">
+    <span id="texto-usuario"></span>
+    <button onclick="cerrarSesion()">Cerrar sesion</button>
+  </div>
+</header>
+
+<main>
+
+<div class="login-box" id="caja-login">
+  <h2>Iniciar sesion</h2>
+  <label>Correo</label>
+  <input type="email" id="login-email" placeholder="tu-correo@ejemplo.com">
+  <label>Contrasena</label>
+  <input type="password" id="login-password">
+  <div style="margin-top:16px">
+    <button class="primary" onclick="iniciarSesion()" style="width:100%">Entrar</button>
+  </div>
+  <div class="error" id="login-error"></div>
+</div>
+
+<div id="panel-admin" class="hidden">
+  <div class="tabs">
+    <button id="tab-empleados" class="active" onclick="mostrarTab('empleados')">Empleados</button>
+    <button id="tab-equipos" onclick="mostrarTab('equipos')">Equipos</button>
+  </div>
+
+  <div id="vista-empleados">
+    <div class="toolbar">
+      <input type="text" id="buscar-empleados" placeholder="Buscar..." style="max-width:260px" oninput="pintarEmpleados()">
+      <button class="primary" onclick="abrirModalEmpleado()">+ Agregar empleado</button>
+    </div>
+    <table>
+      <thead><tr>
+        <th>Nombre</th><th>Correo</th><th>Cargo</th><th>Departamento</th><th>Ciudad</th><th>Lugar</th><th>VPN</th><th>Estado</th><th></th>
+      </tr></thead>
+      <tbody id="tbody-empleados"></tbody>
+    </table>
+    <p class="empty hidden" id="empleados-vacio">Sin empleados todavia.</p>
+  </div>
+
+  <div id="vista-equipos" class="hidden">
+    <div class="toolbar">
+      <input type="text" id="buscar-equipos" placeholder="Buscar..." style="max-width:260px" oninput="pintarEquipos()">
+      <button class="primary" onclick="abrirModalEquipo()">+ Agregar equipo</button>
+    </div>
+    <table>
+      <thead><tr>
+        <th>Hostname</th><th>IP</th><th>Marca/Modelo</th><th>Responsable</th><th>Ciudad</th><th>OS</th><th></th>
+      </tr></thead>
+      <tbody id="tbody-equipos"></tbody>
+    </table>
+    <p class="empty hidden" id="equipos-vacio">Sin equipos todavia.</p>
+  </div>
+</div>
+
+</main>
+
+<div class="modal-overlay hidden" id="modal-empleado">
+  <div class="modal-box">
+    <h3 id="modal-empleado-titulo">Agregar empleado</h3>
+    <input type="hidden" id="emp-key">
+    <label>Nombre</label><input type="text" id="emp-nombre">
+    <label>Correo</label><input type="email" id="emp-correo">
+    <label>Cargo</label><input type="text" id="emp-cargo">
+    <label>Telefono</label><input type="text" id="emp-telefono">
+    <label>Departamento</label><input type="text" id="emp-departamento">
+    <label>Ciudad</label><input type="text" id="emp-ciudad">
+    <label>Lugar de trabajo</label>
+    <select id="emp-lugar"><option>Presencial</option><option>Remoto</option><option>Hibrido</option></select>
+    <label>Tipo VPN</label><input type="text" id="emp-vpn">
+    <label>Activo</label>
+    <select id="emp-activo"><option value="1">Si</option><option value="0">No</option></select>
+    <div class="modal-actions">
+      <button class="danger hidden" id="btn-borrar-empleado" onclick="borrarEmpleado()">Eliminar</button>
+      <button onclick="cerrarModalEmpleado()">Cancelar</button>
+      <button class="primary" onclick="guardarEmpleado()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay hidden" id="modal-equipo">
+  <div class="modal-box">
+    <h3 id="modal-equipo-titulo">Agregar equipo</h3>
+    <input type="hidden" id="eq-key">
+    <label>Hostname</label><input type="text" id="eq-hostname">
+    <label>IP (o "Dinamica" si no tiene fija)</label><input type="text" id="eq-ip">
+    <label>Marca</label><input type="text" id="eq-marca">
+    <label>Modelo</label><input type="text" id="eq-modelo">
+    <label>N&deg; Serie</label><input type="text" id="eq-serie">
+    <label>Responsable (nombre)</label><input type="text" id="eq-responsable">
+    <label>Ciudad</label><input type="text" id="eq-ciudad">
+    <label>OS</label><input type="text" id="eq-os">
+    <label>Office</label><input type="text" id="eq-office">
+    <label>Antivirus</label><input type="text" id="eq-antivirus">
+    <label>Notas</label><textarea id="eq-notas" rows="2"></textarea>
+    <div class="modal-actions">
+      <button class="danger hidden" id="btn-borrar-equipo" onclick="borrarEquipo()">Eliminar</button>
+      <button onclick="cerrarModalEquipo()">Cancelar</button>
+      <button class="primary" onclick="guardarEquipo()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import {
+  getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut,
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import {
+  getDatabase, ref, onValue, push, update, remove,
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+// Configuracion del proyecto Firebase (el apiKey de un SDK web no es secreto,
+// esta protegido por las reglas de seguridad de la base de datos, no por
+// esconder esta clave).
+const firebaseConfig = {
+  apiKey: "AIzaSyDGQUvsES_fhkVQwRXWRcfPEz6wOEni6tk",
+  authDomain: "gestion-usuarios-equipos.firebaseapp.com",
+  databaseURL: "https://gestion-usuarios-equipos-default-rtdb.firebaseio.com",
+  projectId: "gestion-usuarios-equipos",
+  storageBucket: "gestion-usuarios-equipos.firebasestorage.app",
+  messagingSenderId: "124302724881",
+  appId: "1:124302724881:web:00e6d073c987e8631c06b0",
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const dbRef = getDatabase(app);
+
+let empleados = {};
+let equipos = {};
+
+// --- login -----------------------------------------------------------
+window.iniciarSesion = function () {
+  const email = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  const err = document.getElementById('login-error');
+  err.textContent = '';
+  signInWithEmailAndPassword(auth, email, password).catch((e) => {
+    err.textContent = 'No se pudo entrar: revisa correo y contrasena.';
+  });
+};
+
+window.cerrarSesion = function () { signOut(auth); };
+
+onAuthStateChanged(auth, (user) => {
+  const login = document.getElementById('caja-login');
+  const panel = document.getElementById('panel-admin');
+  const barra = document.getElementById('barra-usuario');
+  if (user) {
+    login.classList.add('hidden');
+    panel.classList.remove('hidden');
+    barra.classList.remove('hidden');
+    document.getElementById('texto-usuario').textContent = user.email;
+    escucharDatos();
+  } else {
+    login.classList.remove('hidden');
+    panel.classList.add('hidden');
+    barra.classList.add('hidden');
+  }
+});
+
+function escucharDatos() {
+  onValue(ref(dbRef, 'empleados'), (snap) => {
+    empleados = snap.val() || {};
+    pintarEmpleados();
+  });
+  onValue(ref(dbRef, 'equipos'), (snap) => {
+    equipos = snap.val() || {};
+    pintarEquipos();
+  });
+}
+
+// --- tabs --------------------------------------------------------------
+window.mostrarTab = function (nombre) {
+  document.getElementById('vista-empleados').classList.toggle('hidden', nombre !== 'empleados');
+  document.getElementById('vista-equipos').classList.toggle('hidden', nombre !== 'equipos');
+  document.getElementById('tab-empleados').classList.toggle('active', nombre === 'empleados');
+  document.getElementById('tab-equipos').classList.toggle('active', nombre === 'equipos');
+};
+
+// --- empleados -----------------------------------------------------------
+window.pintarEmpleados = function () {
+  const q = (document.getElementById('buscar-empleados').value || '').trim().toLowerCase();
+  const tbody = document.getElementById('tbody-empleados');
+  tbody.innerHTML = '';
+  const entradas = Object.entries(empleados).sort((a, b) => (a[1].nombre || '').localeCompare(b[1].nombre || ''));
+  let visibles = 0;
+  entradas.forEach(([key, e]) => {
+    const texto = [e.nombre, e.correo, e.departamento, e.ciudad, e.telefono].join(' ').toLowerCase();
+    if (q && texto.indexOf(q) === -1) return;
+    visibles++;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${e.nombre || '-'}</td>
+      <td>${e.correo || '-'}</td>
+      <td>${e.cargo || '-'}</td>
+      <td>${e.departamento || '-'}</td>
+      <td>${e.ciudad || '-'}</td>
+      <td>${e.lugar_trabajo || '-'}</td>
+      <td>${e.tipo_vpn || '-'}</td>
+      <td><span class="badge ${e.activo ? 'badge-on' : 'badge-off'}">${e.activo ? 'Activo' : 'Inactivo'}</span></td>
+      <td><button onclick="abrirModalEmpleado('${key}')">Editar</button></td>
+    `;
+    tbody.appendChild(tr);
+  });
+  document.getElementById('empleados-vacio').classList.toggle('hidden', visibles > 0);
+};
+
+window.abrirModalEmpleado = function (key) {
+  const modal = document.getElementById('modal-empleado');
+  document.getElementById('btn-borrar-empleado').classList.toggle('hidden', !key);
+  document.getElementById('emp-key').value = key || '';
+  const e = key ? (empleados[key] || {}) : {};
+  document.getElementById('modal-empleado-titulo').textContent = key ? 'Editar empleado' : 'Agregar empleado';
+  document.getElementById('emp-nombre').value = e.nombre || '';
+  document.getElementById('emp-correo').value = e.correo || '';
+  document.getElementById('emp-cargo').value = e.cargo || '';
+  document.getElementById('emp-telefono').value = e.telefono || '';
+  document.getElementById('emp-departamento').value = e.departamento || '';
+  document.getElementById('emp-ciudad').value = e.ciudad || '';
+  document.getElementById('emp-lugar').value = e.lugar_trabajo || 'Presencial';
+  document.getElementById('emp-vpn').value = e.tipo_vpn || '';
+  document.getElementById('emp-activo').value = e.activo === false || e.activo === 0 ? '0' : '1';
+  modal.classList.remove('hidden');
+};
+
+window.cerrarModalEmpleado = function () { document.getElementById('modal-empleado').classList.add('hidden'); };
+
+window.guardarEmpleado = function () {
+  const nombre = document.getElementById('emp-nombre').value.trim();
+  if (!nombre) { alert('El nombre es obligatorio.'); return; }
+  const key = document.getElementById('emp-key').value;
+  const datos = {
+    nombre,
+    correo: document.getElementById('emp-correo').value.trim(),
+    cargo: document.getElementById('emp-cargo').value.trim(),
+    telefono: document.getElementById('emp-telefono').value.trim(),
+    departamento: document.getElementById('emp-departamento').value.trim(),
+    ciudad: document.getElementById('emp-ciudad').value.trim(),
+    lugar_trabajo: document.getElementById('emp-lugar').value,
+    tipo_vpn: document.getElementById('emp-vpn').value.trim(),
+    activo: document.getElementById('emp-activo').value === '1',
+  };
+  if (key) {
+    update(ref(dbRef, 'empleados/' + key), datos);
+  } else {
+    push(ref(dbRef, 'empleados'), datos);
+  }
+  cerrarModalEmpleado();
+};
+
+window.borrarEmpleado = function () {
+  const key = document.getElementById('emp-key').value;
+  if (!key) return;
+  if (!confirm('Eliminar este empleado de la nube? Esto no borra nada en el sistema local.')) return;
+  remove(ref(dbRef, 'empleados/' + key));
+  cerrarModalEmpleado();
+};
+
+// --- equipos -------------------------------------------------------------
+window.pintarEquipos = function () {
+  const q = (document.getElementById('buscar-equipos').value || '').trim().toLowerCase();
+  const tbody = document.getElementById('tbody-equipos');
+  tbody.innerHTML = '';
+  const entradas = Object.entries(equipos).sort((a, b) => (a[1].hostname || '').localeCompare(b[1].hostname || ''));
+  let visibles = 0;
+  entradas.forEach(([key, e]) => {
+    const texto = [e.hostname, e.ip, e.marca, e.modelo, e.responsable, e.ciudad].join(' ').toLowerCase();
+    if (q && texto.indexOf(q) === -1) return;
+    visibles++;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${e.hostname || '-'}</td>
+      <td>${e.ip || '-'}</td>
+      <td>${(e.marca || '-')} ${e.modelo || ''}</td>
+      <td>${e.responsable || '-'}</td>
+      <td>${e.ciudad || '-'}</td>
+      <td>${e.os || '-'}</td>
+      <td><button onclick="abrirModalEquipo('${key}')">Editar</button></td>
+    `;
+    tbody.appendChild(tr);
+  });
+  document.getElementById('equipos-vacio').classList.toggle('hidden', visibles > 0);
+};
+
+window.abrirModalEquipo = function (key) {
+  const modal = document.getElementById('modal-equipo');
+  document.getElementById('btn-borrar-equipo').classList.toggle('hidden', !key);
+  document.getElementById('eq-key').value = key || '';
+  const e = key ? (equipos[key] || {}) : {};
+  document.getElementById('modal-equipo-titulo').textContent = key ? 'Editar equipo' : 'Agregar equipo';
+  document.getElementById('eq-hostname').value = e.hostname || '';
+  document.getElementById('eq-ip').value = e.ip || '';
+  document.getElementById('eq-marca').value = e.marca || '';
+  document.getElementById('eq-modelo').value = e.modelo || '';
+  document.getElementById('eq-serie').value = e.numero_serie || '';
+  document.getElementById('eq-responsable').value = e.responsable || '';
+  document.getElementById('eq-ciudad').value = e.ciudad || '';
+  document.getElementById('eq-os').value = e.os || '';
+  document.getElementById('eq-office').value = e.office || '';
+  document.getElementById('eq-antivirus').value = e.antivirus || '';
+  document.getElementById('eq-notas').value = e.notas || '';
+  modal.classList.remove('hidden');
+};
+
+window.cerrarModalEquipo = function () { document.getElementById('modal-equipo').classList.add('hidden'); };
+
+window.guardarEquipo = function () {
+  const hostname = document.getElementById('eq-hostname').value.trim();
+  const ip = document.getElementById('eq-ip').value.trim();
+  if (!hostname && !ip) { alert('Ingresa al menos hostname o IP.'); return; }
+  const key = document.getElementById('eq-key').value;
+  const datos = {
+    hostname, ip,
+    marca: document.getElementById('eq-marca').value.trim(),
+    modelo: document.getElementById('eq-modelo').value.trim(),
+    numero_serie: document.getElementById('eq-serie').value.trim(),
+    responsable: document.getElementById('eq-responsable').value.trim(),
+    ciudad: document.getElementById('eq-ciudad').value.trim(),
+    os: document.getElementById('eq-os').value.trim(),
+    office: document.getElementById('eq-office').value.trim(),
+    antivirus: document.getElementById('eq-antivirus').value.trim(),
+    notas: document.getElementById('eq-notas').value.trim(),
+  };
+  if (key) {
+    update(ref(dbRef, 'equipos/' + key), datos);
+  } else {
+    push(ref(dbRef, 'equipos'), datos);
+  }
+  cerrarModalEquipo();
+};
+
+window.borrarEquipo = function () {
+  const key = document.getElementById('eq-key').value;
+  if (!key) return;
+  if (!confirm('Eliminar este equipo de la nube? Esto no borra nada en el sistema local.')) return;
+  remove(ref(dbRef, 'equipos/' + key));
+  cerrarModalEquipo();
+};
+</script>
+
+</body>
+</html>

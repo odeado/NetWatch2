@@ -1,0 +1,39 @@
+{
+  "default_subnet": "172.30.100.0/24",
+  "subnets": [
+    { "cidr": "172.30.100.0/24", "label": "Antofagasta Rendic (principal)" },
+    { "cidr": "172.30.101.0/24", "label": "Antofagasta Rendic (secundaria)" },
+    { "cidr": "172.30.102.0/24", "label": "Antofagasta Matta" },
+    { "cidr": "172.30.110.0/24", "label": "Arica" },
+    { "cidr": "172.30.112.0/24", "label": "Iquique" }
+  ],
+  "ports": [
+    { "port": 3389, "label": "RDP" },
+    { "port": 445,  "label": "SMB" },
+    { "port": 135,  "label": "RPC" },
+    { "port": 139,  "label": "NetBIOS" },
+    { "port": 5985, "label": "WinRM-HTTP" },
+    { "port": 5986, "label": "WinRM-HTTPS" }
+  ],
+  "ping": {
+    "timeout_ms": 800,
+    "retries": 1
+  },
+  "port_scan": {
+    "timeout_sec": 0.6
+  },
+  "concurrency": {
+    "max_workers": 64
+  },
+  "monitor": {
+    "interval_seconds": 60,
+    "offline_after_misses": 2
+  },
+  "alertas": {
+    "habilitado": false,
+    "umbral_offline_min": 15,
+    "whatsapp_token": "",
+    "whatsapp_phone_number_id": "",
+    "destinatarios": []
+  }
+}

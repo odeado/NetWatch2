@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Win NetWatch RMM - Disponibilidad</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<header>
+  <p class="back"><a href="{{ url_for('index') }}">&larr; Volver al inventario</a></p>
+  <h1>Disponibilidad</h1>
+  <p class="subtitle">Los equipos que mas se han caido en los ultimos {{ dias }} dias &mdash; para pillar al que falla seguido, no solo al que esta caido ahora.</p>
+</header>
+
+<nav class="filters">
+  <a href="{{ url_for('disponibilidad', dias=7) }}" class="{{ 'active' if dias == 7 else '' }}">Ultimos 7 dias</a>
+  <a href="{{ url_for('disponibilidad', dias=30) }}" class="{{ 'active' if dias == 30 else '' }}">Ultimos 30 dias</a>
+  <a href="{{ url_for('disponibilidad', dias=90) }}" class="{{ 'active' if dias == 90 else '' }}">Ultimos 90 dias</a>
+</nav>
+
+{% if not ranking %}
+  <p class="empty">Ningun equipo tuvo caidas registradas en este periodo &mdash; buena noticia, o todavia no hay suficiente historial acumulado.</p>
+{% else %}
+<div class="table-scroll">
+<table>
+  <thead>
+    <tr>
+      <th>Disponibilidad</th>
+      <th>Equipo</th>
+      <th>IP</th>
+      <th>Ubicacion</th>
+      <th>Caidas</th>
+      <th>Estado actual</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in ranking %}
+    <tr>
+      <td>
+        <div class="disp-barra-wrap">
+          <div class="disp-barra {{ 'disp-mal' if r.pct_online < 90 else ('disp-alerta' if r.pct_online < 98 else 'disp-bien') }}" style="width:{{ r.pct_online }}%"></div>
+        </div>
+        <span class="disp-pct">{{ r.pct_online }}%</span>
+      </td>
+      <td><a href="{{ url_for('ficha', equipo_id=r.id) }}" class="ip-link">{{ r.responsable or r.hostname or r.ip }}</a></td>
+      <td class="muted">{{ r.ip }}</td>
+      <td>{{ ([r.sucursal, r.ciudad] | select | join(' / ')) or '-' }}</td>
+      <td>{{ r.caidas }}</td>
+      <td>
+        <span class="tag {{ 'tag-confirmado' if r.en_linea else 'tag-descartado' }}"><span class="dot {{ 'dot-on' if r.en_linea else 'dot-off' }}"></span> {{ 'Online' if r.en_linea else 'Offline' }}</span>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+
+</body>
+</html>

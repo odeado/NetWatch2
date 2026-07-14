@@ -1,0 +1,22 @@
+# Base de datos y datos en runtime (contienen datos de empleados: nombres, correos, telefonos, fotos)
+webapp/netwatch.db
+webapp/netwatch.db-journal
+webapp/static/uploads/
+
+# Archivos de importacion con datos personales/de la empresa
+*.xlsx
+*.xls
+scanner/results/
+
+# Credenciales de Firebase (email/password del usuario de Auth) -- nunca a git
+webapp/firebase_config.json
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Sistema
+.DS_Store
+Thumbs.db

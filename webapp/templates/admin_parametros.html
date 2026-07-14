@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Win NetWatch RMM - Parametros y Red</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<header>
+  <p class="back"><a href="{{ url_for('index') }}">&larr; Volver al inventario</a></p>
+  <div class="header-row">
+    <div>
+      <h1>Administracion</h1>
+      <p class="subtitle">Catalogos compartidos por toda la app: departamentos y ciudades usados en empleados, equipos y dispositivos de red.</p>
+    </div>
+  </div>
+</header>
+
+<nav class="admin-tabs">
+  <a href="{{ url_for('admin') }}" class="{{ 'active' if active_tab == 'empleados' else '' }}">Gestion de Empleados</a>
+  <a href="{{ url_for('admin_equipos') }}" class="{{ 'active' if active_tab == 'equipos' else '' }}">Inventario de Equipos</a>
+  <a href="{{ url_for('admin_parametros') }}" class="{{ 'active' if active_tab == 'parametros' else '' }}">Parametros y Red</a>
+  <a href="{{ url_for('topologia') }}" class="{{ 'active' if active_tab == 'infraestructura' else '' }}">Infraestructura (Switches/Monitores)</a>
+</nav>
+
+<div class="catalogos-grid">
+  <div class="catalogo-col">
+    <h3>Departamentos</h3>
+    <ul class="catalogo-list">
+      {% for d in departamentos %}
+      <li>
+        <span>{{ d.nombre }}</span>
+        <form method="post" action="{{ url_for('eliminar_departamento', departamento_id=d.id) }}">
+          <button type="submit" class="btn btn-discard" onclick="return confirm('Eliminar departamento {{ d.nombre }}?')">Eliminar</button>
+        </form>
+      </li>
+      {% else %}
+      <li class="muted">Sin departamentos cargados</li>
+      {% endfor %}
+    </ul>
+    <form method="post" action="{{ url_for('crear_departamento') }}" class="catalogo-add-form">
+      <input type="text" name="nombre" placeholder="Ej: Sistemas / TI" required>
+      <button type="submit" class="btn btn-primary">Agregar</button>
+    </form>
+  </div>
+  <div class="catalogo-col">
+    <h3>Ciudades</h3>
+    <ul class="catalogo-list">
+      {% for c in ciudades %}
+      <li>
+        <span>{{ c.nombre }}</span>
+        <form method="post" action="{{ url_for('eliminar_ciudad', ciudad_id=c.id) }}">
+          <button type="submit" class="btn btn-discard" onclick="return confirm('Eliminar ciudad {{ c.nombre }}?')">Eliminar</button>
+        </form>
+      </li>
+      {% else %}
+      <li class="muted">Sin ciudades cargadas</li>
+      {% endfor %}
+    </ul>
+    <form method="post" action="{{ url_for('crear_ciudad') }}" class="catalogo-add-form">
+      <input type="text" name="nombre" placeholder="Ej: Calama" required>
+      <button type="submit" class="btn btn-primary">Agregar</button>
+    </form>
+  </div>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Win NetWatch RMM - Inventario de Equipos</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<header>
+  <p class="back"><a href="{{ url_for('index') }}">&larr; Volver al inventario</a></p>
+  <div class="header-row">
+    <div>
+      <h1>Administracion</h1>
+      <p class="subtitle">Alta y mantenimiento del inventario de equipos: importar escaneos, agregar equipos manualmente, editar fichas.</p>
+    </div>
+    <a href="{{ url_for('export_equipos_csv') }}" class="tickets-nav-link">Exportar CSV</a>
+    <a href="{{ url_for('export_equipos_excel') }}" class="tickets-nav-link">Exportar Excel (con formato)</a>
+  </div>
+</header>
+
+<nav class="admin-tabs">
+  <a href="{{ url_for('admin') }}" class="{{ 'active' if active_tab == 'empleados' else '' }}">Gestion de Empleados</a>
+  <a href="{{ url_for('admin_equipos') }}" class="{{ 'active' if active_tab == 'equipos' else '' }}">Inventario de Equipos</a>
+  <a href="{{ url_for('admin_parametros') }}" class="{{ 'active' if active_tab == 'parametros' else '' }}">Parametros y Red</a>
+  <a href="{{ url_for('topologia') }}" class="{{ 'active' if active_tab == 'infraestructura' else '' }}">Infraestructura (Switches/Monitores)</a>
+</nav>
+
+{% if resumen_importacion %}
+<div class="import-resumen">
+  <strong>Importacion de inventario completa:</strong>
+  {{ resumen_importacion.creados }} equipo(s) nuevo(s) creado(s),
+  {{ resumen_importacion.actualizados }} completado(s) con datos que faltaban,
+  {{ resumen_importacion.sin_cambios }} sin cambios (ya estaban completos),
+  {{ resumen_importacion.omitidos }} omitido(s) (sin IP) &mdash; de {{ resumen_importacion.total }} filas en el archivo.
+</div>
+{% elif error == 'archivo_requerido' %}
+<div class="import-resumen import-resumen-error">Selecciona un archivo antes de importar.</div>
+{% elif error == 'archivo_sin_filas' %}
+<div class="import-resumen import-resumen-error">No se encontraron filas de datos en ese archivo (revisa que sea la tabla exportada correcta).</div>
+{% endif %}
+
+<section class="toolbar">
+  <form method="post" action="{{ url_for('import_scan') }}" class="import-form">
+    <label for="file">Importar escaneo manual:</label>
+    <select name="file" id="file">
+      {% for f in scan_files %}
+        <option value="{{ f }}">{{ f }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit" class="btn btn-primary">Importar</button>
+  </form>
+  <span class="hint">o deja <code>monitor.py</code> corriendo en una terminal para que esto se llene solo</span>
+</section>
+
+<details class="manual-add">
+  <summary>+ Importar inventario completo (Excel/archivo exportado de otro sistema)</summary>
+  <p class="field-hint">Sube un inventario ya escrito a mano (hostname, marca, responsable, etc). Si la IP ya
+    esta en el sistema, solo completa los campos que esten vacios -- nunca pisa lo que ya tengas cargado.
+    Si la IP no existe, crea el equipo nuevo. Sirve para este archivo y para cualquier otro que traigas a futuro
+    con las mismas columnas (Hostname, IP, MAC, OS, Office, Antivirus, Status, RDP Habilitado, Responsable,
+    Cargo, City, Department, Brand, Model, Serial Number, Location).</p>
+  <form method="post" action="{{ url_for('importar_inventario') }}" enctype="multipart/form-data" class="ticket-form">
+    <label>Archivo <input type="file" name="archivo" accept=".xls,.xlsx,.html,.htm,.csv" required></label>
+    <button type="submit" class="btn btn-primary">Importar inventario</button>
+  </form>
+</details>
+
+<details class="manual-add">
+  <summary>+ Agregar equipo manualmente (ej. notebooks remotos/VPN que no siempre estan en el rango escaneado)</summary>
+  {% if error == 'ip_duplicada' %}
+  <p class="empty small">Ya existe un equipo con esa IP/identificador.</p>
+  {% elif error == 'ip_requerida' %}
+  <p class="empty small">Debes ingresar una IP o identificador unico.</p>
+  {% endif %}
+  <form method="post" action="{{ url_for('crear_equipo_manual') }}" class="ticket-form">
+    <label>IP o identificador <input type="text" name="ip" required placeholder="Ej: 192.168.1.50 o notebook-ventas-01"></label>
+    <label>Hostname <input type="text" name="hostname" placeholder="Ej: NB-Ventas-01"></label>
+    <label>MAC <input type="text" name="mac"></label>
+    <label>Marca <input type="text" name="marca"></label>
+    <label>Modelo <input type="text" name="modelo"></label>
+    <label>Responsable
+      <select name="responsable_id">
+        <option value="">-- Sin asignar --</option>
+        {% for u in usuarios %}
+        <option value="{{ u.id }}">{{ u.nombre }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Sucursal <input type="text" name="sucursal" placeholder="Ej: Remoto / VPN / Antofagasta"></label>
+    <label>Notas <input type="text" name="notas"></label>
+    <button type="submit" class="btn btn-primary">Agregar</button>
+  </form>
+</details>
+
+<div class="admin-toolbar">
+  <input type="text" id="buscador-equipos" class="admin-buscador" placeholder="Buscar por hostname, IP, marca, modelo, responsable o ubicacion...">
+</div>
+
+<div class="import-resumen" id="barra-seleccion" style="display:none; align-items:center; justify-content:space-between; gap:12px;">
+  <span id="contador-seleccion">0 seleccionados</span>
+  <form id="form-eliminar-masivo" method="post" action="{{ url_for('eliminar_equipos_masivo') }}"
+        onsubmit="return confirm('Eliminar ' + document.querySelectorAll('.equipo-check:checked').length + ' equipo(s) del inventario? Esta accion no se puede deshacer.')">
+    <button type="submit" class="btn btn-dark">Eliminar seleccionados</button>
+  </form>
+</div>
+
+{% if not equipos %}
+  <p class="empty">Todavia no hay equipos en el inventario. Importa un escaneo o agrega uno manualmente arriba.</p>
+{% else %}
+<div class="table-scroll">
+<table class="usuarios-table" id="tabla-equipos">
+  <thead>
+    <tr>
+      <th><input type="checkbox" id="check-todos" onclick="netwatchToggleTodos(this)" title="Seleccionar todos"></th>
+      <th>Equipo</th>
+      <th>IP</th>
+      <th>MAC</th>
+      <th>Marca / Modelo</th>
+      <th>Responsable</th>
+      <th>Ubicacion</th>
+      <th>Estado Red</th>
+      <th>Deteccion</th>
+      <th>Agregado</th>
+      <th>Acciones</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for e in equipos %}
+    <tr data-buscar="{{ (e.hostname or '') ~ ' ' ~ e.ip ~ ' ' ~ (e.marca or '') ~ ' ' ~ (e.modelo or '') ~ ' ' ~ (e.responsable or '') ~ ' ' ~ (e.ubicacion or '') | lower }}">
+      <td>
+        <input type="checkbox" class="equipo-check" name="equipo_ids" value="{{ e.id }}"
+               form="form-eliminar-masivo" onchange="netwatchActualizarSeleccion()">
+      </td>
+      <td class="empleado-nombre">{{ e.hostname or '-' }}{% if e.origen == 'manual' %} <span class="tag" style="background:#2a3348;color:var(--blue)">manual</span>{% endif %}</td>
+      <td><a href="{{ url_for('ficha', equipo_id=e.id) }}" class="ip-link">{{ e.ip }}</a></td>
+      <td>{{ e.mac or '-' }}</td>
+      <td>{{ (e.marca or '-') }} {{ e.modelo or '' }}</td>
+      <td>{{ e.responsable or '-' }}</td>
+      <td>{{ e.ubicacion or '-' }}</td>
+      <td>
+        {% if e.origen == 'manual' %}
+        <span class="tag" style="background:#2a3348;color:var(--blue)">Sin monitoreo</span>
+        {% else %}
+        <span class="tag {{ 'tag-confirmado' if e.en_linea else 'tag-descartado' }}"><span class="dot {{ 'dot-on' if e.en_linea else 'dot-off' }}"></span> {{ 'Online' if e.en_linea else 'Offline' }}</span>
+        {% endif %}
+      </td>
+      <td><span class="tag tag-{{ e.estado_deteccion }}">{{ e.estado_deteccion }}</span></td>
+      <td>
+        {% if e.primera_deteccion %}
+          <span class="{{ 'badge badge-confiable' if e.primera_deteccion[:10] == hoy else 'muted' }}">{{ e.primera_deteccion[:10] }}</span>
+        {% else %}
+          <span class="muted">-</span>
+        {% endif %}
+      </td>
+      <td class="actions">
+        <a href="{{ url_for('ficha', equipo_id=e.id) }}" class="btn btn-confirm">Editar</a>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+<p id="equipos-vacio" class="empty" style="display:none; margin-top: 14px;">Ningun equipo coincide con la busqueda.</p>
+{% endif %}
+
+<script>
+document.getElementById('buscador-equipos').addEventListener('input', function (ev) {
+  const q = ev.target.value.trim().toLowerCase();
+  const filas = document.querySelectorAll('#tabla-equipos tbody tr');
+  let visibles = 0;
+  filas.forEach(function (tr) {
+    const coincide = !q || tr.dataset.buscar.indexOf(q) !== -1;
+    tr.style.display = coincide ? '' : 'none';
+    if (coincide) visibles++;
+  });
+  const vacio = document.getElementById('equipos-vacio');
+  if (vacio) vacio.style.display = visibles === 0 ? 'block' : 'none';
+});
+
+// --- seleccion multiple + eliminar en bloque ------------------------------
+function netwatchActualizarSeleccion() {
+  const marcados = document.querySelectorAll('.equipo-check:checked');
+  const barra = document.getElementById('barra-seleccion');
+  const contador = document.getElementById('contador-seleccion');
+  if (!barra || !contador) return;
+  if (marcados.length > 0) {
+    barra.style.display = 'flex';
+    contador.textContent = marcados.length + ' seleccionado' + (marcados.length > 1 ? 's' : '');
+  } else {
+    barra.style.display = 'none';
+  }
+  const checkTodos = document.getElementById('check-todos');
+  const visibles = Array.prototype.filter.call(
+    document.querySelectorAll('.equipo-check'),
+    function (cb) { const fila = cb.closest('tr'); return fila && fila.style.display !== 'none'; }
+  );
+  if (checkTodos) {
+    checkTodos.checked = visibles.length > 0 && visibles.every(function (cb) { return cb.checked; });
+  }
+}
+
+function netwatchToggleTodos(origen) {
+  document.querySelectorAll('.equipo-check').forEach(function (cb) {
+    const fila = cb.closest('tr');
+    if (fila && fila.style.display !== 'none') cb.checked = origen.checked;
+  });
+  netwatchActualizarSeleccion();
+}
+</script>
+
+</body>
+</html>
