@@ -167,6 +167,23 @@
         </label>
       </div>
       <label class="full">Sistemas autorizados <input type="text" id="emp-sistemas" placeholder="Ej: ERP, Correo, Facturacion"></label>
+
+      <div id="emp-equipos-section" style="margin-top:10px; display:none;">
+        <h4 style="margin:0 0 8px; font-size:13px; color:var(--text);">Equipos asignados</h4>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>Equipo</th><th>IP</th><th>Accion</th></tr></thead>
+            <tbody id="emp-equipos-tbody"></tbody>
+          </table>
+        </div>
+        <p class="muted" id="emp-equipos-vacio" style="display:none; font-size:12px;">Sin equipos asignados.</p>
+        <div style="display:flex; gap:8px; margin-top:8px; align-items:center;">
+          <select id="emp-select-equipo" style="flex:1;"></select>
+          <button type="button" class="btn btn-primary btn-sm" onclick="vincularEquipoAEmpleado()">Vincular</button>
+        </div>
+      </div>
+      <p class="muted" id="emp-equipos-hint" style="font-size:12px; margin-top:10px;">Guarda el empleado primero para poder asignarle equipos.</p>
+
       <div class="modal-footer">
         <button class="btn btn-dark" id="btn-borrar-empleado" onclick="borrarEmpleado()" style="display:none;">Eliminar</button>
         <button class="btn btn-ghost" onclick="cerrarModalEmpleado()">Cancelar</button>
@@ -352,6 +369,10 @@ function escucharDatos() {
   onValue(ref(dbRef, 'equipos'), function (snap) {
     equipos = snap.val() || {};
     pintarEquipos();
+    const empKey = document.getElementById('emp-key').value;
+    if (empKey && document.getElementById('modal-empleado').classList.contains('modal-open')) {
+      pintarEquiposAsignadosModal(empKey);
+    }
   });
   onValue(ref(dbRef, 'dispositivos'), function (snap) {
     dispositivos = snap.val() || {};
@@ -441,7 +462,64 @@ window.abrirModalEmpleado = function (key) {
   document.getElementById('emp-activo').value = (e.activo === false || e.activo === 0) ? '0' : '1';
   document.getElementById('emp-vpn-activa').checked = !!e.vpn_activa;
   document.getElementById('emp-sistemas').value = e.sistemas_autorizados || '';
+  document.getElementById('emp-equipos-section').style.display = key ? 'block' : 'none';
+  document.getElementById('emp-equipos-hint').style.display = key ? 'none' : 'block';
+  if (key) pintarEquiposAsignadosModal(key);
   modal.classList.add('modal-open');
+};
+
+window.pintarEquiposAsignadosModal = function (empKey) {
+  const emp = empleados[empKey] || {};
+  const tbody = document.getElementById('emp-equipos-tbody');
+  const vacio = document.getElementById('emp-equipos-vacio');
+  tbody.innerHTML = '';
+  const asignados = Object.entries(equipos).filter(function (par) { return par[1].responsable_id === empKey; });
+  vacio.style.display = asignados.length === 0 ? 'block' : 'none';
+  asignados.forEach(function (par) {
+    const eqKey = par[0], eq = par[1];
+    const tr = document.createElement('tr');
+    tr.innerHTML = ''
+      + '<td>' + escapeHtml(eq.hostname || '-') + '</td>'
+      + '<td>' + escapeHtml(eq.ip || '-') + '</td>'
+      + '<td><button type="button" class="btn btn-discard btn-sm" onclick="desvincularEquipoDeEmpleado(\'' + eqKey + '\')">Desvincular</button></td>';
+    tbody.appendChild(tr);
+  });
+
+  const select = document.getElementById('emp-select-equipo');
+  select.innerHTML = '<option value="">-- Elegir equipo --</option>';
+  Object.entries(equipos).forEach(function (par) {
+    const eqKey = par[0], eq = par[1];
+    if (eq.responsable_id === empKey) return;
+    const opt = document.createElement('option');
+    opt.value = eqKey;
+    let label = (eq.hostname || eq.ip || eqKey);
+    if (eq.responsable_id && empleados[eq.responsable_id]) {
+      label += ' (actualmente: ' + empleados[eq.responsable_id].nombre + ')';
+    }
+    opt.textContent = label;
+    select.appendChild(opt);
+  });
+};
+
+window.vincularEquipoAEmpleado = function () {
+  const empKey = document.getElementById('emp-key').value;
+  const eqKey = document.getElementById('emp-select-equipo').value;
+  if (!empKey || !eqKey) return;
+  const emp = empleados[empKey] || {};
+  update(ref(dbRef, 'equipos/' + eqKey), {
+    responsable_id: empKey,
+    responsable: emp.nombre || '',
+    correo_responsable: emp.correo || '',
+  }).then(function () { pintarEquiposAsignadosModal(empKey); });
+};
+
+window.desvincularEquipoDeEmpleado = function (eqKey) {
+  const empKey = document.getElementById('emp-key').value;
+  update(ref(dbRef, 'equipos/' + eqKey), {
+    responsable_id: null,
+    responsable: '',
+    correo_responsable: '',
+  }).then(function () { pintarEquiposAsignadosModal(empKey); });
 };
 
 window.cerrarModalEmpleado = function () { document.getElementById('modal-empleado').classList.remove('modal-open'); };
