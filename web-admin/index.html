@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Win NetWatch RMM - Administracion remota</title>
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=6">
 </head>
 <body>
 
@@ -167,6 +167,23 @@
         </label>
       </div>
       <label class="full">Sistemas autorizados <input type="text" id="emp-sistemas" placeholder="Ej: ERP, Correo, Facturacion"></label>
+
+      <div id="emp-equipos-section" style="margin-top:10px; display:none;">
+        <h4 style="margin:0 0 8px; font-size:13px; color:var(--text);">Equipos asignados</h4>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>Equipo</th><th>IP</th><th>Accion</th></tr></thead>
+            <tbody id="emp-equipos-tbody"></tbody>
+          </table>
+        </div>
+        <p class="muted" id="emp-equipos-vacio" style="display:none; font-size:12px;">Sin equipos asignados.</p>
+        <div style="display:flex; gap:8px; margin-top:8px; align-items:center;">
+          <select id="emp-select-equipo" style="flex:1;"></select>
+          <button type="button" class="btn btn-primary btn-sm" onclick="vincularEquipoAEmpleado()">Vincular</button>
+        </div>
+      </div>
+      <p class="muted" id="emp-equipos-hint" style="font-size:12px; margin-top:10px;">Guarda el empleado primero para poder asignarle equipos.</p>
+
       <div class="modal-footer">
         <button class="btn btn-dark" id="btn-borrar-empleado" onclick="borrarEmpleado()" style="display:none;">Eliminar</button>
         <button class="btn btn-ghost" onclick="cerrarModalEmpleado()">Cancelar</button>
@@ -192,6 +209,9 @@
         <label>Marca <input type="text" id="eq-marca"></label>
         <label>Modelo <input type="text" id="eq-modelo"></label>
         <label>N&deg; Serie <input type="text" id="eq-serie"></label>
+        <label>Responsable (empleado vinculado)
+          <select id="eq-responsable-emp" onchange="onCambioResponsableEmpleado()"><option value="">-- Sin empleado vinculado --</option></select>
+        </label>
         <label>Responsable (nombre) <input type="text" id="eq-responsable"></label>
         <label>Correo responsable <input type="text" id="eq-correo-responsable"></label>
         <label>Sucursal <input type="text" id="eq-sucursal"></label>
@@ -348,10 +368,17 @@ function escucharDatos() {
   onValue(ref(dbRef, 'empleados'), function (snap) {
     empleados = snap.val() || {};
     pintarEmpleados();
+    if (document.getElementById('modal-equipo').classList.contains('modal-open')) {
+      pintarSelectResponsables();
+    }
   });
   onValue(ref(dbRef, 'equipos'), function (snap) {
     equipos = snap.val() || {};
     pintarEquipos();
+    const empKey = document.getElementById('emp-key').value;
+    if (empKey && document.getElementById('modal-empleado').classList.contains('modal-open')) {
+      pintarEquiposAsignadosModal(empKey);
+    }
   });
   onValue(ref(dbRef, 'dispositivos'), function (snap) {
     dispositivos = snap.val() || {};
@@ -441,7 +468,71 @@ window.abrirModalEmpleado = function (key) {
   document.getElementById('emp-activo').value = (e.activo === false || e.activo === 0) ? '0' : '1';
   document.getElementById('emp-vpn-activa').checked = !!e.vpn_activa;
   document.getElementById('emp-sistemas').value = e.sistemas_autorizados || '';
+  document.getElementById('emp-equipos-section').style.display = key ? 'block' : 'none';
+  document.getElementById('emp-equipos-hint').style.display = key ? 'none' : 'block';
+  if (key) pintarEquiposAsignadosModal(key);
   modal.classList.add('modal-open');
+};
+
+window.pintarEquiposAsignadosModal = function (empKey) {
+  const emp = empleados[empKey] || {};
+  const tbody = document.getElementById('emp-equipos-tbody');
+  const vacio = document.getElementById('emp-equipos-vacio');
+  tbody.innerHTML = '';
+  const asignados = Object.entries(equipos).filter(function (par) {
+    const eq = par[1];
+    if (eq.responsable_id === empKey) return true;
+    if (!eq.responsable_id && eq.responsable && emp.nombre) {
+      return eq.responsable.trim().toLowerCase() === emp.nombre.trim().toLowerCase();
+    }
+    return false;
+  });
+  vacio.style.display = asignados.length === 0 ? 'block' : 'none';
+  asignados.forEach(function (par) {
+    const eqKey = par[0], eq = par[1];
+    const tr = document.createElement('tr');
+    tr.innerHTML = ''
+      + '<td>' + escapeHtml(eq.hostname || '-') + '</td>'
+      + '<td>' + escapeHtml(eq.ip || '-') + '</td>'
+      + '<td><button type="button" class="btn btn-discard btn-sm" onclick="desvincularEquipoDeEmpleado(\'' + eqKey + '\')">Desvincular</button></td>';
+    tbody.appendChild(tr);
+  });
+
+  const select = document.getElementById('emp-select-equipo');
+  select.innerHTML = '<option value="">-- Elegir equipo --</option>';
+  Object.entries(equipos).forEach(function (par) {
+    const eqKey = par[0], eq = par[1];
+    if (eq.responsable_id === empKey) return;
+    const opt = document.createElement('option');
+    opt.value = eqKey;
+    let label = (eq.hostname || eq.ip || eqKey);
+    if (eq.responsable_id && empleados[eq.responsable_id]) {
+      label += ' (actualmente: ' + empleados[eq.responsable_id].nombre + ')';
+    }
+    opt.textContent = label;
+    select.appendChild(opt);
+  });
+};
+
+window.vincularEquipoAEmpleado = function () {
+  const empKey = document.getElementById('emp-key').value;
+  const eqKey = document.getElementById('emp-select-equipo').value;
+  if (!empKey || !eqKey) return;
+  const emp = empleados[empKey] || {};
+  update(ref(dbRef, 'equipos/' + eqKey), {
+    responsable_id: empKey,
+    responsable: emp.nombre || '',
+    correo_responsable: emp.correo || '',
+  }).then(function () { pintarEquiposAsignadosModal(empKey); });
+};
+
+window.desvincularEquipoDeEmpleado = function (eqKey) {
+  const empKey = document.getElementById('emp-key').value;
+  update(ref(dbRef, 'equipos/' + eqKey), {
+    responsable_id: null,
+    responsable: '',
+    correo_responsable: '',
+  }).then(function () { pintarEquiposAsignadosModal(empKey); });
 };
 
 window.cerrarModalEmpleado = function () { document.getElementById('modal-empleado').classList.remove('modal-open'); };
@@ -550,6 +641,15 @@ window.abrirModalEquipo = function (key) {
   document.getElementById('eq-serie').value = e.numero_serie || '';
   document.getElementById('eq-responsable').value = e.responsable || '';
   document.getElementById('eq-correo-responsable').value = e.correo_responsable || '';
+  pintarSelectResponsables();
+  let respId = e.responsable_id || '';
+  if (!respId && e.responsable) {
+    const match = Object.entries(empleados).find(function (par) {
+      return (par[1].nombre || '').trim().toLowerCase() === e.responsable.trim().toLowerCase();
+    });
+    if (match) respId = match[0];
+  }
+  document.getElementById('eq-responsable-emp').value = respId;
   document.getElementById('eq-sucursal').value = e.sucursal || '';
   document.getElementById('eq-ciudad').value = e.ciudad || '';
   document.getElementById('eq-departamento').value = e.departamento || '';
@@ -575,6 +675,28 @@ window.abrirModalEquipo = function (key) {
 
 window.cerrarModalEquipo = function () { document.getElementById('modal-equipo').classList.remove('modal-open'); };
 
+window.pintarSelectResponsables = function () {
+  const select = document.getElementById('eq-responsable-emp');
+  const actual = select.value;
+  select.innerHTML = '<option value="">-- Sin empleado vinculado --</option>';
+  Object.entries(empleados).sort(function (a, b) {
+    return (a[1].nombre || '').localeCompare(b[1].nombre || '');
+  }).forEach(function (par) {
+    const opt = document.createElement('option');
+    opt.value = par[0];
+    opt.textContent = par[1].nombre || '(sin nombre)';
+    select.appendChild(opt);
+  });
+  select.value = actual;
+};
+
+window.onCambioResponsableEmpleado = function () {
+  const empKey = document.getElementById('eq-responsable-emp').value;
+  const emp = empleados[empKey];
+  document.getElementById('eq-responsable').value = emp ? (emp.nombre || '') : '';
+  document.getElementById('eq-correo-responsable').value = emp ? (emp.correo || '') : '';
+};
+
 window.guardarEquipo = function () {
   const hostname = document.getElementById('eq-hostname').value.trim();
   const ip = document.getElementById('eq-ip').value.trim();
@@ -588,6 +710,7 @@ window.guardarEquipo = function () {
     numero_serie: document.getElementById('eq-serie').value.trim(),
     responsable: document.getElementById('eq-responsable').value.trim(),
     correo_responsable: document.getElementById('eq-correo-responsable').value.trim(),
+    responsable_id: document.getElementById('eq-responsable-emp').value || null,
     sucursal: document.getElementById('eq-sucursal').value.trim(),
     ciudad: document.getElementById('eq-ciudad').value.trim(),
     departamento: document.getElementById('eq-departamento').value.trim(),
@@ -712,7 +835,7 @@ window.pintarDispositivos = function () {
           + netwatchCamposDispositivoHtml(key, d) + '</td></tr>'
           + '<tr class="acordeon-panel" id="panel-' + idPuertos + '" style="display:none"><td colspan="8">'
           + '<div class="acordeon-puertos"><p class="modal-subtitle">Elige que equipo esta conectado a cada boca.</p>'
-          + '<div id="puertos-lista-' + key + '" style="display:flex; flex-direction:column; gap:6px;"></div></div>'
+          + '<div id="puertos-lista-' + key + '" class="puertos-grid"></div></div>'
           + '</td></tr>';
       });
     });

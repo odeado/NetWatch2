@@ -222,11 +222,13 @@ header .subtitle { margin: 0 0 20px; color: var(--muted); font-size: 14px; }
 }
 .import-resumen-error { background: rgba(248, 113, 113, 0.1); border-color: var(--red); }
 
-.puerto-fila { display: flex; align-items: center; gap: 8px; }
-.puerto-label { min-width: 60px; font-size: 12px; color: var(--muted); flex-shrink: 0; }
+.puertos-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px 10px; }
+.puerto-fila { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.puerto-label { min-width: 22px; font-size: 12px; color: var(--muted); flex-shrink: 0; }
 .puerto-select {
-  flex: 1; background: #0f1420; color: var(--text); border: 1px solid var(--border);
-  border-radius: 6px; padding: 6px 8px; font-size: 12px; font-family: inherit;
+  flex: 1; min-width: 0; width: 100%; background: #0f1420; color: var(--text); border: 1px solid var(--border);
+  border-radius: 6px; padding: 6px 4px; font-size: 12px; font-family: inherit;
+  text-overflow: ellipsis; overflow: hidden; white-space: nowrap;
 }
 
 @media (max-width: 640px) {
@@ -234,4 +236,32 @@ header .subtitle { margin: 0 0 20px; color: var(--muted); font-size: 14px; }
   .fichas-grid { grid-template-columns: 1fr; }
   .modal-grid { grid-template-columns: 1fr; }
   .header-row { flex-direction: column; align-items: stretch; }
+
+  /* Listas de Empleados y Equipos: solo lo esencial, el resto se ve al tocar "Editar" */
+  .table-scroll table { min-width: 0; width: 100%; }
+  th, td { padding: 8px 6px; font-size: 12.5px; vertical-align: top; }
+  .actions { flex-direction: column; align-items: stretch; }
+
+  #vista-empleados th:nth-child(2), #vista-empleados td:nth-child(2),
+  #vista-empleados th:nth-child(3), #vista-empleados td:nth-child(3),
+  #vista-empleados th:nth-child(4), #vista-empleados td:nth-child(4),
+  #vista-empleados th:nth-child(5), #vista-empleados td:nth-child(5),
+  #vista-empleados th:nth-child(6), #vista-empleados td:nth-child(6) { display: none; }
+
+  #vista-equipos th:nth-child(1), #vista-equipos td:nth-child(1),
+  #vista-equipos th:nth-child(3), #vista-equipos td:nth-child(3),
+  #vista-equipos th:nth-child(4), #vista-equipos td:nth-child(4),
+  #vista-equipos th:nth-child(6), #vista-equipos td:nth-child(6),
+  #vista-equipos th:nth-child(7), #vista-equipos td:nth-child(7) { display: none; }
+
+  #vista-infraestructura th:nth-child(1), #vista-infraestructura td:nth-child(1),
+  #vista-infraestructura th:nth-child(3), #vista-infraestructura td:nth-child(3),
+  #vista-infraestructura th:nth-child(4), #vista-infraestructura td:nth-child(4),
+  #vista-infraestructura th:nth-child(6), #vista-infraestructura td:nth-child(6),
+  #vista-infraestructura th:nth-child(7), #vista-infraestructura td:nth-child(7) { display: none; }
+
+  .empleado-nombre { font-size: 12.5px; }
+  .avatar-thumb { width: 26px; height: 26px; font-size: 11px; }
+  .actions { gap: 4px; }
+  .actions .btn { padding: 5px 8px; font-size: 10.5px; }
 }
