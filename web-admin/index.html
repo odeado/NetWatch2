@@ -209,6 +209,9 @@
         <label>Marca <input type="text" id="eq-marca"></label>
         <label>Modelo <input type="text" id="eq-modelo"></label>
         <label>N&deg; Serie <input type="text" id="eq-serie"></label>
+        <label>Responsable (empleado vinculado)
+          <select id="eq-responsable-emp" onchange="onCambioResponsableEmpleado()"><option value="">-- Sin empleado vinculado --</option></select>
+        </label>
         <label>Responsable (nombre) <input type="text" id="eq-responsable"></label>
         <label>Correo responsable <input type="text" id="eq-correo-responsable"></label>
         <label>Sucursal <input type="text" id="eq-sucursal"></label>
@@ -365,6 +368,9 @@ function escucharDatos() {
   onValue(ref(dbRef, 'empleados'), function (snap) {
     empleados = snap.val() || {};
     pintarEmpleados();
+    if (document.getElementById('modal-equipo').classList.contains('modal-open')) {
+      pintarSelectResponsables();
+    }
   });
   onValue(ref(dbRef, 'equipos'), function (snap) {
     equipos = snap.val() || {};
@@ -473,7 +479,14 @@ window.pintarEquiposAsignadosModal = function (empKey) {
   const tbody = document.getElementById('emp-equipos-tbody');
   const vacio = document.getElementById('emp-equipos-vacio');
   tbody.innerHTML = '';
-  const asignados = Object.entries(equipos).filter(function (par) { return par[1].responsable_id === empKey; });
+  const asignados = Object.entries(equipos).filter(function (par) {
+    const eq = par[1];
+    if (eq.responsable_id === empKey) return true;
+    if (!eq.responsable_id && eq.responsable && emp.nombre) {
+      return eq.responsable.trim().toLowerCase() === emp.nombre.trim().toLowerCase();
+    }
+    return false;
+  });
   vacio.style.display = asignados.length === 0 ? 'block' : 'none';
   asignados.forEach(function (par) {
     const eqKey = par[0], eq = par[1];
@@ -628,6 +641,15 @@ window.abrirModalEquipo = function (key) {
   document.getElementById('eq-serie').value = e.numero_serie || '';
   document.getElementById('eq-responsable').value = e.responsable || '';
   document.getElementById('eq-correo-responsable').value = e.correo_responsable || '';
+  pintarSelectResponsables();
+  let respId = e.responsable_id || '';
+  if (!respId && e.responsable) {
+    const match = Object.entries(empleados).find(function (par) {
+      return (par[1].nombre || '').trim().toLowerCase() === e.responsable.trim().toLowerCase();
+    });
+    if (match) respId = match[0];
+  }
+  document.getElementById('eq-responsable-emp').value = respId;
   document.getElementById('eq-sucursal').value = e.sucursal || '';
   document.getElementById('eq-ciudad').value = e.ciudad || '';
   document.getElementById('eq-departamento').value = e.departamento || '';
@@ -653,6 +675,28 @@ window.abrirModalEquipo = function (key) {
 
 window.cerrarModalEquipo = function () { document.getElementById('modal-equipo').classList.remove('modal-open'); };
 
+window.pintarSelectResponsables = function () {
+  const select = document.getElementById('eq-responsable-emp');
+  const actual = select.value;
+  select.innerHTML = '<option value="">-- Sin empleado vinculado --</option>';
+  Object.entries(empleados).sort(function (a, b) {
+    return (a[1].nombre || '').localeCompare(b[1].nombre || '');
+  }).forEach(function (par) {
+    const opt = document.createElement('option');
+    opt.value = par[0];
+    opt.textContent = par[1].nombre || '(sin nombre)';
+    select.appendChild(opt);
+  });
+  select.value = actual;
+};
+
+window.onCambioResponsableEmpleado = function () {
+  const empKey = document.getElementById('eq-responsable-emp').value;
+  const emp = empleados[empKey];
+  document.getElementById('eq-responsable').value = emp ? (emp.nombre || '') : '';
+  document.getElementById('eq-correo-responsable').value = emp ? (emp.correo || '') : '';
+};
+
 window.guardarEquipo = function () {
   const hostname = document.getElementById('eq-hostname').value.trim();
   const ip = document.getElementById('eq-ip').value.trim();
@@ -666,6 +710,7 @@ window.guardarEquipo = function () {
     numero_serie: document.getElementById('eq-serie').value.trim(),
     responsable: document.getElementById('eq-responsable').value.trim(),
     correo_responsable: document.getElementById('eq-correo-responsable').value.trim(),
+    responsable_id: document.getElementById('eq-responsable-emp').value || null,
     sucursal: document.getElementById('eq-sucursal').value.trim(),
     ciudad: document.getElementById('eq-ciudad').value.trim(),
     departamento: document.getElementById('eq-departamento').value.trim(),
