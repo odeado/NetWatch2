@@ -254,11 +254,16 @@ header .subtitle { margin: 0 0 20px; color: var(--muted); font-size: 14px; }
   #vista-equipos th:nth-child(6), #vista-equipos td:nth-child(6),
   #vista-equipos th:nth-child(7), #vista-equipos td:nth-child(7) { display: none; }
 
-  #vista-infraestructura th:nth-child(1), #vista-infraestructura td:nth-child(1),
-  #vista-infraestructura th:nth-child(3), #vista-infraestructura td:nth-child(3),
-  #vista-infraestructura th:nth-child(4), #vista-infraestructura td:nth-child(4),
-  #vista-infraestructura th:nth-child(6), #vista-infraestructura td:nth-child(6),
-  #vista-infraestructura th:nth-child(7), #vista-infraestructura td:nth-child(7) { display: none; }
+  #vista-infraestructura tr:not(.acordeon-panel):not(.banner-fila) td:nth-child(1),
+  #vista-infraestructura th:nth-child(1),
+  #vista-infraestructura tr:not(.acordeon-panel):not(.banner-fila) td:nth-child(3),
+  #vista-infraestructura th:nth-child(3),
+  #vista-infraestructura tr:not(.acordeon-panel):not(.banner-fila) td:nth-child(4),
+  #vista-infraestructura th:nth-child(4),
+  #vista-infraestructura tr:not(.acordeon-panel):not(.banner-fila) td:nth-child(6),
+  #vista-infraestructura th:nth-child(6),
+  #vista-infraestructura tr:not(.acordeon-panel):not(.banner-fila) td:nth-child(7),
+  #vista-infraestructura th:nth-child(7) { display: none; }
 
   .empleado-nombre { font-size: 12.5px; }
   .avatar-thumb { width: 26px; height: 26px; font-size: 11px; }
