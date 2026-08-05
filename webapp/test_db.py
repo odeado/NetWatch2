@@ -105,12 +105,15 @@ class TestApplyScanResultsOfflineAfterMisses(unittest.TestCase):
     def setUp(self):
         fd, self._tmp_path = tempfile.mkstemp(suffix=".db")
         os.close(fd)
-        self._db_path_original = db.DB_PATH
-        db.DB_PATH = self._tmp_path
+        # DB_PATH vive en db._core (db.py se desglosao en un paquete) --
+        # get_connection() lee la copia de _core, no la de db/__init__, asi
+        # que hay que pisar esa.
+        self._db_path_original = db._core.DB_PATH
+        db._core.DB_PATH = self._tmp_path
         db.init_db()
 
     def tearDown(self):
-        db.DB_PATH = self._db_path_original
+        db._core.DB_PATH = self._db_path_original
         os.remove(self._tmp_path)
 
     @staticmethod
