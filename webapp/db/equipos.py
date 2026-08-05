@@ -10,7 +10,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-from ._core import _marca_sync, get_connection
+from ._core import _marca_sync, conexion
 from .usuarios import get_usuario
 
 FICHA_FIELDS = [
@@ -62,102 +62,102 @@ def apply_scan_results(subred, results, source="monitor", offline_after_misses=2
     fallos_consecutivos pero no se dispara el evento/toast de offline).
     """
     now = datetime.now().isoformat()
-    conn = get_connection()
     eventos = []
 
-    for h in results:
-        ip = h["ip"]
-        alive = bool(h.get("alive"))
-        existing = conn.execute(
-            "SELECT id, en_linea, fallos_consecutivos FROM equipos WHERE ip = ?", (ip,)
-        ).fetchone()
+    with conexion() as conn:
+        for h in results:
+            ip = h["ip"]
+            alive = bool(h.get("alive"))
+            existing = conn.execute(
+                "SELECT id, en_linea, fallos_consecutivos FROM equipos WHERE ip = ?", (ip,)
+            ).fetchone()
 
-        if existing:
-            eq_id = existing["id"]
-            was_online = bool(existing["en_linea"])
+            if existing:
+                eq_id = existing["id"]
+                was_online = bool(existing["en_linea"])
 
-            if alive:
-                open_ports_json = json.dumps(h.get("open_ports", []))
-                conn.execute(
-                    """
-                    UPDATE equipos
-                       SET hostname = COALESCE(?, hostname),
-                           mac = COALESCE(?, mac),
-                           subred = ?,
-                           open_ports = ?,
-                           confidence_score = ?,
-                           confidence_label = ?,
-                           metodo_deteccion = ?,
-                           ultima_deteccion = ?,
-                           ultimo_scan_file = ?,
-                           en_linea = 1,
-                           fallos_consecutivos = 0,
-                           alerta_offline_enviada = 0,
-                           desde = CASE WHEN en_linea = 0 THEN ? ELSE desde END
-                     WHERE id = ?
-                    """,
-                    (
-                        h.get("hostname"), h.get("mac"), subred, open_ports_json,
-                        h.get("confidence_score"), h.get("confidence_label"), h.get("metodo_deteccion"),
-                        now, source, now, eq_id,
-                    ),
-                )
-                if not was_online:
-                    eventos.append({"equipo_id": eq_id, "ip": ip, "hostname": h.get("hostname"), "tipo": "online", "ts": now})
-            else:
-                fallos = (existing["fallos_consecutivos"] or 0) + 1
-                if was_online and fallos < offline_after_misses:
-                    # todavia no llega al umbral: se cuenta el fallo pero se mantiene online
-                    conn.execute(
-                        "UPDATE equipos SET fallos_consecutivos = ? WHERE id = ?",
-                        (fallos, eq_id),
-                    )
-                else:
+                if alive:
+                    open_ports_json = json.dumps(h.get("open_ports", []))
                     conn.execute(
                         """
                         UPDATE equipos
-                           SET en_linea = 0,
-                               fallos_consecutivos = ?,
-                               desde = CASE WHEN en_linea = 1 THEN ? ELSE desde END
+                           SET hostname = COALESCE(?, hostname),
+                               mac = COALESCE(?, mac),
+                               subred = ?,
+                               open_ports = ?,
+                               confidence_score = ?,
+                               confidence_label = ?,
+                               metodo_deteccion = ?,
+                               ultima_deteccion = ?,
+                               ultimo_scan_file = ?,
+                               en_linea = 1,
+                               fallos_consecutivos = 0,
+                               alerta_offline_enviada = 0,
+                               desde = CASE WHEN en_linea = 0 THEN ? ELSE desde END
                          WHERE id = ?
                         """,
-                        (fallos, now, eq_id),
+                        (
+                            h.get("hostname"), h.get("mac"), subred, open_ports_json,
+                            h.get("confidence_score"), h.get("confidence_label"), h.get("metodo_deteccion"),
+                            now, source, now, eq_id,
+                        ),
                     )
-                    if was_online:
-                        eventos.append({"equipo_id": eq_id, "ip": ip, "hostname": h.get("hostname"), "tipo": "offline", "ts": now})
-        else:
-            if alive:
-                open_ports_json = json.dumps(h.get("open_ports", []))
-                # subred_label viene del "label" de config.json (ej. "Arica",
-                # "Iquique") -- se guarda como ciudad solo al crear el equipo la
-                # primera vez, para que el gauge de resumen muestre un nombre
-                # legible en vez del CIDR crudo. No se pisa en updates
-                # posteriores por si alguien lo corrigio a mano en la ficha.
-                cur = conn.execute(
-                    """
-                    INSERT INTO equipos (
-                        ip, hostname, mac, subred, ciudad, open_ports,
-                        confidence_score, confidence_label, metodo_deteccion, estado_deteccion,
-                        en_linea, desde, primera_deteccion, ultima_deteccion, ultimo_scan_file
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pendiente', 1, ?, ?, ?, ?)
-                    """,
-                    (
-                        ip, h.get("hostname"), h.get("mac"), subred, subred_label, open_ports_json,
-                        h.get("confidence_score"), h.get("confidence_label"), h.get("metodo_deteccion"),
-                        now, now, now, source,
-                    ),
-                )
-                eventos.append({"equipo_id": cur.lastrowid, "ip": ip, "hostname": h.get("hostname"), "tipo": "nuevo", "ts": now})
-            # si nunca lo hemos visto y sigue sin responder, no se guarda nada
+                    if not was_online:
+                        eventos.append({"equipo_id": eq_id, "ip": ip, "hostname": h.get("hostname"), "tipo": "online", "ts": now})
+                else:
+                    fallos = (existing["fallos_consecutivos"] or 0) + 1
+                    if was_online and fallos < offline_after_misses:
+                        # todavia no llega al umbral: se cuenta el fallo pero se mantiene online
+                        conn.execute(
+                            "UPDATE equipos SET fallos_consecutivos = ? WHERE id = ?",
+                            (fallos, eq_id),
+                        )
+                    else:
+                        conn.execute(
+                            """
+                            UPDATE equipos
+                               SET en_linea = 0,
+                                   fallos_consecutivos = ?,
+                                   desde = CASE WHEN en_linea = 1 THEN ? ELSE desde END
+                             WHERE id = ?
+                            """,
+                            (fallos, now, eq_id),
+                        )
+                        if was_online:
+                            eventos.append({"equipo_id": eq_id, "ip": ip, "hostname": h.get("hostname"), "tipo": "offline", "ts": now})
+            else:
+                if alive:
+                    open_ports_json = json.dumps(h.get("open_ports", []))
+                    # subred_label viene del "label" de config.json (ej. "Arica",
+                    # "Iquique") -- se guarda como ciudad solo al crear el equipo la
+                    # primera vez, para que el gauge de resumen muestre un nombre
+                    # legible en vez del CIDR crudo. No se pisa en updates
+                    # posteriores por si alguien lo corrigio a mano en la ficha.
+                    cur = conn.execute(
+                        """
+                        INSERT INTO equipos (
+                            ip, hostname, mac, subred, ciudad, open_ports,
+                            confidence_score, confidence_label, metodo_deteccion, estado_deteccion,
+                            en_linea, desde, primera_deteccion, ultima_deteccion, ultimo_scan_file
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pendiente', 1, ?, ?, ?, ?)
+                        """,
+                        (
+                            ip, h.get("hostname"), h.get("mac"), subred, subred_label, open_ports_json,
+                            h.get("confidence_score"), h.get("confidence_label"), h.get("metodo_deteccion"),
+                            now, now, now, source,
+                        ),
+                    )
+                    eventos.append({"equipo_id": cur.lastrowid, "ip": ip, "hostname": h.get("hostname"), "tipo": "nuevo", "ts": now})
+                # si nunca lo hemos visto y sigue sin responder, no se guarda nada
 
-    for ev in eventos:
-        conn.execute(
-            "INSERT INTO eventos (equipo_id, ip, hostname, tipo, ts) VALUES (?, ?, ?, ?, ?)",
-            (ev["equipo_id"], ev["ip"], ev["hostname"], ev["tipo"], ev["ts"]),
-        )
+        for ev in eventos:
+            conn.execute(
+                "INSERT INTO eventos (equipo_id, ip, hostname, tipo, ts) VALUES (?, ?, ?, ?, ?)",
+                (ev["equipo_id"], ev["ip"], ev["hostname"], ev["tipo"], ev["ts"]),
+            )
 
-    conn.commit()
-    conn.close()
+        conn.commit()
+
     return eventos
 
 
@@ -195,77 +195,75 @@ def aplicar_reporte_agente(data):
         "antivirus": limpio(data.get("antivirus")),
     }
 
-    conn = get_connection()
-    existing = conn.execute(
-        "SELECT id, en_linea FROM equipos WHERE ip = ?", (ip,)
-    ).fetchone()
+    with conexion() as conn:
+        existing = conn.execute(
+            "SELECT id, en_linea FROM equipos WHERE ip = ?", (ip,)
+        ).fetchone()
 
-    if existing:
-        eq_id = existing["id"]
-        was_online = bool(existing["en_linea"])
-        conn.execute(
+        if existing:
+            eq_id = existing["id"]
+            was_online = bool(existing["en_linea"])
+            conn.execute(
+                """
+                UPDATE equipos
+                   SET hostname = COALESCE(?, hostname),
+                       mac = COALESCE(?, mac),
+                       os = COALESCE(?, os),
+                       marca = COALESCE(?, marca),
+                       modelo = COALESCE(?, modelo),
+                       numero_serie = COALESCE(?, numero_serie),
+                       cpu = COALESCE(?, cpu),
+                       ram = COALESCE(?, ram),
+                       almacenamiento = COALESCE(?, almacenamiento),
+                       gpu = COALESCE(?, gpu),
+                       placa_madre = COALESCE(?, placa_madre),
+                       office = COALESCE(?, office),
+                       antivirus = COALESCE(?, antivirus),
+                       metodo_deteccion = 'agente',
+                       ultima_deteccion = ?,
+                       en_linea = 1,
+                       fallos_consecutivos = 0,
+                       desde = CASE WHEN en_linea = 0 THEN ? ELSE desde END,
+                       actualizado_en = ?
+                 WHERE id = ?
+                """,
+                (
+                    campos["hostname"], campos["mac"], campos["os"], campos["marca"], campos["modelo"],
+                    campos["numero_serie"], campos["cpu"], campos["ram"], campos["almacenamiento"],
+                    campos["gpu"], campos["placa_madre"], campos["office"], campos["antivirus"],
+                    now, now, marca_ts, eq_id,
+                ),
+            )
+            if not was_online:
+                conn.execute(
+                    "INSERT INTO eventos (equipo_id, ip, hostname, tipo, ts) VALUES (?, ?, ?, 'online', ?)",
+                    (eq_id, ip, campos["hostname"], now),
+                )
+            conn.commit()
+            return eq_id, False
+
+        cur = conn.execute(
             """
-            UPDATE equipos
-               SET hostname = COALESCE(?, hostname),
-                   mac = COALESCE(?, mac),
-                   os = COALESCE(?, os),
-                   marca = COALESCE(?, marca),
-                   modelo = COALESCE(?, modelo),
-                   numero_serie = COALESCE(?, numero_serie),
-                   cpu = COALESCE(?, cpu),
-                   ram = COALESCE(?, ram),
-                   almacenamiento = COALESCE(?, almacenamiento),
-                   gpu = COALESCE(?, gpu),
-                   placa_madre = COALESCE(?, placa_madre),
-                   office = COALESCE(?, office),
-                   antivirus = COALESCE(?, antivirus),
-                   metodo_deteccion = 'agente',
-                   ultima_deteccion = ?,
-                   en_linea = 1,
-                   fallos_consecutivos = 0,
-                   desde = CASE WHEN en_linea = 0 THEN ? ELSE desde END,
-                   actualizado_en = ?
-             WHERE id = ?
+            INSERT INTO equipos (
+                ip, hostname, mac, os, marca, modelo, numero_serie, cpu, ram, almacenamiento,
+                gpu, placa_madre, office, antivirus, metodo_deteccion, estado_deteccion,
+                en_linea, desde, primera_deteccion, ultima_deteccion, ultimo_scan_file, actualizado_en
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'agente', 'pendiente', 1, ?, ?, ?, 'agente', ?)
             """,
             (
-                campos["hostname"], campos["mac"], campos["os"], campos["marca"], campos["modelo"],
+                ip, campos["hostname"], campos["mac"], campos["os"], campos["marca"], campos["modelo"],
                 campos["numero_serie"], campos["cpu"], campos["ram"], campos["almacenamiento"],
                 campos["gpu"], campos["placa_madre"], campos["office"], campos["antivirus"],
-                now, now, marca_ts, eq_id,
+                now, now, now, marca_ts,
             ),
         )
-        if not was_online:
-            conn.execute(
-                "INSERT INTO eventos (equipo_id, ip, hostname, tipo, ts) VALUES (?, ?, ?, 'online', ?)",
-                (eq_id, ip, campos["hostname"], now),
-            )
+        eq_id = cur.lastrowid
+        conn.execute(
+            "INSERT INTO eventos (equipo_id, ip, hostname, tipo, ts) VALUES (?, ?, ?, 'nuevo', ?)",
+            (eq_id, ip, campos["hostname"], now),
+        )
         conn.commit()
-        conn.close()
-        return eq_id, False
-
-    cur = conn.execute(
-        """
-        INSERT INTO equipos (
-            ip, hostname, mac, os, marca, modelo, numero_serie, cpu, ram, almacenamiento,
-            gpu, placa_madre, office, antivirus, metodo_deteccion, estado_deteccion,
-            en_linea, desde, primera_deteccion, ultima_deteccion, ultimo_scan_file, actualizado_en
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'agente', 'pendiente', 1, ?, ?, ?, 'agente', ?)
-        """,
-        (
-            ip, campos["hostname"], campos["mac"], campos["os"], campos["marca"], campos["modelo"],
-            campos["numero_serie"], campos["cpu"], campos["ram"], campos["almacenamiento"],
-            campos["gpu"], campos["placa_madre"], campos["office"], campos["antivirus"],
-            now, now, now, marca_ts,
-        ),
-    )
-    eq_id = cur.lastrowid
-    conn.execute(
-        "INSERT INTO eventos (equipo_id, ip, hostname, tipo, ts) VALUES (?, ?, ?, 'nuevo', ?)",
-        (eq_id, ip, campos["hostname"], now),
-    )
-    conn.commit()
-    conn.close()
-    return eq_id, True
+        return eq_id, True
 
 
 def import_scan(scan_path: Path):
@@ -283,48 +281,44 @@ def migrate_legacy_confirmations(confirm_path: Path):
         return 0
     with open(confirm_path, "r", encoding="utf-8") as f:
         data = json.load(f)
-    conn = get_connection()
     count = 0
-    for ip, info in data.items():
-        cur = conn.execute(
-            "UPDATE equipos SET estado_deteccion = ? WHERE ip = ? AND estado_deteccion = 'pendiente'",
-            (info.get("status"), ip),
-        )
-        count += cur.rowcount
-    conn.commit()
-    conn.close()
+    with conexion() as conn:
+        for ip, info in data.items():
+            cur = conn.execute(
+                "UPDATE equipos SET estado_deteccion = ? WHERE ip = ? AND estado_deteccion = 'pendiente'",
+                (info.get("status"), ip),
+            )
+            count += cur.rowcount
+        conn.commit()
     return count
 
 
 def list_equipos(estado=None):
-    conn = get_connection()
-    if estado:
-        rows = conn.execute(
-            "SELECT * FROM equipos WHERE estado_deteccion = ? "
-            "ORDER BY en_linea DESC, confidence_score DESC",
-            (estado,),
-        ).fetchall()
-    else:
-        rows = conn.execute(
-            "SELECT * FROM equipos "
-            "ORDER BY (estado_deteccion = 'pendiente') DESC, en_linea DESC, confidence_score DESC"
-        ).fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
+    with conexion() as conn:
+        if estado:
+            rows = conn.execute(
+                "SELECT * FROM equipos WHERE estado_deteccion = ? "
+                "ORDER BY en_linea DESC, confidence_score DESC",
+                (estado,),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM equipos "
+                "ORDER BY (estado_deteccion = 'pendiente') DESC, en_linea DESC, confidence_score DESC"
+            ).fetchall()
+        return [dict(r) for r in rows]
 
 
 def get_equipo(equipo_id):
-    conn = get_connection()
-    row = conn.execute("SELECT * FROM equipos WHERE id = ?", (equipo_id,)).fetchone()
-    conn.close()
-    return dict(row) if row else None
+    with conexion() as conn:
+        row = conn.execute("SELECT * FROM equipos WHERE id = ?", (equipo_id,)).fetchone()
+        return dict(row) if row else None
 
 
 def update_estado(equipo_id, estado):
-    conn = get_connection()
-    conn.execute("UPDATE equipos SET estado_deteccion = ? WHERE id = ?", (estado, equipo_id))
-    conn.commit()
-    conn.close()
+    with conexion() as conn:
+        conn.execute("UPDATE equipos SET estado_deteccion = ? WHERE id = ?", (estado, equipo_id))
+        conn.commit()
 
 
 def set_critico(equipo_id, valor):
@@ -334,15 +328,13 @@ def set_critico(equipo_id, valor):
     presionar dos veces rapido (ej. con el servidor mas lento por el escaneo
     de varias subredes), ambas peticiones piden el mismo resultado final en
     vez de cancelarse entre si. Devuelve True si el equipo existia."""
-    conn = get_connection()
-    cur = conn.execute(
-        "UPDATE equipos SET critico = ?, actualizado_en = ? WHERE id = ?",
-        (1 if valor else 0, _marca_sync(), equipo_id),
-    )
-    conn.commit()
-    afectado = cur.rowcount > 0
-    conn.close()
-    return afectado
+    with conexion() as conn:
+        cur = conn.execute(
+            "UPDATE equipos SET critico = ?, actualizado_en = ? WHERE id = ?",
+            (1 if valor else 0, _marca_sync(), equipo_id),
+        )
+        conn.commit()
+        return cur.rowcount > 0
 
 
 def update_ficha(equipo_id, fields: dict):
@@ -355,17 +347,15 @@ def update_ficha(equipo_id, fields: dict):
     fields["actualizado_en"] = _marca_sync()
     cols = ", ".join(f"{k} = ?" for k in fields)
     values = list(fields.values()) + [equipo_id]
-    conn = get_connection()
-    conn.execute(f"UPDATE equipos SET {cols} WHERE id = ?", values)
-    conn.commit()
-    conn.close()
+    with conexion() as conn:
+        conn.execute(f"UPDATE equipos SET {cols} WHERE id = ?", values)
+        conn.commit()
 
 
 def get_equipo_by_ip(ip):
-    conn = get_connection()
-    row = conn.execute("SELECT id FROM equipos WHERE ip = ?", (ip,)).fetchone()
-    conn.close()
-    return row["id"] if row else None
+    with conexion() as conn:
+        row = conn.execute("SELECT id FROM equipos WHERE ip = ?", (ip,)).fetchone()
+        return row["id"] if row else None
 
 
 # Campos que el escaneo llena SOLO (nunca a mano) -- al fusionar, se copian del
@@ -388,42 +378,38 @@ def fusionar_equipo_por_ip(equipo_id, ip_nueva):
     si le faltaban; el duplicado se borra, pero primero se le pasan sus
     tickets/rdp_history/eventos (por si tuviera alguno) para no perder nada.
     Devuelve True si fusiono algo, False si no encontro el duplicado."""
-    conn = get_connection()
-    dup_row = conn.execute("SELECT * FROM equipos WHERE ip = ?", (ip_nueva,)).fetchone()
-    if not dup_row:
-        conn.close()
-        return False
-    duplicado = dict(dup_row)
-    dup_id = duplicado["id"]
-    if dup_id == equipo_id:
-        conn.close()
-        return False
+    with conexion() as conn:
+        dup_row = conn.execute("SELECT * FROM equipos WHERE ip = ?", (ip_nueva,)).fetchone()
+        if not dup_row:
+            return False
+        duplicado = dict(dup_row)
+        dup_id = duplicado["id"]
+        if dup_id == equipo_id:
+            return False
 
-    actual_row = conn.execute("SELECT * FROM equipos WHERE id = ?", (equipo_id,)).fetchone()
-    if not actual_row:
-        conn.close()
-        return False
-    actual = dict(actual_row)
+        actual_row = conn.execute("SELECT * FROM equipos WHERE id = ?", (equipo_id,)).fetchone()
+        if not actual_row:
+            return False
+        actual = dict(actual_row)
 
-    updates = {"ip": ip_nueva, "actualizado_en": _marca_sync()}
-    for campo in _CAMPOS_TECNICOS_FUSION:
-        if not actual.get(campo) and duplicado.get(campo):
-            updates[campo] = duplicado[campo]
+        updates = {"ip": ip_nueva, "actualizado_en": _marca_sync()}
+        for campo in _CAMPOS_TECNICOS_FUSION:
+            if not actual.get(campo) and duplicado.get(campo):
+                updates[campo] = duplicado[campo]
 
-    # OJO -- el duplicado hay que borrarlo ANTES de ponerle su IP al equipo
-    # que se conserva: equipos.ip es UNIQUE, asi que mientras el duplicado
-    # siga existiendo con esa IP, el UPDATE de abajo choca contra esa misma
-    # restriccion (visto en pruebas: fallaba con UNIQUE constraint failed).
-    conn.execute("UPDATE eventos SET equipo_id = ? WHERE equipo_id = ?", (equipo_id, dup_id))
-    conn.execute("UPDATE tickets SET equipo_id = ? WHERE equipo_id = ?", (equipo_id, dup_id))
-    conn.execute("UPDATE rdp_history SET equipo_id = ? WHERE equipo_id = ?", (equipo_id, dup_id))
-    conn.execute("DELETE FROM equipos WHERE id = ?", (dup_id,))
+        # OJO -- el duplicado hay que borrarlo ANTES de ponerle su IP al equipo
+        # que se conserva: equipos.ip es UNIQUE, asi que mientras el duplicado
+        # siga existiendo con esa IP, el UPDATE de abajo choca contra esa misma
+        # restriccion (visto en pruebas: fallaba con UNIQUE constraint failed).
+        conn.execute("UPDATE eventos SET equipo_id = ? WHERE equipo_id = ?", (equipo_id, dup_id))
+        conn.execute("UPDATE tickets SET equipo_id = ? WHERE equipo_id = ?", (equipo_id, dup_id))
+        conn.execute("UPDATE rdp_history SET equipo_id = ? WHERE equipo_id = ?", (equipo_id, dup_id))
+        conn.execute("DELETE FROM equipos WHERE id = ?", (dup_id,))
 
-    set_clause = ", ".join(f"{c} = ?" for c in updates)
-    conn.execute(f"UPDATE equipos SET {set_clause} WHERE id = ?", list(updates.values()) + [equipo_id])
-    conn.commit()
-    conn.close()
-    return True
+        set_clause = ", ".join(f"{c} = ?" for c in updates)
+        conn.execute(f"UPDATE equipos SET {set_clause} WHERE id = ?", list(updates.values()) + [equipo_id])
+        conn.commit()
+        return True
 
 
 def create_equipo_manual(ip, hostname=None, mac=None, marca=None, modelo=None, numero_serie=None,
@@ -439,26 +425,25 @@ def create_equipo_manual(ip, hostname=None, mac=None, marca=None, modelo=None, n
         if usuario:
             responsable = usuario["nombre"]
             correo_responsable = usuario["correo"]
-    conn = get_connection()
-    cur = conn.execute(
-        """
-        INSERT INTO equipos (
-            ip, hostname, mac, subred, estado_deteccion, en_linea, desde,
-            primera_deteccion, ultima_deteccion, ultimo_scan_file, origen,
-            marca, modelo, numero_serie, responsable_id, responsable, correo_responsable,
-            sucursal, ciudad, departamento, notas, estado_ciclo_vida
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            ip, hostname, mac, "Manual (fuera de red)", "confirmado", 1, now,
-            now, now, "manual", "manual",
-            marca, modelo, numero_serie, responsable_id, responsable, correo_responsable,
-            sucursal, ciudad, departamento, notas, "activo",
-        ),
-    )
-    conn.commit()
-    conn.close()
-    return cur.lastrowid
+    with conexion() as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO equipos (
+                ip, hostname, mac, subred, estado_deteccion, en_linea, desde,
+                primera_deteccion, ultima_deteccion, ultimo_scan_file, origen,
+                marca, modelo, numero_serie, responsable_id, responsable, correo_responsable,
+                sucursal, ciudad, departamento, notas, estado_ciclo_vida
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                ip, hostname, mac, "Manual (fuera de red)", "confirmado", 1, now,
+                now, now, "manual", "manual",
+                marca, modelo, numero_serie, responsable_id, responsable, correo_responsable,
+                sucursal, ciudad, departamento, notas, "activo",
+            ),
+        )
+        conn.commit()
+        return cur.lastrowid
 
 
 def delete_equipos(equipo_ids):
@@ -471,45 +456,41 @@ def delete_equipos(equipo_ids):
     ids = [int(i) for i in (equipo_ids or [])]
     if not ids:
         return 0
-    conn = get_connection()
-    placeholders = ",".join("?" for _ in ids)
-    conn.execute(f"DELETE FROM eventos WHERE equipo_id IN ({placeholders})", ids)
-    conn.execute(f"DELETE FROM rdp_history WHERE equipo_id IN ({placeholders})", ids)
-    conn.execute(f"DELETE FROM tickets WHERE equipo_id IN ({placeholders})", ids)
-    cur = conn.execute(f"DELETE FROM equipos WHERE id IN ({placeholders})", ids)
-    borrados = cur.rowcount
-    conn.commit()
-    conn.close()
-    return borrados
+    with conexion() as conn:
+        placeholders = ",".join("?" for _ in ids)
+        conn.execute(f"DELETE FROM eventos WHERE equipo_id IN ({placeholders})", ids)
+        conn.execute(f"DELETE FROM rdp_history WHERE equipo_id IN ({placeholders})", ids)
+        conn.execute(f"DELETE FROM tickets WHERE equipo_id IN ({placeholders})", ids)
+        cur = conn.execute(f"DELETE FROM equipos WHERE id IN ({placeholders})", ids)
+        borrados = cur.rowcount
+        conn.commit()
+        return borrados
 
 
 def get_equipos_count_por_responsable():
-    conn = get_connection()
-    rows = conn.execute(
-        "SELECT responsable_id, COUNT(*) AS c FROM equipos WHERE responsable_id IS NOT NULL GROUP BY responsable_id"
-    ).fetchall()
-    conn.close()
-    return {r["responsable_id"]: r["c"] for r in rows}
+    with conexion() as conn:
+        rows = conn.execute(
+            "SELECT responsable_id, COUNT(*) AS c FROM equipos WHERE responsable_id IS NOT NULL GROUP BY responsable_id"
+        ).fetchall()
+        return {r["responsable_id"]: r["c"] for r in rows}
 
 
 def list_equipos_por_responsable(usuario_id):
-    conn = get_connection()
-    rows = conn.execute(
-        "SELECT id, ip, hostname, en_linea, estado_deteccion FROM equipos "
-        "WHERE responsable_id = ? ORDER BY hostname, ip",
-        (usuario_id,),
-    ).fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
+    with conexion() as conn:
+        rows = conn.execute(
+            "SELECT id, ip, hostname, en_linea, estado_deteccion FROM equipos "
+            "WHERE responsable_id = ? ORDER BY hostname, ip",
+            (usuario_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
 
 
 def list_equipos_basico():
-    conn = get_connection()
-    rows = conn.execute(
-        "SELECT id, ip, hostname, responsable_id FROM equipos ORDER BY hostname, ip"
-    ).fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
+    with conexion() as conn:
+        rows = conn.execute(
+            "SELECT id, ip, hostname, responsable_id FROM equipos ORDER BY hostname, ip"
+        ).fetchall()
+        return [dict(r) for r in rows]
 
 
 def set_responsable_equipo(equipo_id, usuario_id):
@@ -521,42 +502,39 @@ def set_responsable_equipo(equipo_id, usuario_id):
         if usuario:
             responsable = usuario["nombre"]
             correo_responsable = usuario["correo"]
-    conn = get_connection()
-    conn.execute(
-        "UPDATE equipos SET responsable_id = ?, responsable = ?, correo_responsable = ?, actualizado_en = ? WHERE id = ?",
-        (usuario_id, responsable, correo_responsable, _marca_sync(), equipo_id),
-    )
-    conn.commit()
-    conn.close()
+    with conexion() as conn:
+        conn.execute(
+            "UPDATE equipos SET responsable_id = ?, responsable = ?, correo_responsable = ?, actualizado_en = ? WHERE id = ?",
+            (usuario_id, responsable, correo_responsable, _marca_sync(), equipo_id),
+        )
+        conn.commit()
 
 
 def list_equipos_export():
     """Todos los equipos con el nombre del dispositivo de red al que estan
     conectados (si tienen), para el export CSV/Excel del inventario."""
-    conn = get_connection()
-    rows = conn.execute(
-        """
-        SELECT e.*, d.nombre AS dispositivo_nombre
-        FROM equipos e
-        LEFT JOIN dispositivos_red d ON d.id = e.dispositivo_id
-        ORDER BY e.ip
-        """
-    ).fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
+    with conexion() as conn:
+        rows = conn.execute(
+            """
+            SELECT e.*, d.nombre AS dispositivo_nombre
+            FROM equipos e
+            LEFT JOIN dispositivos_red d ON d.id = e.dispositivo_id
+            ORDER BY e.ip
+            """
+        ).fetchall()
+        return [dict(r) for r in rows]
 
 
 def list_equipos_por_dispositivo():
     """Devuelve {dispositivo_id: [equipos asignados a ese dispositivo, ordenados por puerto]},
     con los datos necesarios para el panel de detalle del mapa de puertos."""
-    conn = get_connection()
-    rows = conn.execute(
-        "SELECT id, ip, hostname, mac, marca, modelo, numero_serie, sucursal, notas, "
-        "dispositivo_id, puerto, en_linea, responsable, open_ports FROM equipos "
-        "WHERE dispositivo_id IS NOT NULL ORDER BY dispositivo_id, puerto"
-    ).fetchall()
-    conn.close()
-    result = {}
-    for r in rows:
-        result.setdefault(r["dispositivo_id"], []).append(dict(r))
-    return result
+    with conexion() as conn:
+        rows = conn.execute(
+            "SELECT id, ip, hostname, mac, marca, modelo, numero_serie, sucursal, notas, "
+            "dispositivo_id, puerto, en_linea, responsable, open_ports FROM equipos "
+            "WHERE dispositivo_id IS NOT NULL ORDER BY dispositivo_id, puerto"
+        ).fetchall()
+        result = {}
+        for r in rows:
+            result.setdefault(r["dispositivo_id"], []).append(dict(r))
+        return result

@@ -6,7 +6,7 @@ dispositivos); nada depende de este."""
 import json
 from datetime import datetime
 
-from ._core import _clave_nombre, get_connection
+from ._core import _clave_nombre, conexion
 from .dispositivos import _ESTADO_DISPOSITIVO_MAP, _inferir_tipo_y_plantilla, _parsear_bocas
 from .equipos import get_equipo, get_equipo_by_ip, update_ficha
 from .usuarios import find_or_create_usuario_por_nombre
@@ -73,27 +73,26 @@ def importar_inventario_masivo(filas):
             subred = ".".join(partes_ip[:3]) + ".0/24" if len(partes_ip) == 4 else None
             en_linea = 0 if fila.get("en_linea") is False else 1
             open_ports = json.dumps([{"port": 3389, "service": "rdp"}]) if fila.get("has_rdp") else "[]"
-            conn = get_connection()
-            conn.execute(
-                """
-                INSERT INTO equipos (
-                    ip, hostname, mac, subred, open_ports, estado_deteccion, en_linea, desde,
-                    primera_deteccion, ultima_deteccion, ultimo_scan_file, origen,
-                    marca, modelo, numero_serie, responsable_id, responsable, correo_responsable,
-                    sucursal, ciudad, departamento, os, office, antivirus, estado_ciclo_vida
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    ip, fila.get("hostname"), fila.get("mac"), subred, open_ports,
-                    "confirmado", en_linea, now, now, now, "importado", "importado",
-                    fila.get("marca"), fila.get("modelo"), fila.get("numero_serie"),
-                    responsable_id, responsable_nombre, correo_responsable,
-                    fila.get("sucursal"), fila.get("ciudad"), fila.get("departamento"),
-                    fila.get("os"), fila.get("office"), fila.get("antivirus"), "activo",
-                ),
-            )
-            conn.commit()
-            conn.close()
+            with conexion() as conn:
+                conn.execute(
+                    """
+                    INSERT INTO equipos (
+                        ip, hostname, mac, subred, open_ports, estado_deteccion, en_linea, desde,
+                        primera_deteccion, ultima_deteccion, ultimo_scan_file, origen,
+                        marca, modelo, numero_serie, responsable_id, responsable, correo_responsable,
+                        sucursal, ciudad, departamento, os, office, antivirus, estado_ciclo_vida
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        ip, fila.get("hostname"), fila.get("mac"), subred, open_ports,
+                        "confirmado", en_linea, now, now, now, "importado", "importado",
+                        fila.get("marca"), fila.get("modelo"), fila.get("numero_serie"),
+                        responsable_id, responsable_nombre, correo_responsable,
+                        fila.get("sucursal"), fila.get("ciudad"), fila.get("departamento"),
+                        fila.get("os"), fila.get("office"), fila.get("antivirus"), "activo",
+                    ),
+                )
+                conn.commit()
             creados += 1
 
     return {
@@ -121,65 +120,65 @@ def _importar_gestion_usuarios(filas):
     NUEVO -- si el usuario ya existe en NetWatch, esos dos campos no se
     tocan, para no pisar un estado que ya se haya ajustado a mano aca."""
     creados = actualizados = sin_cambios = omitidos = 0
-    conn = get_connection()
     campos_texto = ["correo", "departamento", "ciudad", "tipo_vpn"]
 
-    # diccionario nombre-sin-acentos -> fila de usuarios, armado una sola vez.
-    # Antes se matcheaba con LOWER(TRIM(nombre)) = LOWER(?) en SQL, que no
-    # ignora tildes, asi que un archivo externo sin tildes ("Carlos
-    # Rodriguez") creaba un usuario duplicado en vez de completar el que ya
-    # existia con tilde ("Carlos Rodríguez") -- confirmado en vivo.
-    usuarios_por_clave = {
-        _clave_nombre(r["nombre"]): dict(r) for r in conn.execute("SELECT * FROM usuarios").fetchall()
-    }
+    with conexion() as conn:
+        # diccionario nombre-sin-acentos -> fila de usuarios, armado una sola vez.
+        # Antes se matcheaba con LOWER(TRIM(nombre)) = LOWER(?) en SQL, que no
+        # ignora tildes, asi que un archivo externo sin tildes ("Carlos
+        # Rodriguez") creaba un usuario duplicado en vez de completar el que ya
+        # existia con tilde ("Carlos Rodríguez") -- confirmado en vivo.
+        usuarios_por_clave = {
+            _clave_nombre(r["nombre"]): dict(r) for r in conn.execute("SELECT * FROM usuarios").fetchall()
+        }
 
-    for fila in filas:
-        nombre = (fila.get("nombre") or "").strip()
-        if not nombre:
-            omitidos += 1
-            continue
+        for fila in filas:
+            nombre = (fila.get("nombre") or "").strip()
+            if not nombre:
+                omitidos += 1
+                continue
 
-        if fila.get("departamento"):
-            conn.execute("INSERT OR IGNORE INTO departamentos (nombre) VALUES (?)", (fila["departamento"],))
-        if fila.get("ciudad"):
-            conn.execute("INSERT OR IGNORE INTO ciudades (nombre) VALUES (?)", (fila["ciudad"],))
+            if fila.get("departamento"):
+                conn.execute("INSERT OR IGNORE INTO departamentos (nombre) VALUES (?)", (fila["departamento"],))
+            if fila.get("ciudad"):
+                conn.execute("INSERT OR IGNORE INTO ciudades (nombre) VALUES (?)", (fila["ciudad"],))
 
-        existente = usuarios_por_clave.get(_clave_nombre(nombre))
+            existente = usuarios_por_clave.get(_clave_nombre(nombre))
 
-        if existente:
-            updates = {}
-            for campo in campos_texto:
-                valor = fila.get(campo)
-                if valor and not existente.get(campo):
-                    updates[campo] = valor
-            if updates:
-                set_clause = ", ".join(f"{k} = ?" for k in updates)
-                conn.execute(f"UPDATE usuarios SET {set_clause} WHERE id = ?", list(updates.values()) + [existente["id"]])
-                existente.update(updates)
-                actualizados += 1
+            if existente:
+                updates = {}
+                for campo in campos_texto:
+                    valor = fila.get(campo)
+                    if valor and not existente.get(campo):
+                        updates[campo] = valor
+                if updates:
+                    set_clause = ", ".join(f"{k} = ?" for k in updates)
+                    conn.execute(f"UPDATE usuarios SET {set_clause} WHERE id = ?", list(updates.values()) + [existente["id"]])
+                    existente.update(updates)
+                    actualizados += 1
+                else:
+                    sin_cambios += 1
             else:
-                sin_cambios += 1
-        else:
-            now = datetime.now().isoformat()
-            cur = conn.execute(
-                """
-                INSERT INTO usuarios (
-                    nombre, correo, activo, creado_en, departamento, ciudad,
-                    lugar_trabajo, tipo_vpn, vpn_activa
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    nombre, fila.get("correo"), 0 if fila.get("activo") is False else 1, now,
-                    fila.get("departamento"), fila.get("ciudad"),
-                    fila.get("lugar_trabajo") or "Presencial", fila.get("tipo_vpn"),
-                    1 if fila.get("tipo_vpn") else 0,
-                ),
-            )
-            usuarios_por_clave[_clave_nombre(nombre)] = {"id": cur.lastrowid, "nombre": nombre, "correo": fila.get("correo")}
-            creados += 1
+                now = datetime.now().isoformat()
+                cur = conn.execute(
+                    """
+                    INSERT INTO usuarios (
+                        nombre, correo, activo, creado_en, departamento, ciudad,
+                        lugar_trabajo, tipo_vpn, vpn_activa
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        nombre, fila.get("correo"), 0 if fila.get("activo") is False else 1, now,
+                        fila.get("departamento"), fila.get("ciudad"),
+                        fila.get("lugar_trabajo") or "Presencial", fila.get("tipo_vpn"),
+                        1 if fila.get("tipo_vpn") else 0,
+                    ),
+                )
+                usuarios_por_clave[_clave_nombre(nombre)] = {"id": cur.lastrowid, "nombre": nombre, "correo": fila.get("correo")}
+                creados += 1
 
-    conn.commit()
-    conn.close()
+        conn.commit()
+
     return {
         "creados": creados, "actualizados": actualizados,
         "sin_cambios": sin_cambios, "omitidos": omitidos, "total": len(filas),
@@ -202,110 +201,111 @@ def _importar_gestion_equipos(filas):
         "marca", "modelo", "numero_serie", "ciudad", "sucursal",
         "cpu", "ram", "almacenamiento", "gpu", "os", "office", "antivirus",
     ]
-    conn = get_connection()
-    usuarios_por_clave = {
-        _clave_nombre(r["nombre"]): dict(r) for r in conn.execute("SELECT * FROM usuarios").fetchall()
-    }
 
-    for fila in filas:
-        hostname = (fila.get("hostname") or "").strip()
-        if not hostname:
-            omitidos += 1
-            continue
+    with conexion() as conn:
+        usuarios_por_clave = {
+            _clave_nombre(r["nombre"]): dict(r) for r in conn.execute("SELECT * FROM usuarios").fetchall()
+        }
 
-        ip_real = fila.get("ip")
+        for fila in filas:
+            hostname = (fila.get("hostname") or "").strip()
+            if not hostname:
+                omitidos += 1
+                continue
 
-        equipo_id = None
-        if ip_real:
-            row = conn.execute("SELECT id FROM equipos WHERE ip = ?", (ip_real,)).fetchone()
-            if row:
-                equipo_id = row["id"]
-        if not equipo_id:
-            row = conn.execute(
-                "SELECT id FROM equipos WHERE LOWER(TRIM(hostname)) = LOWER(?)", (hostname,)
-            ).fetchone()
-            if row:
-                equipo_id = row["id"]
+            ip_real = fila.get("ip")
 
-        responsable_id = responsable_nombre = correo_responsable = None
-        nombres_resp = fila.get("responsables") or []
-        if nombres_resp:
-            r = usuarios_por_clave.get(_clave_nombre(nombres_resp[0]))
-            if r:
-                responsable_id, responsable_nombre, correo_responsable = r["id"], r["nombre"], r["correo"]
-
-        partes_notas = []
-        if fila.get("descripcion"):
-            partes_notas.append(fila["descripcion"])
-        if len(nombres_resp) > 1:
-            partes_notas.append("Equipo compartido tambien con: " + ", ".join(nombres_resp[1:]))
-        notas_nuevas = " · ".join(partes_notas) if partes_notas else None
-
-        estado_ciclo = _GESTION_ESTADO_CICLO_MAP.get((fila.get("estado") or "").strip().lower())
-
-        if equipo_id:
-            equipo_actual = dict(conn.execute("SELECT * FROM equipos WHERE id = ?", (equipo_id,)).fetchone())
-            updates = {}
-            for campo in campos_ficha:
-                valor = fila.get(campo)
-                if valor and not equipo_actual.get(campo):
-                    updates[campo] = valor
-            if notas_nuevas and not equipo_actual.get("notas"):
-                updates["notas"] = notas_nuevas
-            if responsable_id and not equipo_actual.get("responsable_id"):
-                updates["responsable_id"] = responsable_id
-                updates["responsable"] = responsable_nombre
-                updates["correo_responsable"] = correo_responsable
-            if estado_ciclo and not equipo_actual.get("estado_ciclo_vida"):
-                updates["estado_ciclo_vida"] = estado_ciclo
-            if updates:
-                # mismo patron que update_ficha(), pero reusando esta misma
-                # conexion -- abrir una conexion nueva mientras esta sigue
-                # abierta con cambios sin commitear deja la base "locked".
-                set_clause = ", ".join(f"{k} = ?" for k in updates)
-                conn.execute(f"UPDATE equipos SET {set_clause} WHERE id = ?", list(updates.values()) + [equipo_id])
-                actualizados += 1
-            else:
-                sin_cambios += 1
-        else:
-            identificador = ip_real or hostname
-            sufijo = 1
-            base = identificador
-            while conn.execute("SELECT 1 FROM equipos WHERE ip = ?", (identificador,)).fetchone():
-                sufijo += 1
-                identificador = f"{base}-{sufijo}"
-
-            subred = None
+            equipo_id = None
             if ip_real:
-                partes = ip_real.split(".")
-                if len(partes) == 4:
-                    subred = ".".join(partes[:3]) + ".0/24"
+                row = conn.execute("SELECT id FROM equipos WHERE ip = ?", (ip_real,)).fetchone()
+                if row:
+                    equipo_id = row["id"]
+            if not equipo_id:
+                row = conn.execute(
+                    "SELECT id FROM equipos WHERE LOWER(TRIM(hostname)) = LOWER(?)", (hostname,)
+                ).fetchone()
+                if row:
+                    equipo_id = row["id"]
 
-            conn.execute(
-                """
-                INSERT INTO equipos (
-                    ip, hostname, subred, estado_deteccion, en_linea, desde,
-                    primera_deteccion, ultima_deteccion, ultimo_scan_file, origen,
-                    marca, modelo, numero_serie, responsable_id, responsable, correo_responsable,
-                    sucursal, ciudad, cpu, ram, almacenamiento, gpu, os, office, antivirus,
-                    notas, estado_ciclo_vida
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    identificador, hostname, subred, "confirmado", 1, now, now, now,
-                    "importado", "importado",
-                    fila.get("marca"), fila.get("modelo"), fila.get("numero_serie"),
-                    responsable_id, responsable_nombre, correo_responsable,
-                    fila.get("sucursal"), fila.get("ciudad"),
-                    fila.get("cpu"), fila.get("ram"), fila.get("almacenamiento"), fila.get("gpu"),
-                    fila.get("os"), fila.get("office"), fila.get("antivirus"),
-                    notas_nuevas, estado_ciclo or "activo",
-                ),
-            )
-            creados += 1
+            responsable_id = responsable_nombre = correo_responsable = None
+            nombres_resp = fila.get("responsables") or []
+            if nombres_resp:
+                r = usuarios_por_clave.get(_clave_nombre(nombres_resp[0]))
+                if r:
+                    responsable_id, responsable_nombre, correo_responsable = r["id"], r["nombre"], r["correo"]
 
-    conn.commit()
-    conn.close()
+            partes_notas = []
+            if fila.get("descripcion"):
+                partes_notas.append(fila["descripcion"])
+            if len(nombres_resp) > 1:
+                partes_notas.append("Equipo compartido tambien con: " + ", ".join(nombres_resp[1:]))
+            notas_nuevas = " · ".join(partes_notas) if partes_notas else None
+
+            estado_ciclo = _GESTION_ESTADO_CICLO_MAP.get((fila.get("estado") or "").strip().lower())
+
+            if equipo_id:
+                equipo_actual = dict(conn.execute("SELECT * FROM equipos WHERE id = ?", (equipo_id,)).fetchone())
+                updates = {}
+                for campo in campos_ficha:
+                    valor = fila.get(campo)
+                    if valor and not equipo_actual.get(campo):
+                        updates[campo] = valor
+                if notas_nuevas and not equipo_actual.get("notas"):
+                    updates["notas"] = notas_nuevas
+                if responsable_id and not equipo_actual.get("responsable_id"):
+                    updates["responsable_id"] = responsable_id
+                    updates["responsable"] = responsable_nombre
+                    updates["correo_responsable"] = correo_responsable
+                if estado_ciclo and not equipo_actual.get("estado_ciclo_vida"):
+                    updates["estado_ciclo_vida"] = estado_ciclo
+                if updates:
+                    # mismo patron que update_ficha(), pero reusando esta misma
+                    # conexion -- abrir una conexion nueva mientras esta sigue
+                    # abierta con cambios sin commitear deja la base "locked".
+                    set_clause = ", ".join(f"{k} = ?" for k in updates)
+                    conn.execute(f"UPDATE equipos SET {set_clause} WHERE id = ?", list(updates.values()) + [equipo_id])
+                    actualizados += 1
+                else:
+                    sin_cambios += 1
+            else:
+                identificador = ip_real or hostname
+                sufijo = 1
+                base = identificador
+                while conn.execute("SELECT 1 FROM equipos WHERE ip = ?", (identificador,)).fetchone():
+                    sufijo += 1
+                    identificador = f"{base}-{sufijo}"
+
+                subred = None
+                if ip_real:
+                    partes = ip_real.split(".")
+                    if len(partes) == 4:
+                        subred = ".".join(partes[:3]) + ".0/24"
+
+                conn.execute(
+                    """
+                    INSERT INTO equipos (
+                        ip, hostname, subred, estado_deteccion, en_linea, desde,
+                        primera_deteccion, ultima_deteccion, ultimo_scan_file, origen,
+                        marca, modelo, numero_serie, responsable_id, responsable, correo_responsable,
+                        sucursal, ciudad, cpu, ram, almacenamiento, gpu, os, office, antivirus,
+                        notas, estado_ciclo_vida
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        identificador, hostname, subred, "confirmado", 1, now, now, now,
+                        "importado", "importado",
+                        fila.get("marca"), fila.get("modelo"), fila.get("numero_serie"),
+                        responsable_id, responsable_nombre, correo_responsable,
+                        fila.get("sucursal"), fila.get("ciudad"),
+                        fila.get("cpu"), fila.get("ram"), fila.get("almacenamiento"), fila.get("gpu"),
+                        fila.get("os"), fila.get("office"), fila.get("antivirus"),
+                        notas_nuevas, estado_ciclo or "activo",
+                    ),
+                )
+                creados += 1
+
+        conn.commit()
+
     return {
         "creados": creados, "actualizados": actualizados,
         "sin_cambios": sin_cambios, "omitidos": omitidos, "total": len(filas),
@@ -338,82 +338,82 @@ def importar_infraestructura_masiva(filas):
     Devuelve un resumen {creados, actualizados, total}.
     """
     creados = actualizados = 0
-    conn = get_connection()
 
-    for fila in filas:
-        ip = (fila.get("ip") or "").strip() or None
-        mac = (fila.get("mac") or "").strip() or None
-        numero_serie = (fila.get("numero_serie") or "").strip() or None
+    with conexion() as conn:
+        for fila in filas:
+            ip = (fila.get("ip") or "").strip() or None
+            mac = (fila.get("mac") or "").strip() or None
+            numero_serie = (fila.get("numero_serie") or "").strip() or None
 
-        existente = None
-        if ip:
-            existente = conn.execute("SELECT * FROM dispositivos_red WHERE ip = ?", (ip,)).fetchone()
-        if not existente and mac:
-            existente = conn.execute("SELECT * FROM dispositivos_red WHERE mac = ?", (mac,)).fetchone()
-        if not existente and numero_serie:
-            existente = conn.execute("SELECT * FROM dispositivos_red WHERE numero_serie = ?", (numero_serie,)).fetchone()
+            existente = None
+            if ip:
+                existente = conn.execute("SELECT * FROM dispositivos_red WHERE ip = ?", (ip,)).fetchone()
+            if not existente and mac:
+                existente = conn.execute("SELECT * FROM dispositivos_red WHERE mac = ?", (mac,)).fetchone()
+            if not existente and numero_serie:
+                existente = conn.execute("SELECT * FROM dispositivos_red WHERE numero_serie = ?", (numero_serie,)).fetchone()
 
-        marca = (fila.get("marca") or "").strip() or None
-        modelo = (fila.get("modelo") or "").strip() or None
-        bocas_num = _parsear_bocas(fila.get("bocas"))
-        observaciones = (fila.get("observaciones") or "").strip()
-        observaciones = None if observaciones in ("", "-", "—", "x") else observaciones
+            marca = (fila.get("marca") or "").strip() or None
+            modelo = (fila.get("modelo") or "").strip() or None
+            bocas_num = _parsear_bocas(fila.get("bocas"))
+            observaciones = (fila.get("observaciones") or "").strip()
+            observaciones = None if observaciones in ("", "-", "—", "x") else observaciones
 
-        nombre = observaciones or (f"{marca} {modelo}".strip() if (marca or modelo) else None)
-        estado_raw = (fila.get("estado") or "").strip().lower()
-        estado = _ESTADO_DISPOSITIVO_MAP.get(estado_raw, fila.get("estado") or None)
-        tipo, plantilla = _inferir_tipo_y_plantilla(marca, modelo, bocas_num)
+            nombre = observaciones or (f"{marca} {modelo}".strip() if (marca or modelo) else None)
+            estado_raw = (fila.get("estado") or "").strip().lower()
+            estado = _ESTADO_DISPOSITIVO_MAP.get(estado_raw, fila.get("estado") or None)
+            tipo, plantilla = _inferir_tipo_y_plantilla(marca, modelo, bocas_num)
 
-        valores = {
-            "nombre": nombre, "tipo": tipo, "marca": marca, "modelo": modelo,
-            "numero_serie": numero_serie, "cantidad_bocas": bocas_num, "plantilla": plantilla,
-            "ip": ip, "mac": mac, "sucursal": (fila.get("sucursal") or "").strip() or None,
-            "ciudad": (fila.get("ciudad") or "").strip() or None, "piso": (fila.get("piso") or "").strip() or None,
-            "estado": estado, "enlace": (fila.get("enlace") or "").strip() or None,
-            "notas": observaciones,
-        }
+            valores = {
+                "nombre": nombre, "tipo": tipo, "marca": marca, "modelo": modelo,
+                "numero_serie": numero_serie, "cantidad_bocas": bocas_num, "plantilla": plantilla,
+                "ip": ip, "mac": mac, "sucursal": (fila.get("sucursal") or "").strip() or None,
+                "ciudad": (fila.get("ciudad") or "").strip() or None, "piso": (fila.get("piso") or "").strip() or None,
+                "estado": estado, "enlace": (fila.get("enlace") or "").strip() or None,
+                "notas": observaciones,
+            }
 
-        if existente:
-            existente = dict(existente)
-            # el archivo manda: solo se mantiene el valor viejo si el archivo no trae nada para ese campo
-            for campo, valor in valores.items():
-                if valor is None:
-                    valores[campo] = existente.get(campo)
-            conn.execute(
-                """
-                UPDATE dispositivos_red
-                   SET nombre = ?, tipo = ?, marca = ?, modelo = ?, numero_serie = ?, cantidad_bocas = ?,
-                       plantilla = ?, ip = ?, mac = ?, sucursal = ?, ciudad = ?, piso = ?, estado = ?,
-                       enlace = ?, notas = ?
-                 WHERE id = ?
-                """,
-                (
-                    valores["nombre"], valores["tipo"], valores["marca"], valores["modelo"],
-                    valores["numero_serie"], valores["cantidad_bocas"], valores["plantilla"],
-                    valores["ip"], valores["mac"], valores["sucursal"], valores["ciudad"],
-                    valores["piso"], valores["estado"], valores["enlace"], valores["notas"],
-                    existente["id"],
-                ),
-            )
-            actualizados += 1
-        else:
-            now = datetime.now().isoformat()
-            conn.execute(
-                """
-                INSERT INTO dispositivos_red (
-                    nombre, tipo, marca, modelo, numero_serie, cantidad_bocas, plantilla,
-                    ip, mac, sucursal, ciudad, piso, estado, enlace, notas, creado_en
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    valores["nombre"] or "Dispositivo sin nombre", valores["tipo"], valores["marca"],
-                    valores["modelo"], valores["numero_serie"], valores["cantidad_bocas"], valores["plantilla"],
-                    valores["ip"], valores["mac"], valores["sucursal"], valores["ciudad"], valores["piso"],
-                    valores["estado"] or "Usado", valores["enlace"], valores["notas"], now,
-                ),
-            )
-            creados += 1
+            if existente:
+                existente = dict(existente)
+                # el archivo manda: solo se mantiene el valor viejo si el archivo no trae nada para ese campo
+                for campo, valor in valores.items():
+                    if valor is None:
+                        valores[campo] = existente.get(campo)
+                conn.execute(
+                    """
+                    UPDATE dispositivos_red
+                       SET nombre = ?, tipo = ?, marca = ?, modelo = ?, numero_serie = ?, cantidad_bocas = ?,
+                           plantilla = ?, ip = ?, mac = ?, sucursal = ?, ciudad = ?, piso = ?, estado = ?,
+                           enlace = ?, notas = ?
+                     WHERE id = ?
+                    """,
+                    (
+                        valores["nombre"], valores["tipo"], valores["marca"], valores["modelo"],
+                        valores["numero_serie"], valores["cantidad_bocas"], valores["plantilla"],
+                        valores["ip"], valores["mac"], valores["sucursal"], valores["ciudad"],
+                        valores["piso"], valores["estado"], valores["enlace"], valores["notas"],
+                        existente["id"],
+                    ),
+                )
+                actualizados += 1
+            else:
+                now = datetime.now().isoformat()
+                conn.execute(
+                    """
+                    INSERT INTO dispositivos_red (
+                        nombre, tipo, marca, modelo, numero_serie, cantidad_bocas, plantilla,
+                        ip, mac, sucursal, ciudad, piso, estado, enlace, notas, creado_en
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        valores["nombre"] or "Dispositivo sin nombre", valores["tipo"], valores["marca"],
+                        valores["modelo"], valores["numero_serie"], valores["cantidad_bocas"], valores["plantilla"],
+                        valores["ip"], valores["mac"], valores["sucursal"], valores["ciudad"], valores["piso"],
+                        valores["estado"] or "Usado", valores["enlace"], valores["notas"], now,
+                    ),
+                )
+                creados += 1
 
-    conn.commit()
-    conn.close()
+        conn.commit()
+
     return {"creados": creados, "actualizados": actualizados, "total": len(filas)}

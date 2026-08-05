@@ -6,7 +6,7 @@ funciones de otros submodulos."""
 import re
 from datetime import datetime, timedelta
 
-from ._core import get_connection
+from ._core import conexion
 
 
 def list_recent_events(limit=20):
@@ -14,18 +14,17 @@ def list_recent_events(limit=20):
     actual del equipo (si tiene uno asignado), para que el panel lateral y
     los toasts puedan mostrar el nombre de la persona en vez de solo el
     hostname, y para que sean clickeables hacia su ficha."""
-    conn = get_connection()
-    rows = conn.execute(
-        """
-        SELECT eventos.*, equipos.responsable AS responsable
-        FROM eventos
-        LEFT JOIN equipos ON equipos.id = eventos.equipo_id
-        ORDER BY eventos.id DESC LIMIT ?
-        """,
-        (limit,),
-    ).fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
+    with conexion() as conn:
+        rows = conn.execute(
+            """
+            SELECT eventos.*, equipos.responsable AS responsable
+            FROM eventos
+            LEFT JOIN equipos ON equipos.id = eventos.equipo_id
+            ORDER BY eventos.id DESC LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+        return [dict(r) for r in rows]
 
 
 def _calcular_pct_online(eventos_ts_tipo, inicio_dt, fin_dt, online_al_inicio=True):
@@ -65,6 +64,10 @@ def _calcular_pct_online(eventos_ts_tipo, inicio_dt, fin_dt, online_al_inicio=Tr
 
 
 def _disponibilidad_desde_conn(conn, equipo_id, primera_deteccion, dias):
+    """OJO: a diferencia del resto de funciones de este archivo, esta NO abre
+    ni cierra su propia conexion -- recibe una ya abierta y la reusa (la
+    llaman calcular_disponibilidad() y, en un loop por cada equipo,
+    ranking_disponibilidad()). No usar conexion() aca adentro."""
     fin_dt = datetime.now()
     inicio_dt = fin_dt - timedelta(days=dias)
     if primera_deteccion:
@@ -101,14 +104,11 @@ def calcular_disponibilidad(equipo_id, dias=30):
     """% de tiempo online de un equipo en los ultimos `dias` dias, calculado
     reconstruyendo las transiciones online/offline desde la tabla eventos.
     Devuelve None si el equipo no existe."""
-    conn = get_connection()
-    equipo = conn.execute("SELECT primera_deteccion FROM equipos WHERE id = ?", (equipo_id,)).fetchone()
-    if not equipo:
-        conn.close()
-        return None
-    resultado = _disponibilidad_desde_conn(conn, equipo_id, equipo["primera_deteccion"], dias)
-    conn.close()
-    return resultado
+    with conexion() as conn:
+        equipo = conn.execute("SELECT primera_deteccion FROM equipos WHERE id = ?", (equipo_id,)).fetchone()
+        if not equipo:
+            return None
+        return _disponibilidad_desde_conn(conn, equipo_id, equipo["primera_deteccion"], dias)
 
 
 _RANKING_IP_RE = re.compile(r"^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$")
@@ -145,27 +145,26 @@ def ranking_disponibilidad(dias=30, limite=15, orden="disponibilidad"):
     de ordenamiento (ver _ranking_clave_orden): 'disponibilidad' (default,
     peor % primero), 'caidas' (mas caidas primero), 'dias' (lleva mas tiempo
     offline primero) o 'ip'."""
-    conn = get_connection()
-    equipos = conn.execute(
-        "SELECT id, hostname, ip, responsable, sucursal, ciudad, en_linea, primera_deteccion, desde "
-        "FROM equipos WHERE origen != 'manual'"
-    ).fetchall()
+    with conexion() as conn:
+        equipos = conn.execute(
+            "SELECT id, hostname, ip, responsable, sucursal, ciudad, en_linea, primera_deteccion, desde "
+            "FROM equipos WHERE origen != 'manual'"
+        ).fetchall()
 
-    resultados = []
-    for e in equipos:
-        disp = _disponibilidad_desde_conn(conn, e["id"], e["primera_deteccion"], dias)
-        if disp["caidas"] == 0:
-            continue
-        resultados.append({
-            "id": e["id"], "hostname": e["hostname"], "ip": e["ip"],
-            "responsable": e["responsable"], "sucursal": e["sucursal"], "ciudad": e["ciudad"],
-            "en_linea": bool(e["en_linea"]),
-            # "desde" es cuando entro al estado ACTUAL (ver apply_scan_results) --
-            # solo tiene sentido como "lleva caido hace X" cuando esta offline.
-            "desde": e["desde"] if not e["en_linea"] else None,
-            "pct_online": disp["pct_online"], "caidas": disp["caidas"],
-        })
-    conn.close()
+        resultados = []
+        for e in equipos:
+            disp = _disponibilidad_desde_conn(conn, e["id"], e["primera_deteccion"], dias)
+            if disp["caidas"] == 0:
+                continue
+            resultados.append({
+                "id": e["id"], "hostname": e["hostname"], "ip": e["ip"],
+                "responsable": e["responsable"], "sucursal": e["sucursal"], "ciudad": e["ciudad"],
+                "en_linea": bool(e["en_linea"]),
+                # "desde" es cuando entro al estado ACTUAL (ver apply_scan_results) --
+                # solo tiene sentido como "lleva caido hace X" cuando esta offline.
+                "desde": e["desde"] if not e["en_linea"] else None,
+                "pct_online": disp["pct_online"], "caidas": disp["caidas"],
+            })
 
     resultados.sort(key=_ranking_clave_orden(orden))
     return resultados[:limite]
@@ -178,16 +177,15 @@ def equipos_criticos_pendientes_alerta(umbral_minutos=15):
     Excluye los marcados 'ip_temporal' (equipo bueno usando temporalmente la
     IP de otro que fallo fisicamente) -- ese offline es esperado/conocido
     mientras dura el reemplazo, no una falla real que avisar."""
-    conn = get_connection()
-    rows = conn.execute(
-        """
-        SELECT id, ip, hostname, responsable, sucursal, ciudad, desde
-        FROM equipos
-        WHERE critico = 1 AND en_linea = 0 AND alerta_offline_enviada = 0
-          AND desde IS NOT NULL AND COALESCE(ip_temporal, 0) = 0
-        """
-    ).fetchall()
-    conn.close()
+    with conexion() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, ip, hostname, responsable, sucursal, ciudad, desde
+            FROM equipos
+            WHERE critico = 1 AND en_linea = 0 AND alerta_offline_enviada = 0
+              AND desde IS NOT NULL AND COALESCE(ip_temporal, 0) = 0
+            """
+        ).fetchall()
 
     pendientes = []
     ahora = datetime.now()
@@ -205,7 +203,6 @@ def equipos_criticos_pendientes_alerta(umbral_minutos=15):
 
 
 def marcar_alerta_offline_enviada(equipo_id):
-    conn = get_connection()
-    conn.execute("UPDATE equipos SET alerta_offline_enviada = 1 WHERE id = ?", (equipo_id,))
-    conn.commit()
-    conn.close()
+    with conexion() as conn:
+        conn.execute("UPDATE equipos SET alerta_offline_enviada = 1 WHERE id = ?", (equipo_id,))
+        conn.commit()

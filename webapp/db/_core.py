@@ -6,6 +6,7 @@ de nada mas). Ver db/__init__.py para el mapa completo del desglose.
 """
 import sqlite3
 import unicodedata
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -181,6 +182,21 @@ def get_connection():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
+
+
+@contextmanager
+def conexion():
+    """Conexion SQLite que se cierra sola al salir del bloque `with`, en
+    cualquier camino de salida (return, excepcion, lo que sea) -- antes cada
+    funcion de este paquete hacia `conn = get_connection()` ... `conn.close()`
+    a mano al final, y una excepcion a mitad de camino (o un early return
+    antes del close) dejaba la conexion SQLite abierta para siempre. Usar
+    esto en vez de get_connection() directo en toda funcion nueva."""
+    conn = get_connection()
+    try:
+        yield conn
+    finally:
+        conn.close()
 
 
 def init_db():

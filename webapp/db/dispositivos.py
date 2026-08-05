@@ -5,7 +5,7 @@ llama funciones de equipos.py -- sin dependencias cruzadas."""
 import re
 from datetime import datetime
 
-from ._core import _marca_sync, get_connection
+from ._core import _marca_sync, conexion
 
 TIPOS_DISPOSITIVO = ["switch", "router", "fortinet", "conversor", "modem", "otro"]
 TIPO_DISPOSITIVO_LABELS = {
@@ -126,56 +126,52 @@ def create_dispositivo(nombre, tipo="switch", marca=None, modelo=None, numero_se
                         ip=None, mac=None, sucursal=None, ciudad=None, ubicacion=None, piso=None,
                         estado="Usado", fecha_ingreso=None, notas=None, enlace=None):
     now = datetime.now().isoformat()
-    conn = get_connection()
-    cur = conn.execute(
-        """
-        INSERT INTO dispositivos_red (
-            nombre, tipo, marca, modelo, numero_serie, cantidad_bocas, bocas_fibra, plantilla,
-            ip, mac, sucursal, ciudad, ubicacion, piso, estado, fecha_ingreso, notas, enlace, creado_en
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (nombre, tipo, marca, modelo, numero_serie, cantidad_bocas, bocas_fibra, plantilla,
-         ip, mac, sucursal, ciudad, ubicacion, piso, estado, fecha_ingreso, notas, enlace, now),
-    )
-    conn.commit()
-    conn.close()
-    return cur.lastrowid
+    with conexion() as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO dispositivos_red (
+                nombre, tipo, marca, modelo, numero_serie, cantidad_bocas, bocas_fibra, plantilla,
+                ip, mac, sucursal, ciudad, ubicacion, piso, estado, fecha_ingreso, notas, enlace, creado_en
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (nombre, tipo, marca, modelo, numero_serie, cantidad_bocas, bocas_fibra, plantilla,
+             ip, mac, sucursal, ciudad, ubicacion, piso, estado, fecha_ingreso, notas, enlace, now),
+        )
+        conn.commit()
+        return cur.lastrowid
 
 
 def list_dispositivos():
-    conn = get_connection()
-    rows = conn.execute("SELECT * FROM dispositivos_red ORDER BY sucursal, tipo, nombre").fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
+    with conexion() as conn:
+        rows = conn.execute("SELECT * FROM dispositivos_red ORDER BY sucursal, tipo, nombre").fetchall()
+        return [dict(r) for r in rows]
 
 
 def get_dispositivo(dispositivo_id):
-    conn = get_connection()
-    row = conn.execute("SELECT * FROM dispositivos_red WHERE id = ?", (dispositivo_id,)).fetchone()
-    conn.close()
-    return dict(row) if row else None
+    with conexion() as conn:
+        row = conn.execute("SELECT * FROM dispositivos_red WHERE id = ?", (dispositivo_id,)).fetchone()
+        return dict(row) if row else None
 
 
 def update_dispositivo(dispositivo_id, nombre, tipo="switch", marca=None, modelo=None, numero_serie=None,
                        cantidad_bocas=None, bocas_fibra=None, plantilla="generico",
                        ip=None, mac=None, sucursal=None, ciudad=None, ubicacion=None, piso=None,
                        estado="Usado", fecha_ingreso=None, notas=None, enlace=None):
-    conn = get_connection()
-    conn.execute(
-        """
-        UPDATE dispositivos_red
-           SET nombre = ?, tipo = ?, marca = ?, modelo = ?, numero_serie = ?, cantidad_bocas = ?,
-               bocas_fibra = ?, plantilla = ?, ip = ?, mac = ?, sucursal = ?, ciudad = ?,
-               ubicacion = ?, piso = ?, estado = ?, fecha_ingreso = ?, notas = ?, enlace = ?,
-               actualizado_en = ?
-         WHERE id = ?
-        """,
-        (nombre, tipo, marca, modelo, numero_serie, cantidad_bocas, bocas_fibra, plantilla,
-         ip, mac, sucursal, ciudad, ubicacion, piso, estado, fecha_ingreso, notas, enlace,
-         _marca_sync(), dispositivo_id),
-    )
-    conn.commit()
-    conn.close()
+    with conexion() as conn:
+        conn.execute(
+            """
+            UPDATE dispositivos_red
+               SET nombre = ?, tipo = ?, marca = ?, modelo = ?, numero_serie = ?, cantidad_bocas = ?,
+                   bocas_fibra = ?, plantilla = ?, ip = ?, mac = ?, sucursal = ?, ciudad = ?,
+                   ubicacion = ?, piso = ?, estado = ?, fecha_ingreso = ?, notas = ?, enlace = ?,
+                   actualizado_en = ?
+             WHERE id = ?
+            """,
+            (nombre, tipo, marca, modelo, numero_serie, cantidad_bocas, bocas_fibra, plantilla,
+             ip, mac, sucursal, ciudad, ubicacion, piso, estado, fecha_ingreso, notas, enlace,
+             _marca_sync(), dispositivo_id),
+        )
+        conn.commit()
 
 
 def eliminar_dispositivo(dispositivo_id):
@@ -190,16 +186,15 @@ def eliminar_dispositivo(dispositivo_id):
        de mostrar para siempre "ocupado" por un dispositivo que ya no existe.
     3) se borra la fila de dispositivos_red.
     """
-    conn = get_connection()
-    conn.execute(
-        "UPDATE equipos SET dispositivo_id = NULL, puerto = NULL WHERE dispositivo_id = ?",
-        (dispositivo_id,),
-    )
-    conn.execute("DELETE FROM conexiones_dispositivos WHERE dispositivo_id = ?", (dispositivo_id,))
-    conn.execute("DELETE FROM conexiones_dispositivos WHERE destino_dispositivo_id = ?", (dispositivo_id,))
-    conn.execute("DELETE FROM dispositivos_red WHERE id = ?", (dispositivo_id,))
-    conn.commit()
-    conn.close()
+    with conexion() as conn:
+        conn.execute(
+            "UPDATE equipos SET dispositivo_id = NULL, puerto = NULL WHERE dispositivo_id = ?",
+            (dispositivo_id,),
+        )
+        conn.execute("DELETE FROM conexiones_dispositivos WHERE dispositivo_id = ?", (dispositivo_id,))
+        conn.execute("DELETE FROM conexiones_dispositivos WHERE destino_dispositivo_id = ?", (dispositivo_id,))
+        conn.execute("DELETE FROM dispositivos_red WHERE id = ?", (dispositivo_id,))
+        conn.commit()
 
 
 def _inferir_tipo_y_plantilla(marca, modelo, bocas_num):
@@ -238,18 +233,17 @@ _ESTADO_DISPOSITIVO_MAP = {
 def assign_puerto(dispositivo_id, puerto, equipo_id):
     """Asigna el equipo indicado a ese puerto del dispositivo (y libera a quien lo tuviera antes).
     Si equipo_id es None, simplemente deja el puerto libre."""
-    conn = get_connection()
-    conn.execute(
-        "UPDATE equipos SET dispositivo_id = NULL, puerto = NULL WHERE dispositivo_id = ? AND puerto = ?",
-        (dispositivo_id, puerto),
-    )
-    if equipo_id:
+    with conexion() as conn:
         conn.execute(
-            "UPDATE equipos SET dispositivo_id = ?, puerto = ?, actualizado_en = ? WHERE id = ?",
-            (dispositivo_id, puerto, _marca_sync(), equipo_id),
+            "UPDATE equipos SET dispositivo_id = NULL, puerto = NULL WHERE dispositivo_id = ? AND puerto = ?",
+            (dispositivo_id, puerto),
         )
-    conn.commit()
-    conn.close()
+        if equipo_id:
+            conn.execute(
+                "UPDATE equipos SET dispositivo_id = ?, puerto = ?, actualizado_en = ? WHERE id = ?",
+                (dispositivo_id, puerto, _marca_sync(), equipo_id),
+            )
+        conn.commit()
 
 
 def get_destino_dispositivo_anterior(dispositivo_id, puerto):
@@ -258,13 +252,12 @@ def get_destino_dispositivo_anterior(dispositivo_id, puerto):
     quien mas hay que refrescar en pantalla cuando se reasigna o se libera la
     boca (si no, el otro switch se queda mostrando la boca como ocupada
     aunque ya se desconecto, hasta que alguien recargue toda la pagina)."""
-    conn = get_connection()
-    row = conn.execute(
-        "SELECT destino_dispositivo_id FROM conexiones_dispositivos WHERE dispositivo_id = ? AND puerto = ?",
-        (dispositivo_id, puerto),
-    ).fetchone()
-    conn.close()
-    return row["destino_dispositivo_id"] if row else None
+    with conexion() as conn:
+        row = conn.execute(
+            "SELECT destino_dispositivo_id FROM conexiones_dispositivos WHERE dispositivo_id = ? AND puerto = ?",
+            (dispositivo_id, puerto),
+        ).fetchone()
+        return row["destino_dispositivo_id"] if row else None
 
 
 def set_puerto_destino(dispositivo_id, puerto, destino_tipo, destino_id, destino_puerto=None):
@@ -277,51 +270,50 @@ def set_puerto_destino(dispositivo_id, puerto, destino_tipo, destino_id, destino
     boca 24 del switch central) -- asi la boca destino tambien queda marcada como
     ocupada del otro lado, en vez de solo anotar "conectado a tal switch" sin decir
     a que boca de ese switch."""
-    conn = get_connection()
-    # 1) liberar lo que estuviera antes en ESTA boca (como origen de cualquier tipo)
-    conn.execute(
-        "UPDATE equipos SET dispositivo_id = NULL, puerto = NULL WHERE dispositivo_id = ? AND puerto = ?",
-        (dispositivo_id, puerto),
-    )
-    conn.execute(
-        "DELETE FROM conexiones_dispositivos WHERE dispositivo_id = ? AND puerto = ?",
-        (dispositivo_id, puerto),
-    )
-    # 2) si esta boca era el DESTINO de una conexion de otro dispositivo, tambien se libera
-    conn.execute(
-        "DELETE FROM conexiones_dispositivos WHERE destino_dispositivo_id = ? AND destino_puerto = ?",
-        (dispositivo_id, puerto),
-    )
-
-    ahora = _marca_sync()
-    if destino_tipo == "equipo" and destino_id:
-        conn.execute(
-            "UPDATE equipos SET dispositivo_id = ?, puerto = ?, actualizado_en = ? WHERE id = ?",
-            (dispositivo_id, puerto, ahora, destino_id),
-        )
-    elif destino_tipo == "dispositivo" and destino_id and destino_puerto:
-        # liberar lo que estuviera antes ocupando la boca DESTINO en el otro switch,
-        # para que una misma boca nunca quede con dos ocupantes a la vez.
+    with conexion() as conn:
+        # 1) liberar lo que estuviera antes en ESTA boca (como origen de cualquier tipo)
         conn.execute(
             "UPDATE equipos SET dispositivo_id = NULL, puerto = NULL WHERE dispositivo_id = ? AND puerto = ?",
-            (destino_id, destino_puerto),
+            (dispositivo_id, puerto),
         )
         conn.execute(
             "DELETE FROM conexiones_dispositivos WHERE dispositivo_id = ? AND puerto = ?",
-            (destino_id, destino_puerto),
+            (dispositivo_id, puerto),
         )
+        # 2) si esta boca era el DESTINO de una conexion de otro dispositivo, tambien se libera
         conn.execute(
             "DELETE FROM conexiones_dispositivos WHERE destino_dispositivo_id = ? AND destino_puerto = ?",
-            (destino_id, destino_puerto),
+            (dispositivo_id, puerto),
         )
-        now = datetime.now().isoformat()
-        conn.execute(
-            "INSERT INTO conexiones_dispositivos (dispositivo_id, puerto, destino_dispositivo_id, destino_puerto, ts) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (dispositivo_id, puerto, destino_id, destino_puerto, now),
-        )
-    conn.commit()
-    conn.close()
+
+        ahora = _marca_sync()
+        if destino_tipo == "equipo" and destino_id:
+            conn.execute(
+                "UPDATE equipos SET dispositivo_id = ?, puerto = ?, actualizado_en = ? WHERE id = ?",
+                (dispositivo_id, puerto, ahora, destino_id),
+            )
+        elif destino_tipo == "dispositivo" and destino_id and destino_puerto:
+            # liberar lo que estuviera antes ocupando la boca DESTINO en el otro switch,
+            # para que una misma boca nunca quede con dos ocupantes a la vez.
+            conn.execute(
+                "UPDATE equipos SET dispositivo_id = NULL, puerto = NULL WHERE dispositivo_id = ? AND puerto = ?",
+                (destino_id, destino_puerto),
+            )
+            conn.execute(
+                "DELETE FROM conexiones_dispositivos WHERE dispositivo_id = ? AND puerto = ?",
+                (destino_id, destino_puerto),
+            )
+            conn.execute(
+                "DELETE FROM conexiones_dispositivos WHERE destino_dispositivo_id = ? AND destino_puerto = ?",
+                (destino_id, destino_puerto),
+            )
+            now = datetime.now().isoformat()
+            conn.execute(
+                "INSERT INTO conexiones_dispositivos (dispositivo_id, puerto, destino_dispositivo_id, destino_puerto, ts) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (dispositivo_id, puerto, destino_id, destino_puerto, now),
+            )
+        conn.commit()
 
 
 def list_conexiones_dispositivos():
@@ -332,11 +324,10 @@ def list_conexiones_dispositivos():
     - origen: {dispositivo_id: {puerto: {"id": destino_dispositivo_id, "puerto_destino": destino_puerto}}}
     - destino: {dispositivo_id: {puerto: {"id": origen_dispositivo_id, "puerto_destino": origen_puerto}}}
     """
-    conn = get_connection()
-    rows = conn.execute(
-        "SELECT dispositivo_id, puerto, destino_dispositivo_id, destino_puerto FROM conexiones_dispositivos"
-    ).fetchall()
-    conn.close()
+    with conexion() as conn:
+        rows = conn.execute(
+            "SELECT dispositivo_id, puerto, destino_dispositivo_id, destino_puerto FROM conexiones_dispositivos"
+        ).fetchall()
     origen = {}
     destino = {}
     for r in rows:
