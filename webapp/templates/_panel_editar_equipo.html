@@ -1,0 +1,20 @@
+{# Fragmento (sin <html>/<head>) con el formulario de edicion de un equipo,
+   usado dentro del panel lateral de la pantalla frontal (index.html). Se
+   pide por fetch y se inyecta en el drawer -- nunca se navega a esta URL
+   directamente, por eso no tiene layout de pagina completa. #}
+{% import "_macros_equipo.html" as m %}
+<div class="panel-editar-header">
+  <h3>{{ e.hostname or e.ip }}</h3>
+  <button type="button" class="modal-close" onclick="netwatchCerrarPanelEdicion()" title="Cerrar">&times;</button>
+</div>
+<form method="post" action="{{ url_for('ficha', equipo_id=e.id) }}" class="modal-form ficha-form" enctype="multipart/form-data" id="form-panel-editar" data-equipo-id="{{ e.id }}">
+  <input type="hidden" name="origen" value="index">
+  {{ m.campos_equipo(e, usuarios, dispositivos, categorias_equipo, error, ip_conflicto, ip_nueva, 'index') }}
+  <div class="modal-footer">
+    <button type="button" class="btn btn-ghost" onclick="netwatchCerrarPanelEdicion()">Cancelar</button>
+    <button type="submit" class="btn btn-primary">Guardar cambios</button>
+  </div>
+</form>
+{% if error == 'ip_duplicada' and ip_conflicto %}
+  {{ m.fusion_equipo(e, ip_nueva, 'index') }}
+{% endif %}

@@ -8,7 +8,13 @@
 </head>
 <body>
 <header>
-  <p class="back"><a href="{{ url_for('index') }}">&larr; Volver al inventario</a></p>
+  <p class="back">
+    {% if origen == 'inventario' %}
+    <a href="{{ url_for('admin_equipos') }}">&larr; Volver a Inventario de Equipos</a>
+    {% else %}
+    <a href="{{ url_for('index') }}">&larr; Volver al inventario</a>
+    {% endif %}
+  </p>
   <div class="header-row">
     <div>
       <h1>{{ e.hostname or e.ip }}</h1>
@@ -31,6 +37,7 @@
     {% if e.metodo_deteccion == 'ping' %}Ping (ICMP)
     {% elif e.metodo_deteccion == 'puertos' %}Puerto abierto (RDP/SMB/RPC/WinRM)
     {% elif e.metodo_deteccion == 'arp' %}Tabla ARP <span class="muted">(firewall bloquea ping y puertos, pero el equipo esta conectado)</span>
+    {% elif e.metodo_deteccion == 'agente' %}Auto-reporte <span class="muted">(agente PowerShell corrido en el propio equipo)</span>
     {% else %}-{% endif %}
   </span></div>
   <div><span class="k">Estado deteccion</span><span class="v">
@@ -69,92 +76,52 @@
 </section>
 {% endif %}
 
-<form method="post" class="ficha-form">
-  <fieldset>
-    <legend>Identificacion</legend>
-    <p class="field-hint">Si el escaneo no detecto hostname o MAC (comun cuando el equipo esta en otra
-      VLAN o conectas por VPN), puedes escribirlos aqui a mano. Si el escaneo los detecta despues,
-      se van a actualizar solos con el valor real.</p>
-    {% if error == 'ip_duplicada' %}
-    <p class="empty small">Ya existe otro equipo con esa IP/identificador -- no se guardo el cambio de IP (el resto de los campos si se guardaron).</p>
-    {% elif error == 'ip_requerida' %}
-    <p class="empty small">La IP/identificador no puede quedar vacio -- no se guardo ese cambio (el resto de los campos si se guardaron).</p>
-    {% endif %}
-    <label>IP / identificador <input type="text" name="ip" value="{{ e.ip or '' }}" required></label>
-    <p class="field-hint">Para equipos en la red esto deberia ser su IP real. Para notebooks/torres en
-      casa sin IP fija (VPN, dinamica), usa un identificador unico en vez de una IP
-      (ej. nombre-empleado) -- ojo que si este equipo SI esta siendo escaneado, el proximo
-      escaneo puede volver a crear una fila con la IP anterior si el equipo responde ahi.</p>
-    <label>Hostname <input type="text" name="hostname" value="{{ e.hostname or '' }}" placeholder="Ej: PC-RECEPCION"></label>
-    <label>MAC <input type="text" name="mac" value="{{ e.mac or '' }}" placeholder="Ej: AA:BB:CC:DD:EE:FF"></label>
-  </fieldset>
-
-  <fieldset>
-    <legend>Administrativo</legend>
-    <label>Marca <input type="text" name="marca" value="{{ e.marca or '' }}"></label>
-    <label>Modelo <input type="text" name="modelo" value="{{ e.modelo or '' }}"></label>
-    <label>N. de serie <input type="text" name="numero_serie" value="{{ e.numero_serie or '' }}"></label>
-    <label>Fecha adquisicion <input type="date" name="fecha_adquisicion" value="{{ e.fecha_adquisicion or '' }}"></label>
-    <label>Garantia hasta <input type="date" name="garantia_hasta" value="{{ e.garantia_hasta or '' }}"></label>
-    <label>Responsable
-      <select name="responsable_id">
-        <option value="">-- Sin asignar --</option>
-        {% for u in usuarios %}
-        <option value="{{ u.id }}" {% if e.responsable_id == u.id %}selected{% endif %}>{{ u.nombre }}{% if u.cargo %} ({{ u.cargo }}){% endif %}</option>
-        {% endfor %}
-      </select>
-    </label>
-    <label>Correo responsable <span class="v">{{ e.correo_responsable or '-' }}</span></label>
-    <label>Sucursal <input type="text" name="sucursal" value="{{ e.sucursal or '' }}"></label>
-    <label>Ciudad <input type="text" name="ciudad" value="{{ e.ciudad or '' }}"></label>
-    <label>Departamento <input type="text" name="departamento" value="{{ e.departamento or '' }}"></label>
-  </fieldset>
-
-  <fieldset>
-    <legend>Hardware</legend>
-    <label>CPU <input type="text" name="cpu" value="{{ e.cpu or '' }}"></label>
-    <label>RAM <input type="text" name="ram" value="{{ e.ram or '' }}"></label>
-    <label>Almacenamiento <input type="text" name="almacenamiento" value="{{ e.almacenamiento or '' }}"></label>
-    <label>GPU <input type="text" name="gpu" value="{{ e.gpu or '' }}"></label>
-    <label>Placa madre <input type="text" name="placa_madre" value="{{ e.placa_madre or '' }}"></label>
-  </fieldset>
-
-  <fieldset>
-    <legend>Software</legend>
-    <label>Sistema operativo <input type="text" name="os" value="{{ e.os or '' }}" placeholder="Ej: Windows 10 Pro"></label>
-    <label>Office <input type="text" name="office" value="{{ e.office or '' }}" placeholder="Ej: Office 2016"></label>
-    <label>Antivirus <input type="text" name="antivirus" value="{{ e.antivirus or '' }}" placeholder="Ej: ESET Security"></label>
-  </fieldset>
-
-  <fieldset>
-    <legend>Topologia</legend>
-    <label>Dispositivo de red
-      <select name="dispositivo_id">
-        <option value="">-- Sin asignar --</option>
-        {% for d in dispositivos %}
-        <option value="{{ d.id }}" {% if e.dispositivo_id == d.id %}selected{% endif %}>{{ d.nombre }} ({{ d.tipo }}){% if d.sucursal %} - {{ d.sucursal }}{% endif %}</option>
-        {% endfor %}
-      </select>
-    </label>
-    <label>Puerto <input type="text" name="puerto" value="{{ e.puerto or '' }}" placeholder="Ej: Gi1/0/24"></label>
-  </fieldset>
-
-  <fieldset>
-    <legend>Gestion</legend>
-    <label>Estado del ciclo de vida
-      <select name="estado_ciclo_vida">
-        {% for opt in ["activo", "en_reparacion", "retirado", "bodega"] %}
-          <option value="{{ opt }}" {% if e.estado_ciclo_vida == opt %}selected{% endif %}>{{ opt }}</option>
-        {% endfor %}
-      </select>
-    </label>
-    <label class="checkbox"><input type="checkbox" name="critico" {% if e.critico %}checked{% endif %}> Critico</label>
-    <label class="checkbox"><input type="checkbox" name="gestionado" {% if e.gestionado %}checked{% endif %}> Gestionado</label>
-    <label class="full">Notas <textarea name="notas" rows="3">{{ e.notas or '' }}</textarea></label>
-  </fieldset>
-
+{% import "_macros_equipo.html" as m %}
+<form method="post" class="ficha-form" enctype="multipart/form-data">
+  <input type="hidden" name="origen" value="ficha">
+  {{ m.campos_equipo(e, usuarios, dispositivos, categorias_equipo, error, ip_conflicto, ip_nueva) }}
   <button type="submit" class="btn btn-primary">Guardar ficha</button>
 </form>
+{% if error == 'ip_duplicada' and ip_conflicto %}
+  {# Formulario de fusion, deliberadamente FUERA (hermano) del form de arriba
+     -- ver el comentario en _macros_equipo.html sobre por que no puede ir
+     anidado adentro. #}
+  {{ m.fusion_equipo(e, ip_nueva) }}
+{% endif %}
+
+<script>
+function netwatchAplicarCategoriaEquipo(sel) {
+  const red = (sel.dataset.categoriasRed || '').split(',').filter(Boolean);
+  const esRed = red.indexOf(sel.value) !== -1;
+  const form = sel.closest('.ficha-form');
+  if (!form) return;
+  form.querySelectorAll('.fieldset-solo-pc').forEach(function (fs) { fs.style.display = esRed ? 'none' : ''; });
+}
+
+function netwatchFotoEquipoSeleccionada(input, id) {
+  if (!input.files || !input.files[0]) return;
+  const reader = new FileReader();
+  reader.onload = function (ev) {
+    const img = document.getElementById('foto-equipo-img-' + id);
+    const placeholder = document.getElementById('foto-equipo-placeholder-' + id);
+    img.src = ev.target.result;
+    img.style.display = 'block';
+    if (placeholder) placeholder.style.display = 'none';
+    document.getElementById('foto-equipo-eliminar-' + id).value = '0';
+  };
+  reader.readAsDataURL(input.files[0]);
+}
+
+function netwatchEliminarFotoEquipo(id) {
+  const img = document.getElementById('foto-equipo-img-' + id);
+  img.style.display = 'none';
+  img.src = '';
+  const placeholder = document.getElementById('foto-equipo-placeholder-' + id);
+  if (placeholder) placeholder.style.display = 'flex';
+  document.getElementById('foto-equipo-archivo-' + id).value = '';
+  document.getElementById('foto-equipo-eliminar-' + id).value = '1';
+}
+</script>
 
 <section class="tickets-section">
   <h2>Tickets de soporte</h2>

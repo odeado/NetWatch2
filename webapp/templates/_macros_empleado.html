@@ -1,0 +1,90 @@
+{# Campos de edicion de un empleado, usados en el panel acordeon inline
+   "Editar" de Gestion de Empleados (admin.html). sufijo debe ser unico por
+   fila (ej. el id del empleado) para que los ids de la foto de perfil no
+   choquen entre las N filas que coexisten en el DOM. #}
+{% macro campos_empleado(u, departamentos, ciudades, sufijo) %}
+  <div class="modal-grid">
+    <label>Nombre completo *
+      <input type="text" name="nombre" required value="{{ u.nombre or '' }}" placeholder="Ej: Juan Perez">
+    </label>
+    <label>Correo electronico
+      <input type="email" name="correo" value="{{ u.correo or '' }}" placeholder="Ej: jperez@empresa.com">
+    </label>
+  </div>
+
+  <div class="foto-upload-box">
+    <p class="foto-upload-label">Foto de perfil (subir archivo o pegar URL)</p>
+    <div class="foto-upload-row">
+      <span class="avatar-circle">
+        <img id="foto-preview-{{ sufijo }}" alt=""
+             {% if u.foto_perfil %}src="{{ u.foto_perfil if u.foto_perfil.startswith('http') else url_for('static', filename=u.foto_perfil) }}" style="display:block"{% else %}style="display:none"{% endif %}>
+        <span id="foto-placeholder-{{ sufijo }}" style="{{ 'display:none' if u.foto_perfil else 'display:block' }}">?</span>
+      </span>
+      <button type="button" class="btn btn-confirm" onclick="document.getElementById('foto-archivo-input-{{ sufijo }}').click()">Seleccionar archivo</button>
+      <span id="foto-archivo-nombre-{{ sufijo }}" class="muted">Ningun archivo seleccionado</span>
+      <input type="file" name="foto_archivo" id="foto-archivo-input-{{ sufijo }}" accept="image/*" style="display:none" onchange="netwatchFotoSeleccionada(this, '{{ sufijo }}')">
+    </div>
+    <input type="text" name="foto_url" id="foto-url-input-{{ sufijo }}"
+           value="{{ u.foto_perfil if u.foto_perfil and u.foto_perfil.startswith('http') else '' }}"
+           placeholder="O pega una URL directa de imagen..." oninput="netwatchFotoUrlCambiada(this, '{{ sufijo }}')">
+  </div>
+
+  <div class="modal-grid">
+    <label>Departamento
+      <select name="departamento">
+        <option value="">-- Seleccionar Departamento --</option>
+        {% for d in departamentos %}
+        <option value="{{ d.nombre }}" {% if u.departamento == d.nombre %}selected{% endif %}>{{ d.nombre }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Ciudad
+      <select name="ciudad">
+        <option value="">-- Seleccionar Ciudad --</option>
+        {% for c in ciudades %}
+        <option value="{{ c.nombre }}" {% if u.ciudad == c.nombre %}selected{% endif %}>{{ c.nombre }}</option>
+        {% endfor %}
+      </select>
+    </label>
+  </div>
+
+  <div class="modal-grid">
+    <label>Sucursal
+      <input type="text" name="sucursal" value="{{ u.sucursal or '' }}" placeholder="Ej: Centro / Sucursal Sur">
+    </label>
+    <label>Telefono
+      <input type="text" name="telefono" value="{{ u.telefono or '' }}" placeholder="Ej: +56912345678">
+    </label>
+  </div>
+
+  <div class="modal-grid">
+    <label>Lugar de trabajo
+      <select name="lugar_trabajo">
+        {% for opt in ["Presencial", "Remoto", "Hibrido"] %}
+        <option value="{{ opt }}" {% if (u.lugar_trabajo or 'Presencial') == opt %}selected{% endif %}>{{ opt }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Cargo (responsabilidad)
+      <input type="text" name="cargo" value="{{ u.cargo or '' }}" placeholder="Ej: Ejecutivo de Ventas / TI">
+    </label>
+  </div>
+
+  <label class="full">Sistemas autorizados / Aplicaciones
+    <input type="text" name="sistemas_autorizados" value="{{ u.sistemas_autorizados or '' }}" placeholder="Ej: Milenium, CRM Ventas, ERP Contabilidad">
+  </label>
+
+  <div class="modal-grid modal-grid-vpn">
+    <label>Tipo VPN
+      <select name="tipo_vpn">
+        {% for opt in ["Agencia", "Milenium", "RDP"] %}
+        <option value="{{ opt }}" {% if (u.tipo_vpn or 'Agencia') == opt %}selected{% endif %}>{{ opt }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <div class="vpn-flags">
+      <label class="checkbox-label"><input type="checkbox" name="vpn_activa" {% if u.vpn_activa %}checked{% endif %}> Tiene VPN Activa</label>
+      <label class="checkbox-label"><input type="checkbox" name="activo" {% if u.activo %}checked{% endif %}> Empleado Activo</label>
+    </div>
+  </div>
+{% endmacro %}

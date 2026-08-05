@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
+{% import "_macros_empleado.html" as me %}
 <header>
   <p class="back"><a href="{{ url_for('index') }}">&larr; Volver al inventario</a></p>
   <div class="header-row">
@@ -140,7 +141,7 @@
   <tbody>
     {% for u in usuarios %}
     <tr class="{{ '' if u.activo else 'usuario-row-inactivo' }} empleado-row"
-        data-buscar="{{ (u.nombre or '') ~ ' ' ~ (u.correo or '') ~ ' ' ~ (u.departamento or '') ~ ' ' ~ (u.ciudad or '') ~ ' ' ~ (u.telefono or '') ~ ' ' ~ (u.lugar_trabajo or '') | lower }}"
+        data-buscar="{{ ((u.nombre or '') ~ ' ' ~ (u.correo or '') ~ ' ' ~ (u.departamento or '') ~ ' ' ~ (u.ciudad or '') ~ ' ' ~ (u.telefono or '') ~ ' ' ~ (u.lugar_trabajo or '')) | lower }}"
         onclick="netwatchAbrirPerfil({{ u.id }})">
       <td onclick="event.stopPropagation()">
         <input type="checkbox" class="usuario-check" name="usuario_ids" value="{{ u.id }}"
@@ -177,9 +178,20 @@
         {% endif %}
       </td>
       <td class="actions" onclick="event.stopPropagation()">
-        <button type="button" class="btn btn-confirm" onclick="netwatchAbrirModalEmpleado({{ u.id }})">Editar</button>
+        <button type="button" class="btn btn-confirm" onclick="netwatchToggleAcordeon('empleado-{{ u.id }}')">Editar</button>
         <form method="post" action="{{ url_for('eliminar_usuario', usuario_id=u.id) }}" onsubmit="return confirm('Eliminar a {{ u.nombre }}? Esta accion no se puede deshacer.')">
           <button type="submit" class="btn btn-dark">Eliminar</button>
+        </form>
+      </td>
+    </tr>
+    <tr class="acordeon-panel" id="panel-empleado-{{ u.id }}" style="display:none" onclick="event.stopPropagation()">
+      <td colspan="11">
+        <form method="post" action="{{ url_for('editar_usuario', usuario_id=u.id) }}" enctype="multipart/form-data" class="modal-form acordeon-form">
+          {{ me.campos_empleado(u, departamentos, ciudades, u.id) }}
+          <div class="modal-footer">
+            <button type="button" class="btn btn-reset" onclick="netwatchToggleAcordeon('empleado-{{ u.id }}')">Cancelar</button>
+            <button type="submit" class="btn btn-primary">Guardar Cambios</button>
+          </div>
         </form>
       </td>
     </tr>
@@ -268,14 +280,14 @@
         <p class="foto-upload-label">Foto de perfil (subir archivo o pegar URL)</p>
         <div class="foto-upload-row">
           <span class="avatar-circle">
-            <img id="foto-preview" style="display:none">
-            <span id="foto-placeholder">?</span>
+            <img id="foto-preview-nuevo" alt="" style="display:none">
+            <span id="foto-placeholder-nuevo">?</span>
           </span>
-          <button type="button" class="btn btn-confirm" onclick="document.getElementById('foto-archivo-input').click()">Seleccionar archivo</button>
-          <span id="foto-archivo-nombre" class="muted">Ningun archivo seleccionado</span>
-          <input type="file" name="foto_archivo" id="foto-archivo-input" accept="image/*" style="display:none" onchange="netwatchFotoSeleccionada(this)">
+          <button type="button" class="btn btn-confirm" onclick="document.getElementById('foto-archivo-input-nuevo').click()">Seleccionar archivo</button>
+          <span id="foto-archivo-nombre-nuevo" class="muted">Ningun archivo seleccionado</span>
+          <input type="file" name="foto_archivo" id="foto-archivo-input-nuevo" accept="image/*" style="display:none" onchange="netwatchFotoSeleccionada(this, 'nuevo')">
         </div>
-        <input type="text" name="foto_url" id="foto-url-input" placeholder="O pega una URL directa de imagen..." oninput="netwatchFotoUrlCambiada(this)">
+        <input type="text" name="foto_url" id="foto-url-input-nuevo" placeholder="O pega una URL directa de imagen..." oninput="netwatchFotoUrlCambiada(this, 'nuevo')">
       </div>
 
       <div class="modal-grid">
@@ -368,79 +380,58 @@ function netwatchWhatsappLink(telefono) {
   return 'whatsapp://send?phone=' + digitos;
 }
 
-function netwatchFotoSeleccionada(input) {
-  const nombreSpan = document.getElementById('foto-archivo-nombre');
+function netwatchFotoSeleccionada(input, sufijo) {
+  const nombreSpan = document.getElementById('foto-archivo-nombre-' + sufijo);
   if (input.files && input.files[0]) {
     nombreSpan.textContent = input.files[0].name;
     const reader = new FileReader();
-    reader.onload = function (e) { netwatchMostrarFotoPreview(e.target.result); };
+    reader.onload = function (e) { netwatchMostrarFotoPreview(e.target.result, sufijo); };
     reader.readAsDataURL(input.files[0]);
-    document.getElementById('foto-url-input').value = '';
+    document.getElementById('foto-url-input-' + sufijo).value = '';
   } else {
     nombreSpan.textContent = 'Ningun archivo seleccionado';
   }
 }
 
-function netwatchFotoUrlCambiada(input) {
+function netwatchFotoUrlCambiada(input, sufijo) {
   const valor = input.value.trim();
   if (valor) {
-    netwatchMostrarFotoPreview(valor);
-    document.getElementById('foto-archivo-input').value = '';
-    document.getElementById('foto-archivo-nombre').textContent = 'Ningun archivo seleccionado';
+    netwatchMostrarFotoPreview(valor, sufijo);
+    document.getElementById('foto-archivo-input-' + sufijo).value = '';
+    document.getElementById('foto-archivo-nombre-' + sufijo).textContent = 'Ningun archivo seleccionado';
   }
 }
 
-function netwatchMostrarFotoPreview(src) {
-  const img = document.getElementById('foto-preview');
-  const placeholder = document.getElementById('foto-placeholder');
+function netwatchMostrarFotoPreview(src, sufijo) {
+  const img = document.getElementById('foto-preview-' + sufijo);
+  const placeholder = document.getElementById('foto-placeholder-' + sufijo);
   img.src = src;
   img.style.display = 'block';
   placeholder.style.display = 'none';
 }
 
 function netwatchResetFotoPreview() {
-  const img = document.getElementById('foto-preview');
-  const placeholder = document.getElementById('foto-placeholder');
+  const img = document.getElementById('foto-preview-nuevo');
+  const placeholder = document.getElementById('foto-placeholder-nuevo');
   img.src = '';
   img.style.display = 'none';
   placeholder.style.display = 'block';
-  document.getElementById('foto-archivo-input').value = '';
-  document.getElementById('foto-url-input').value = '';
-  document.getElementById('foto-archivo-nombre').textContent = 'Ningun archivo seleccionado';
+  document.getElementById('foto-archivo-input-nuevo').value = '';
+  document.getElementById('foto-url-input-nuevo').value = '';
+  document.getElementById('foto-archivo-nombre-nuevo').textContent = 'Ningun archivo seleccionado';
 }
 
-function netwatchAbrirModalEmpleado(id) {
+// El modal ahora es SOLO para agregar un empleado nuevo -- editar uno
+// existente se hace con el panel acordeon inline "Editar" de la tabla (no
+// se sale de Gestion de Empleados, y se puede seguir con el siguiente sin
+// perder el lugar).
+function netwatchAbrirModalEmpleado() {
   const form = document.getElementById('form-empleado');
   form.reset();
   netwatchResetFotoPreview();
-
-  if (id) {
-    const u = NETWATCH_USUARIOS.find(function (x) { return x.id === id; });
-    document.getElementById('modal-empleado-titulo').textContent = 'Editar Empleado';
-    form.action = '/admin/usuarios/' + id;
-    if (u) {
-      document.getElementById('f-nombre').value = u.nombre || '';
-      document.getElementById('f-correo').value = u.correo || '';
-      document.getElementById('f-departamento').value = u.departamento || '';
-      document.getElementById('f-ciudad').value = u.ciudad || '';
-      document.getElementById('f-sucursal').value = u.sucursal || '';
-      document.getElementById('f-telefono').value = u.telefono || '';
-      document.getElementById('f-lugar-trabajo').value = u.lugar_trabajo || 'Presencial';
-      document.getElementById('f-cargo').value = u.cargo || '';
-      document.getElementById('f-sistemas').value = u.sistemas_autorizados || '';
-      document.getElementById('f-tipo-vpn').value = u.tipo_vpn || 'Agencia';
-      document.getElementById('f-vpn-activa').checked = !!u.vpn_activa;
-      document.getElementById('f-activo').checked = !!u.activo;
-      if (u.foto_perfil) {
-        const src = u.foto_perfil.startsWith('http') ? u.foto_perfil : ('/static/' + u.foto_perfil);
-        netwatchMostrarFotoPreview(src);
-      }
-    }
-  } else {
-    document.getElementById('modal-empleado-titulo').textContent = 'Agregar Nuevo Empleado';
-    form.action = NETWATCH_URL_CREAR_USUARIO;
-    document.getElementById('f-activo').checked = true;
-  }
+  document.getElementById('modal-empleado-titulo').textContent = 'Agregar Nuevo Empleado';
+  form.action = NETWATCH_URL_CREAR_USUARIO;
+  document.getElementById('f-activo').checked = true;
 
   document.getElementById('modal-empleado').classList.add('modal-open');
 }
@@ -591,7 +582,8 @@ const netwatchBuscadorEmpleados = document.getElementById('buscador-empleados');
 if (netwatchBuscadorEmpleados) {
   netwatchBuscadorEmpleados.addEventListener('input', function (ev) {
     const q = ev.target.value.trim().toLowerCase();
-    const filas = document.querySelectorAll('#tabla-empleados tbody tr');
+    // :not(.acordeon-panel) para no tocar las filas del panel "Editar" inline.
+    const filas = document.querySelectorAll('#tabla-empleados tbody tr:not(.acordeon-panel)');
     let visibles = 0;
     filas.forEach(function (tr) {
       const coincide = !q || tr.dataset.buscar.indexOf(q) !== -1;
@@ -703,6 +695,20 @@ function netwatchToggleTodos(origen) {
     if (fila && fila.style.display !== 'none') cb.checked = origen.checked;
   });
   netwatchActualizarSeleccion();
+}
+
+// --- panel "Editar" inline (acordeon), igual que en Inventario de Equipos --
+function netwatchToggleAcordeon(key) {
+  const panel = document.getElementById('panel-' + key);
+  if (!panel) return;
+  const abriendo = panel.style.display === 'none';
+  document.querySelectorAll('.acordeon-panel').forEach(function (p) {
+    p.style.display = 'none';
+  });
+  panel.style.display = abriendo ? 'table-row' : 'none';
+  if (abriendo) {
+    panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
 }
 
 // Nombres de equipos/dispositivos que quedaron cargados como si fueran

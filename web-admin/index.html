@@ -271,9 +271,11 @@
         <label class="full">Nombre <input type="text" id="disp-nombre" placeholder="Ej: Switch-Imprenta-01"></label>
         <label>Tipo
           <select id="disp-tipo">
-            <option value="switch">Switch administrable</option>
+            <option value="switch">Switch L3</option>
             <option value="router">Router</option>
             <option value="fortinet">Firewall Fortinet</option>
+            <option value="conversor">Conversor</option>
+            <option value="modem">Modem</option>
             <option value="otro">Otro dispositivo</option>
           </select>
         </label>
@@ -523,6 +525,7 @@ window.vincularEquipoAEmpleado = function () {
     responsable_id: empKey,
     responsable: emp.nombre || '',
     correo_responsable: emp.correo || '',
+    actualizado_en: new Date().toISOString(),
   }).then(function () { pintarEquiposAsignadosModal(empKey); });
 };
 
@@ -532,6 +535,7 @@ window.desvincularEquipoDeEmpleado = function (eqKey) {
     responsable_id: null,
     responsable: '',
     correo_responsable: '',
+    actualizado_en: new Date().toISOString(),
   }).then(function () { pintarEquiposAsignadosModal(empKey); });
 };
 
@@ -554,6 +558,7 @@ window.guardarEmpleado = function () {
     activo: document.getElementById('emp-activo').value === '1',
     vpn_activa: document.getElementById('emp-vpn-activa').checked,
     sistemas_autorizados: document.getElementById('emp-sistemas').value.trim(),
+    actualizado_en: new Date().toISOString(),
   };
   if (key) {
     update(ref(dbRef, 'empleados/' + key), datos);
@@ -730,6 +735,7 @@ window.guardarEquipo = function () {
     critico: document.getElementById('eq-critico').checked,
     gestionado: document.getElementById('eq-gestionado').checked,
     notas: document.getElementById('eq-notas').value.trim(),
+    actualizado_en: new Date().toISOString(),
   };
   if (key) {
     update(ref(dbRef, 'equipos/' + key), datos);
@@ -751,9 +757,11 @@ window.borrarEquipo = function () {
 // Mismos tipos/etiquetas que TIPOS_DISPOSITIVO / TIPO_DISPOSITIVO_LABELS del
 // sistema local (webapp/db.py) -- si se agrega un tipo nuevo alla, agregarlo aca tambien.
 const NETWATCH_TIPO_LABELS = {
-  switch: 'Switch administrable',
+  switch: 'Switch L3',
   router: 'Router',
   fortinet: 'Firewall Fortinet',
+  conversor: 'Conversor',
+  modem: 'Modem',
   otro: 'Otro dispositivo',
 };
 
@@ -904,6 +912,7 @@ window.netwatchGuardarDispositivoInline = function (key) {
     fecha_ingreso: g('disp-fecha-ingreso').value.trim(),
     enlace: g('disp-enlace').value.trim(),
     notas: g('disp-notas').value.trim(),
+    actualizado_en: new Date().toISOString(),
   };
   update(ref(dbRef, 'dispositivos/' + key), datos);
   netwatchToggleAcordeon('editar-' + key);
@@ -980,11 +989,12 @@ window.netwatchGuardarPuertosInline = async function (key) {
       if (par[1].dispositivo_nombre === nombreSwitch && par[1].puerto === puertoLabel) anteriorKey = par[0];
     });
     if (anteriorKey === nuevoEquipoKey) return; // sin cambios en este puerto
+    const ts = new Date().toISOString();
     if (anteriorKey) {
-      tareas.push(update(ref(dbRef, 'equipos/' + anteriorKey), { dispositivo_nombre: '', puerto: '' }));
+      tareas.push(update(ref(dbRef, 'equipos/' + anteriorKey), { dispositivo_nombre: '', puerto: '', actualizado_en: ts }));
     }
     if (nuevoEquipoKey) {
-      tareas.push(update(ref(dbRef, 'equipos/' + nuevoEquipoKey), { dispositivo_nombre: nombreSwitch, puerto: puertoLabel }));
+      tareas.push(update(ref(dbRef, 'equipos/' + nuevoEquipoKey), { dispositivo_nombre: nombreSwitch, puerto: puertoLabel, actualizado_en: ts }));
     }
   });
   await Promise.all(tareas);
@@ -1028,6 +1038,7 @@ window.guardarDispositivo = function () {
     fecha_ingreso: document.getElementById('disp-fecha-ingreso').value.trim(),
     enlace: document.getElementById('disp-enlace').value.trim(),
     notas: document.getElementById('disp-notas').value.trim(),
+    actualizado_en: new Date().toISOString(),
   };
   push(ref(dbRef, 'dispositivos'), datos);
   cerrarModalDispositivo();

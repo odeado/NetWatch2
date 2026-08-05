@@ -14,12 +14,17 @@ sube a git) con:
     }
 
 Direccion de la sincronizacion (boton "Sincronizar con la nube" en Administracion):
-  - Empleados/equipos que existen en Firebase pero no localmente -> se crean localmente.
-  - Empleados/equipos que existen en ambos lados (match por nombre / IP-hostname)
-    -> los campos NO VACIOS que vienen de Firebase pisan los locales (la nube
-       manda porque ahi se hicieron las ediciones remotas).
-  - Empleados/equipos locales que todavia no tienen firebase_id (creados o
-    editados localmente y nunca subidos) -> se suben a Firebase.
+  - Empleados/equipos/dispositivos que existen en Firebase pero no localmente
+    -> se crean localmente.
+  - Empleados/equipos/dispositivos que existen en ambos lados (match por
+    nombre / IP-hostname) -> gana el lado que se edito MAS RECIENTE (columna
+    actualizado_en de cada lado, decision explicita de Andres 2026-07-27: "el
+    ultimo registro debe mandar, ya que pudo cambiar en web o en local"). Si
+    el registro local no tiene actualizado_en (dato viejo, de antes de que
+    existiera este campo), se trata como el mas antiguo posible y la nube
+    gana por defecto, igual que el comportamiento previo a este cambio.
+  - Empleados/equipos/dispositivos locales que todavia no tienen firebase_id
+    (creados o editados localmente y nunca subidos) -> se suben a Firebase.
 """
 
 import json
@@ -27,12 +32,52 @@ import threading
 import unicodedata
 import urllib.error
 import urllib.request
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import db
 
 CONFIG_PATH = Path(__file__).resolve().parent / "firebase_config.json"
+
+
+def _parsear_ts(valor):
+    """Convierte un actualizado_en (ISO 8601, con o sin 'Z'/offset) en un
+    datetime timezone-aware (UTC) para poder compararlo. Devuelve None si no
+    hay valor o no se pudo parsear (dato viejo o formato raro -- se trata
+    como "sin timestamp", el caso mas antiguo posible)."""
+    if not valor or not isinstance(valor, str):
+        return None
+    v = valor.strip()
+    if v.endswith("Z"):
+        v = v[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(v)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        # Timestamp viejo guardado en hora local antes de este cambio (o el
+        # agente/algun llamador que no mando con offset) -- se asume UTC. No
+        # es perfecto si el servidor no esta en UTC, pero es mejor que
+        # reventar la comparacion, y estos casos van desapareciendo solos a
+        # medida que se re-guardan los registros.
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def _remoto_gana(local, campos_remotos):
+    """Decide quien manda para ESTE registro puntual cuando existe en ambos
+    lados: True si Firebase se edito mas reciente que el local (o el local
+    nunca quedo con timestamp -- dato viejo, se preserva el comportamiento de
+    antes de este cambio y gana la nube). False si el local es igual o mas
+    reciente -- en ese caso no se aplica NINGUN campo de Firebase esta vuelta,
+    para no pisar una edicion que se acaba de hacer a mano."""
+    ts_local = _parsear_ts(local.get("actualizado_en"))
+    if ts_local is None:
+        return True
+    ts_remoto = _parsear_ts(campos_remotos.get("actualizado_en"))
+    if ts_remoto is None:
+        return False
+    return ts_remoto > ts_local
 
 # --- estado compartido para la barra de progreso ---------------------------
 _estado_lock = threading.Lock()
@@ -134,6 +179,12 @@ def _http_json(url, method="GET", body=None, timeout=15):
         raise FirebaseConfigError(f"http_{e.code}: {e.read().decode('utf-8', 'ignore')[:200]}")
     except urllib.error.URLError as e:
         raise FirebaseConfigError(f"conexion: {e.reason}")
+    except OSError as e:
+        # Mismo bug que en scanner/firebase_push.py: un corte de conexion a
+        # mitad de respuesta (ej. http.client.RemoteDisconnected) no es un
+        # URLError, asi que se colaba sin control y podia matar monitor.py
+        # entero (que llama esto cada ciclo para leer los sitios remotos).
+        raise FirebaseConfigError(f"conexion: {e}")
     return json.loads(raw) if raw else None
 
 
@@ -182,15 +233,18 @@ def _sincronizar_usuarios(cfg, id_token, conn, remotos, locales, on_progreso=Non
             continue
         local = por_fbid.get(fb_id) or por_clave.get(_clave_nombre(campos["nombre"]))
         if local:
+            gana_remoto = _remoto_gana(local, campos)
             updates = {}
-            for campo in CAMPOS_USUARIO:
-                val = campos.get(campo)
-                if val not in (None, "") and val != local.get(campo):
-                    updates[campo] = val
+            if gana_remoto:
+                for campo in CAMPOS_USUARIO:
+                    val = campos.get(campo)
+                    if val not in (None, "") and val != local.get(campo):
+                        updates[campo] = val
             if local.get("firebase_id") != fb_id:
                 updates["firebase_id"] = fb_id
             if updates:
-                updates["actualizado_en"] = datetime.now().isoformat()
+                if any(k != "firebase_id" for k in updates):
+                    updates["actualizado_en"] = campos.get("actualizado_en") or datetime.now(timezone.utc).isoformat()
                 set_clause = ", ".join(f"{k} = ?" for k in updates)
                 conn.execute(f"UPDATE usuarios SET {set_clause} WHERE id = ?",
                              list(updates.values()) + [local["id"]])
@@ -198,6 +252,7 @@ def _sincronizar_usuarios(cfg, id_token, conn, remotos, locales, on_progreso=Non
                 local.update(updates)
         else:
             now = datetime.now().isoformat()
+            marca_ts = campos.get("actualizado_en") or datetime.now(timezone.utc).isoformat()
             valores = {c: campos.get(c) for c in CAMPOS_USUARIO}
             valores["nombre"] = campos["nombre"]
             valores["activo"] = 1 if valores.get("activo") in (True, 1, "1", None) else 0
@@ -210,7 +265,7 @@ def _sincronizar_usuarios(cfg, id_token, conn, remotos, locales, on_progreso=Non
                 (valores["nombre"], valores.get("correo"), valores.get("cargo"), valores.get("sucursal"),
                  valores.get("telefono"), valores["activo"], now, valores.get("departamento"),
                  valores.get("ciudad"), valores.get("lugar_trabajo") or "Presencial", valores.get("tipo_vpn"),
-                 valores["vpn_activa"], valores.get("sistemas_autorizados"), fb_id, now),
+                 valores["vpn_activa"], valores.get("sistemas_autorizados"), fb_id, marca_ts),
             )
             nuevo = dict(conn.execute("SELECT * FROM usuarios WHERE id = ?", (cur.lastrowid,)).fetchone())
             por_clave[_clave_nombre(nuevo["nombre"])] = nuevo
@@ -264,20 +319,47 @@ def _sincronizar_equipos(cfg, id_token, conn, remotos, locales, on_progreso=None
         clave = _clave_equipo(campos.get("ip"), campos.get("hostname"))
         local = por_fbid.get(fb_id) or (por_clave.get(clave) if clave else None)
         if local:
+            # Gana el mas reciente (columna actualizado_en de cada lado) para
+            # todo el registro -- decision explicita de Andres: "el ultimo
+            # registro debe mandar, ya que pudo cambiar en web o en local".
+            # Si el local es igual o mas nuevo, NO se aplica ningun campo de
+            # Firebase esta vuelta (para no pisar una edicion recien hecha a
+            # mano en el sistema local).
+            gana_remoto = _remoto_gana(local, campos)
             updates = {}
             for campo in CAMPOS_EQUIPO:
                 val = campos.get(campo)
+                if campo in ("critico", "gestionado"):
+                    # Banderas booleanas: esta regla es APARTE del "gana el
+                    # mas reciente" de arriba y siempre se aplica, sin
+                    # importar quien gano el registro -- OJO -- antes se
+                    # trataban igual que cualquier otro campo, y "val not in
+                    # (None, '')" deja pasar un 0 (0 no es None ni ""), asi
+                    # que si la nube tenia critico=0 (el default de cualquier
+                    # equipo que nunca se marco critico desde el celular),
+                    # cada "Sincronizar con la nube" pisaba el 1 marcado en
+                    # el sistema local y el equipo dejaba de avisar por
+                    # WhatsApp sin que nadie lo apagara a mano. Ahora la nube
+                    # solo puede PRENDER la bandera, nunca apagarla via sync
+                    # -- para apagarla se usa el boton Critico/Descartar en
+                    # el sistema local.
+                    if val and not local.get(campo):
+                        updates[campo] = 1
+                    continue
+                if not gana_remoto:
+                    continue
                 if val not in (None, "") and val != local.get(campo):
                     updates[campo] = val
             nombre_disp = campos.get(CAMPO_EQUIPO_DISPOSITIVO)
-            if nombre_disp:
+            if gana_remoto and nombre_disp:
                 disp_id = dispositivos_por_clave.get(_clave_nombre(nombre_disp))
                 if disp_id and disp_id != local.get("dispositivo_id"):
                     updates["dispositivo_id"] = disp_id
             if local.get("firebase_id") != fb_id:
                 updates["firebase_id"] = fb_id
             if updates:
-                updates["actualizado_en"] = datetime.now().isoformat()
+                if any(k != "firebase_id" for k in updates):
+                    updates["actualizado_en"] = campos.get("actualizado_en") or datetime.now(timezone.utc).isoformat()
                 set_clause = ", ".join(f"{k} = ?" for k in updates)
                 conn.execute(f"UPDATE equipos SET {set_clause} WHERE id = ?",
                              list(updates.values()) + [local["id"]])
@@ -295,6 +377,7 @@ def _sincronizar_equipos(cfg, id_token, conn, remotos, locales, on_progreso=None
                 sufijo += 1
                 ip_probar = f"{ip_final}-{sufijo}"
             now = datetime.now().isoformat()
+            marca_ts = campos.get("actualizado_en") or datetime.now(timezone.utc).isoformat()
             campos_ins = {c: campos.get(c) for c in CAMPOS_EQUIPO if c not in ("ip", "hostname")}
             nombre_disp = campos.get(CAMPO_EQUIPO_DISPOSITIVO)
             dispositivo_id = dispositivos_por_clave.get(_clave_nombre(nombre_disp)) if nombre_disp else None
@@ -315,7 +398,7 @@ def _sincronizar_equipos(cfg, id_token, conn, remotos, locales, on_progreso=None
                  campos_ins.get("estado_ciclo_vida") or "activo", 1 if campos_ins.get("critico") else 0,
                  1 if campos_ins.get("gestionado") else 0, campos_ins.get("notas"), campos_ins.get("os"),
                  campos_ins.get("office"), campos_ins.get("antivirus"), campos_ins.get("puerto"),
-                 dispositivo_id, "manual", now, fb_id, now),
+                 dispositivo_id, "manual", now, fb_id, marca_ts),
             )
             nuevo = dict(conn.execute("SELECT * FROM equipos WHERE id = ?", (cur.lastrowid,)).fetchone())
             nueva_clave = _clave_equipo(nuevo.get("ip"), nuevo.get("hostname"))
@@ -359,15 +442,18 @@ def _sincronizar_dispositivos(cfg, id_token, conn, remotos, locales, on_progreso
             continue
         local = por_fbid.get(fb_id) or por_clave.get(_clave_nombre(campos["nombre"]))
         if local:
+            gana_remoto = _remoto_gana(local, campos)
             updates = {}
-            for campo in CAMPOS_DISPOSITIVO:
-                val = campos.get(campo)
-                if val not in (None, "") and val != local.get(campo):
-                    updates[campo] = val
+            if gana_remoto:
+                for campo in CAMPOS_DISPOSITIVO:
+                    val = campos.get(campo)
+                    if val not in (None, "") and val != local.get(campo):
+                        updates[campo] = val
             if local.get("firebase_id") != fb_id:
                 updates["firebase_id"] = fb_id
             if updates:
-                updates["actualizado_en"] = datetime.now().isoformat()
+                if any(k != "firebase_id" for k in updates):
+                    updates["actualizado_en"] = campos.get("actualizado_en") or datetime.now(timezone.utc).isoformat()
                 set_clause = ", ".join(f"{k} = ?" for k in updates)
                 conn.execute(f"UPDATE dispositivos_red SET {set_clause} WHERE id = ?",
                              list(updates.values()) + [local["id"]])
@@ -375,6 +461,7 @@ def _sincronizar_dispositivos(cfg, id_token, conn, remotos, locales, on_progreso
                 local.update(updates)
         else:
             now = datetime.now().isoformat()
+            marca_ts = campos.get("actualizado_en") or datetime.now(timezone.utc).isoformat()
             cur = conn.execute(
                 """INSERT INTO dispositivos_red (
                        nombre, tipo, marca, modelo, numero_serie, cantidad_bocas, bocas_fibra,
@@ -385,7 +472,7 @@ def _sincronizar_dispositivos(cfg, id_token, conn, remotos, locales, on_progreso
                  campos.get("numero_serie"), campos.get("cantidad_bocas"), campos.get("bocas_fibra"),
                  campos.get("ip"), campos.get("mac"), campos.get("sucursal"), campos.get("ciudad"),
                  campos.get("ubicacion"), campos.get("piso"), campos.get("estado") or "Usado",
-                 campos.get("fecha_ingreso"), campos.get("enlace"), campos.get("notas"), now, fb_id, now),
+                 campos.get("fecha_ingreso"), campos.get("enlace"), campos.get("notas"), now, fb_id, marca_ts),
             )
             nuevo = dict(conn.execute("SELECT * FROM dispositivos_red WHERE id = ?", (cur.lastrowid,)).fetchone())
             por_clave[_clave_nombre(nuevo["nombre"])] = nuevo
@@ -442,6 +529,20 @@ def _sincronizar_catalogo(cfg, id_token, conn, tabla, nodo, remotos, locales_nom
         subidos += 1
 
     return {"bajados_nuevos": creados, "subidos": subidos}
+
+
+def leer_escaneo_remoto(sitio):
+    """Lee el ultimo escaneo publicado por un sitio remoto sin VPN permanente
+    (ver scanner/firebase_push.py). Se usa desde monitor.py, no desde la
+    ruta de sincronizacion de administracion. Devuelve None si falta la
+    configuracion, no hay internet, o el sitio todavia no ha publicado nada."""
+    try:
+        cfg = _cargar_config()
+        id_token = _iniciar_sesion(cfg)
+        data = _leer_nodo(cfg, f"escaneos_remotos/{sitio}", id_token)
+    except FirebaseConfigError:
+        return None
+    return data or None
 
 
 def sincronizar():

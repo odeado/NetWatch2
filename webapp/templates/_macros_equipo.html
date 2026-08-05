@@ -1,0 +1,157 @@
+{# Campos de edicion de un equipo, compartidos entre ficha.html (pagina completa)
+   y admin_equipos.html (panel acordeon inline en Gestion de Equipos), para no
+   mantener el mismo formulario largo duplicado en dos archivos. #}
+{% macro campos_equipo(e, usuarios, dispositivos, categorias_equipo, error=None, ip_conflicto=None, ip_nueva=None, origen=None) %}
+  {# Mismo listado que db.CATEGORIAS_DISPOSITIVO_RED -- switches/impresoras/
+     camaras no son PC, asi que no tiene sentido mostrarles CPU/RAM/OS/Office
+     (quedaba desordenado con campos vacios que no aplican). #}
+  {% set categorias_red = ["Switch", "Router", "Firewall/UTM", "Access Point", "ONT/Modem", "Impresora", "Camara/DVR"] %}
+  {% set es_dispositivo_red = e.categoria in categorias_red %}
+  <div class="foto-upload-box">
+    <p class="foto-upload-label">Imagen del equipo</p>
+    <div class="foto-upload-row">
+      <span class="foto-equipo-preview">
+        <img id="foto-equipo-img-{{ e.id }}" alt=""
+             src="{{ (e.foto if e.foto.startswith('http') else url_for('static', filename=e.foto)) if e.foto else '' }}"
+             style="display:{{ 'block' if e.foto else 'none' }}">
+        <span id="foto-equipo-placeholder-{{ e.id }}" style="display:{{ 'none' if e.foto else 'flex' }}">Sin imagen</span>
+      </span>
+      <button type="button" class="btn btn-confirm" onclick="document.getElementById('foto-equipo-archivo-{{ e.id }}').click()">Cambiar imagen</button>
+      <button type="button" class="btn btn-dark" onclick="netwatchEliminarFotoEquipo({{ e.id }})">Eliminar imagen</button>
+      <input type="file" name="foto_archivo" id="foto-equipo-archivo-{{ e.id }}" accept="image/*" style="display:none"
+             onchange="netwatchFotoEquipoSeleccionada(this, {{ e.id }})">
+      <input type="hidden" name="eliminar_foto" id="foto-equipo-eliminar-{{ e.id }}" value="0">
+    </div>
+  </div>
+
+  <fieldset>
+    <legend>Identificacion</legend>
+    <p class="field-hint">Si el escaneo no detecto hostname o MAC (comun cuando el equipo esta en otra
+      VLAN o conectas por VPN), puedes escribirlos aqui a mano. Si el escaneo los detecta despues,
+      se van a actualizar solos con el valor real.</p>
+    {% if error == 'ip_duplicada' and ip_conflicto %}
+    <div class="empty small">
+      <p>Ya existe otro equipo (<strong>{{ ip_conflicto.hostname or ip_conflicto.ip }}</strong>) con la IP {{ ip_nueva }}
+        -- no se guardo el cambio de IP (el resto de los campos si se guardaron). Si en realidad este equipo
+        cambio a esa IP nueva y el otro registro es solo el que el escaneo creo solo al detectarla, puedes
+        fusionarlos: se borra el duplicado y esta ficha se completa con lo que le faltara.</p>
+      {# OJO -- el boton de fusion NO puede ser un <form> aca adentro: esta
+         macro siempre se usa DENTRO del <form> grande de la ficha, y un
+         <form> anidado dentro de otro es HTML invalido -- el navegador
+         rompe el formulario de afuera de forma impredecible (esto paso de
+         verdad el 2026-07-24 y borro datos). El formulario real de fusion
+         se declara aparte, fuera del <form> grande (ver fusion_equipo() mas
+         abajo en este mismo archivo) -- este boton solo apunta a el con el
+         atributo form="...". #}
+      <button type="submit" form="form-fusion-{{ e.id }}" class="btn btn-confirm">Fusionar con {{ ip_conflicto.hostname or ip_conflicto.ip }}</button>
+    </div>
+    {% elif error == 'ip_duplicada' %}
+    <p class="empty small">Ya existe otro equipo con esa IP/identificador -- no se guardo el cambio de IP (el resto de los campos si se guardaron).</p>
+    {% elif error == 'ip_requerida' %}
+    <p class="empty small">La IP/identificador no puede quedar vacio -- no se guardo ese cambio (el resto de los campos si se guardaron).</p>
+    {% endif %}
+    <label>IP / identificador <input type="text" name="ip" value="{{ e.ip or '' }}" required></label>
+    <label>Hostname <input type="text" name="hostname" value="{{ e.hostname or '' }}" placeholder="Ej: PC-RECEPCION"></label>
+    <label>MAC <input type="text" name="mac" value="{{ e.mac or '' }}" placeholder="Ej: AA:BB:CC:DD:EE:FF"></label>
+  </fieldset>
+
+  <fieldset class="fieldset-compacto">
+    <legend>Administrativo</legend>
+    <label>Categoria
+      {# OJO -- data-categorias-red va separado por comas (no JSON) a proposito:
+         un onchange="" es un atributo HTML entre comillas dobles, y el filtro
+         |tojson de Jinja no le hace escape a las comillas dobles (esta pensado
+         para ir adentro de un <script>, no de un atributo) -- meterlo directo
+         acá rompia el HTML del atributo (confirmado: tiraba
+         "Failed to execute 'setValueAndClosePopup'" en el navegador porque el
+         <select> quedaba mal formado). Con una lista separada por comas no hay
+         comillas que puedan chocar. #}
+      <select name="categoria" data-categorias-red="{{ categorias_red | join(',') }}" onchange="netwatchAplicarCategoriaEquipo(this)">
+        <option value="">-- Sin definir --</option>
+        {% for opt in categorias_equipo %}
+          <option value="{{ opt }}" {% if e.categoria == opt %}selected{% endif %}>{{ opt }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Marca <input type="text" name="marca" value="{{ e.marca or '' }}"></label>
+    <label>Modelo <input type="text" name="modelo" value="{{ e.modelo or '' }}"></label>
+    <label>N. de serie <input type="text" name="numero_serie" value="{{ e.numero_serie or '' }}"></label>
+    <label>Fecha adquisicion <input type="date" name="fecha_adquisicion" value="{{ e.fecha_adquisicion or '' }}"></label>
+    <label>Garantia hasta <input type="date" name="garantia_hasta" value="{{ e.garantia_hasta or '' }}"></label>
+    <label>Responsable
+      <select name="responsable_id">
+        <option value="">-- Sin asignar --</option>
+        {% for u in usuarios %}
+        <option value="{{ u.id }}" {% if e.responsable_id == u.id %}selected{% endif %}>{{ u.nombre }}{% if u.cargo %} ({{ u.cargo }}){% endif %}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Correo responsable <span class="v">{{ e.correo_responsable or '-' }}</span></label>
+    <label>Sucursal <input type="text" name="sucursal" value="{{ e.sucursal or '' }}"></label>
+    <label>Ciudad <input type="text" name="ciudad" value="{{ e.ciudad or '' }}"></label>
+    <label>Departamento <input type="text" name="departamento" value="{{ e.departamento or '' }}"></label>
+  </fieldset>
+
+  <fieldset class="fieldset-solo-pc" {% if es_dispositivo_red %}style="display:none"{% endif %}>
+    <legend>Hardware</legend>
+    <label>CPU <input type="text" name="cpu" value="{{ e.cpu or '' }}"></label>
+    <label>RAM <input type="text" name="ram" value="{{ e.ram or '' }}"></label>
+    <label>Almacenamiento <input type="text" name="almacenamiento" value="{{ e.almacenamiento or '' }}"></label>
+    <label>GPU <input type="text" name="gpu" value="{{ e.gpu or '' }}"></label>
+    <label>Placa madre <input type="text" name="placa_madre" value="{{ e.placa_madre or '' }}"></label>
+  </fieldset>
+
+  <fieldset class="fieldset-solo-pc" {% if es_dispositivo_red %}style="display:none"{% endif %}>
+    <legend>Software</legend>
+    <label>Sistema operativo <input type="text" name="os" value="{{ e.os or '' }}" placeholder="Ej: Windows 10 Pro"></label>
+    <label>Office <input type="text" name="office" value="{{ e.office or '' }}" placeholder="Ej: Office 2016"></label>
+    <label>Antivirus <input type="text" name="antivirus" value="{{ e.antivirus or '' }}" placeholder="Ej: ESET Security"></label>
+  </fieldset>
+
+  <fieldset class="fieldset-compacto">
+    <legend>Topologia</legend>
+    <label>Dispositivo de red
+      <select name="dispositivo_id">
+        <option value="">-- Sin asignar --</option>
+        {% for d in dispositivos %}
+        <option value="{{ d.id }}" {% if e.dispositivo_id == d.id %}selected{% endif %}>{{ d.nombre }} ({{ d.tipo }}){% if d.sucursal %} - {{ d.sucursal }}{% endif %}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Puerto <input type="text" name="puerto" value="{{ e.puerto or '' }}" placeholder="Ej: Gi1/0/24"></label>
+  </fieldset>
+
+  <fieldset class="fieldset-compacto">
+    <legend>Gestion</legend>
+    <label class="full">Estado del ciclo de vida
+      <select name="estado_ciclo_vida">
+        {% for opt in ["activo", "en_reparacion", "retirado", "bodega"] %}
+          <option value="{{ opt }}" {% if e.estado_ciclo_vida == opt %}selected{% endif %}>{{ opt }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <div class="full checkbox-row">
+      <label class="checkbox"><input type="checkbox" name="critico" {% if e.critico %}checked{% endif %}> Critico</label>
+      <label class="checkbox"><input type="checkbox" name="gestionado" {% if e.gestionado %}checked{% endif %}> Gestionado</label>
+      <label class="checkbox" title="Equipo bueno usando temporalmente la IP de otro que fallo fisicamente -- mientras este marcado, no se manda alerta de WhatsApp aunque este offline y marcado critico.">
+        <input type="checkbox" name="ip_temporal" {% if e.ip_temporal %}checked{% endif %}> IP temporal (sin alertas)
+      </label>
+    </div>
+    <label class="full">Notas <textarea name="notas" rows="3">{{ e.notas or '' }}</textarea></label>
+  </fieldset>
+{% endmacro %}
+
+{# Formulario REAL del boton "Fusionar" -- separado a proposito de
+   campos_equipo() de arriba. Quien llame a esto debe ponerlo FUERA del
+   <form> grande de la ficha (antes o despues, como hermano, nunca adentro),
+   porque un <form> anidado dentro de otro es HTML invalido y el navegador
+   puede terminar mandando un envio roto (ver el comentario en campos_equipo
+   sobre el incidente del 2026-07-24). El boton de campos_equipo apunta a
+   este formulario por id, sin importar donde este cada uno en el DOM. #}
+{% macro fusion_equipo(e, ip_nueva, origen=None) %}
+<form method="post" action="{{ url_for('fusionar_equipo_ip', equipo_id=e.id) }}" id="form-fusion-{{ e.id }}"
+      onsubmit="return confirm('Fusionar con la IP {{ ip_nueva }}? El registro duplicado se va a borrar y esta ficha se queda con esa IP.')">
+  <input type="hidden" name="ip_nueva" value="{{ ip_nueva }}">
+  {% if origen %}<input type="hidden" name="origen" value="{{ origen }}">{% endif %}
+</form>
+{% endmacro %}

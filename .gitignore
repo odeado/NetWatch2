@@ -10,6 +10,12 @@ scanner/results/
 
 # Credenciales de Firebase (email/password del usuario de Auth) -- nunca a git
 webapp/firebase_config.json
+scanner/firebase_config.json
+
+# Contiene el token real de la API de WhatsApp Business y el numero de
+# destinatario -- nunca a git (ver "alertas" adentro). Si necesitas la
+# estructura para otro sitio, copia este archivo y borra esos 3 valores.
+scanner/config.json
 
 # Python
 __pycache__/
@@ -20,3 +26,10 @@ venv/
 # Sistema
 .DS_Store
 Thumbs.db
+
+# Instalador de Python bundleado para sucursales sin Python -- ~28MB, se
+# distribuye aparte (no tiene sentido en el historial de git).
+scanner/python-3.8.10-amd64.exe
+
+# Estado local del puente de toasts a la pantalla chica (ver tools/toast_pantalla1.py)
+tools/toast_pantalla1_estado.json

@@ -26,11 +26,12 @@ import unicodedata
 import uuid
 import zipfile
 import xml.etree.ElementTree as ET
+from collections import deque
 from datetime import datetime
 from html.parser import HTMLParser
 from pathlib import Path
 
-from flask import Flask, Response, jsonify, redirect, render_template, request, url_for
+from flask import Flask, Response, jsonify, make_response, redirect, render_template, request, url_for
 
 import db
 import firebase_sync
@@ -67,6 +68,32 @@ def _whatsapp_link(telefono):
 
 
 app.jinja_env.filters["whatsapp_link"] = _whatsapp_link
+
+
+def _tiempo_relativo(iso):
+    """Misma fraseo que netwatchTiempoRelativo() en index.html (JS), pero en
+    Python -- para paginas como /disponibilidad que se renderizan del lado
+    del servidor y no tienen el polling en vivo de la pagina principal."""
+    if not iso:
+        return None
+    try:
+        entonces = datetime.fromisoformat(iso)
+    except ValueError:
+        return None
+    segundos = max(0, (datetime.now() - entonces).total_seconds())
+    if segundos < 60:
+        return "hace segundos"
+    minutos = round(segundos / 60)
+    if minutos < 60:
+        return f"hace {minutos} min"
+    horas = round(minutos / 60)
+    if horas < 24:
+        return f"hace {horas} hora" + ("" if horas == 1 else "s")
+    dias = round(horas / 24)
+    return f"hace {dias} dia" + ("" if dias == 1 else "s")
+
+
+app.jinja_env.filters["tiempo_relativo"] = _tiempo_relativo
 
 
 def _row_with_ports(row):
@@ -476,6 +503,24 @@ def api_estado():
     return jsonify({"equipos": equipos, "summary": summary, "eventos": eventos})
 
 
+@app.route("/api/devices/agent-report", methods=["POST"])
+def agent_report():
+    """Recibe el auto-reporte que manda tools/agente_inventario.ps1 desde cada
+    PC (WMI local -- CPU/RAM/marca/modelo/serie/OS/Office/Antivirus reales,
+    mas confiables que lo que el escaneo de red puede adivinar). Hace upsert
+    por IP, igual que el escaneo, pero nunca toca campos administrativos
+    (responsable, sucursal, categoria, notas, critico) que el tecnico haya
+    cargado a mano en la ficha."""
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"ok": False, "error": "cuerpo JSON invalido"}), 400
+    ip = (data.get("ip") or "").strip()
+    if not ip:
+        return jsonify({"ok": False, "error": "falta 'ip'"}), 400
+    equipo_id, es_nuevo = db.aplicar_reporte_agente(data)
+    return jsonify({"ok": True, "equipo_id": equipo_id, "nuevo": es_nuevo})
+
+
 @app.route("/api/monitor_log")
 def api_monitor_log():
     """Ultimas lineas de monitor.py, para mostrar su consola embebida en la
@@ -523,6 +568,14 @@ def admin_equipos():
 
     scan_files = [f.name for f in db.list_scan_files(RESULTS_DIR)]
     usuarios = db.list_usuarios(solo_activos=True)
+    dispositivos = db.list_dispositivos()
+
+    # Para el modal "ver ficha del responsable" inline (sin salir de Inventario
+    # de Equipos): trae TODOS los usuarios (no solo activos, para no fallar si
+    # el responsable de un equipo quedo inactivo) con sus equipos asignados.
+    usuarios_perfil = db.list_usuarios()
+    for u in usuarios_perfil:
+        u["equipos_asignados"] = db.list_equipos_por_responsable(u["id"])
 
     resumen_importacion = None
     if request.args.get("importado") == "1":
@@ -534,15 +587,29 @@ def admin_equipos():
             "total": int(request.args.get("total", 0)),
         }
 
+    # Si venimos de un choque de IP al editar (ver ficha()), esto le dice a la
+    # fila de ESE equipo especifico que muestre el boton "Fusionar" y se abra
+    # sola -- el resto de las filas de la tabla no se tocan.
+    error_equipo_id = request.args.get("equipo_id", type=int)
+    ip_conflicto = None
+    if request.args.get("error") == "ip_duplicada" and request.args.get("ip_conflicto_id"):
+        ip_conflicto = db.get_equipo(int(request.args["ip_conflicto_id"]))
+
     return render_template(
         "admin_equipos.html",
         equipos=equipos,
         scan_files=scan_files,
         usuarios=usuarios,
+        usuarios_perfil=usuarios_perfil,
+        dispositivos=dispositivos,
         error=request.args.get("error"),
+        error_equipo_id=error_equipo_id,
+        ip_conflicto=ip_conflicto,
+        ip_nueva=request.args.get("ip_nueva"),
         resumen_importacion=resumen_importacion,
         active_tab="equipos",
         hoy=datetime.now().strftime("%Y-%m-%d"),
+        categorias_equipo=db.CATEGORIAS_EQUIPO,
     )
 
 
@@ -623,6 +690,18 @@ def import_scan():
     return redirect(url_for("admin_equipos"))
 
 
+@app.route("/import-todos", methods=["POST"])
+def import_scan_todos():
+    # Para cuando cada sucursal remota (Matta/Arica/Iquique) deja su propio
+    # archivo de escaneo en la carpeta sincronizada (OneDrive/etc.) -- en vez
+    # de importar uno por uno, este boton los aplica todos de una pasada.
+    for target in db.list_scan_files(RESULTS_DIR):
+        db.import_scan(target)
+    if LEGACY_CONFIRM_FILE.exists():
+        db.migrate_legacy_confirmations(LEGACY_CONFIRM_FILE)
+    return redirect(url_for("admin_equipos"))
+
+
 @app.route("/confirm", methods=["POST"])
 def confirm():
     equipo_id = request.form["id"]
@@ -637,8 +716,77 @@ def confirm():
     return redirect(url_for("index"))
 
 
+@app.route("/toggle-critico", methods=["POST"])
+def toggle_critico():
+    equipo_id = request.form["id"]
+    nuevo = 1 if request.form.get("critico") == "1" else 0
+    if not db.set_critico(equipo_id, nuevo):
+        return jsonify({"ok": False}), 404
+    # Igual que /confirm: las fichas de / lo llaman por fetch (AJAX) para no
+    # perder la posicion de scroll.
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify({"ok": True, "critico": nuevo})
+    if request.form.get("origen") == "ficha":
+        return redirect(url_for("ficha", equipo_id=equipo_id))
+    return redirect(url_for("index"))
+
+
+def _guardar_foto_equipo(request):
+    """Igual que _guardar_foto_empleado pero para la foto del equipo (PC):
+    puede venir como archivo subido (foto_archivo) o URL pegada (foto_url).
+    Devuelve (valor_foto, hubo_cambio)."""
+    archivo = request.files.get("foto_archivo")
+    if archivo and archivo.filename:
+        ext = Path(archivo.filename).suffix.lower()
+        if ext not in ALLOWED_IMAGE_EXT:
+            return None, False
+        nombre_archivo = f"equipo_{uuid.uuid4().hex}{ext}"
+        archivo.save(UPLOAD_DIR / nombre_archivo)
+        return f"uploads/{nombre_archivo}", True
+
+    url = request.form.get("foto_url", "").strip()
+    if url:
+        return url, True
+
+    return None, False
+
+
+def _render_panel_editar_equipo(equipo_id, error=None, ip_conflicto_id=None, ip_nueva=None):
+    """Fragmento HTML (sin layout de pagina) con el formulario de edicion de
+    un equipo -- usado por el panel lateral de la pantalla frontal (index),
+    que edita sin navegar a la ficha completa para no perder el scroll/filtro
+    de donde estaba el usuario."""
+    equipo = db.get_equipo(equipo_id)
+    if not equipo:
+        return None
+    equipo["open_ports"] = json.loads(equipo["open_ports"] or "[]")
+    usuarios = db.list_usuarios(solo_activos=True)
+    dispositivos = db.list_dispositivos()
+    ip_conflicto = db.get_equipo(ip_conflicto_id) if ip_conflicto_id else None
+    return render_template(
+        "_panel_editar_equipo.html", e=equipo, usuarios=usuarios, dispositivos=dispositivos,
+        categorias_equipo=db.CATEGORIAS_EQUIPO, error=error,
+        ip_conflicto=ip_conflicto, ip_nueva=ip_nueva,
+    )
+
+
+@app.route("/equipo/<int:equipo_id>/panel")
+def panel_editar_equipo(equipo_id):
+    ip_conflicto_id = request.args.get("ip_conflicto_id")
+    html = _render_panel_editar_equipo(
+        equipo_id,
+        error=request.args.get("error"),
+        ip_conflicto_id=int(ip_conflicto_id) if ip_conflicto_id else None,
+        ip_nueva=request.args.get("ip_nueva"),
+    )
+    if html is None:
+        return "", 404
+    return html
+
+
 @app.route("/equipo/<int:equipo_id>", methods=["GET", "POST"])
 def ficha(equipo_id):
+    es_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
     if request.method == "POST":
         equipo_actual = db.get_equipo(equipo_id)
         if not equipo_actual:
@@ -647,6 +795,14 @@ def ficha(equipo_id):
         fields = {k: (request.form.get(k, "").strip() or None) for k in db.FICHA_FIELDS}
         fields["critico"] = 1 if request.form.get("critico") == "on" else 0
         fields["gestionado"] = 1 if request.form.get("gestionado") == "on" else 0
+        fields["ip_temporal"] = 1 if request.form.get("ip_temporal") == "on" else 0
+
+        if request.form.get("eliminar_foto") == "1":
+            fields["foto"] = None
+        else:
+            foto, hubo_cambio_foto = _guardar_foto_equipo(request)
+            if hubo_cambio_foto:
+                fields["foto"] = foto
 
         responsable_id_raw = request.form.get("responsable_id") or None
         responsable_id = int(responsable_id_raw) if responsable_id_raw else None
@@ -667,19 +823,56 @@ def ficha(equipo_id):
         # fila -- validamos que no quede vacia ni choque con otro equipo antes
         # de guardar (equipos.ip es NOT NULL UNIQUE en la base de datos).
         ip_error = None
+        ip_conflicto_id = None
         nueva_ip = request.form.get("ip", "").strip()
         if not nueva_ip:
             ip_error = "ip_requerida"
         elif nueva_ip != equipo_actual["ip"]:
             existente = db.get_equipo_by_ip(nueva_ip)
             if existente and existente != equipo_id:
+                # Caso comun: un equipo cambio de IP de verdad (la vieja se
+                # dio de baja) pero el escaneo ya creo un registro aparte para
+                # la IP nueva apenas la vio en la red. Se ofrece "Fusionar" en
+                # vez de solo bloquear el cambio (ver fusionar_equipo_ip mas
+                # abajo y db.fusionar_equipo_por_ip).
                 ip_error = "ip_duplicada"
+                ip_conflicto_id = existente
             else:
                 fields["ip"] = nueva_ip
 
         db.update_ficha(equipo_id, fields)
+
+        # Si vino del panel lateral de la pantalla frontal (fetch con
+        # X-Requested-With), no se redirige a ninguna pagina -- se devuelve
+        # el mismo fragmento del formulario (con el error si lo hubo) y un
+        # header propio para que el JS sepa si cerrar el panel o no, asi
+        # nunca se navega ni se pierde el scroll/filtro de donde se estaba.
+        if es_ajax:
+            html = _render_panel_editar_equipo(
+                equipo_id, error=ip_error, ip_conflicto_id=ip_conflicto_id,
+                ip_nueva=nueva_ip if ip_error else None,
+            )
+            resp = make_response(html)
+            if not ip_error:
+                resp.headers["X-Netwatch-Guardado"] = "1"
+            return resp
+
+        # "origen" dice desde donde se edito -- si vino del panel acordeon
+        # inline de Gestion de Equipos, vuelve ahi en vez de mandar a la ficha
+        # completa (asi no se sale de Inventario de Equipos y puede seguir
+        # editando el siguiente equipo de la lista sin perder el lugar).
+        if request.form.get("origen") == "inventario":
+            if ip_error:
+                return redirect(url_for(
+                    "admin_equipos", error=ip_error, equipo_id=equipo_id,
+                    ip_nueva=nueva_ip, ip_conflicto_id=ip_conflicto_id,
+                ))
+            return redirect(url_for("admin_equipos"))
         if ip_error:
-            return redirect(url_for("ficha", equipo_id=equipo_id, error=ip_error))
+            return redirect(url_for(
+                "ficha", equipo_id=equipo_id, error=ip_error,
+                ip_nueva=nueva_ip, ip_conflicto_id=ip_conflicto_id,
+            ))
         return redirect(url_for("ficha", equipo_id=equipo_id))
 
     equipo = db.get_equipo(equipo_id)
@@ -691,10 +884,37 @@ def ficha(equipo_id):
     usuarios = db.list_usuarios(solo_activos=True)
     dispositivos = db.list_dispositivos()
     disponibilidad = db.calcular_disponibilidad(equipo_id, dias=30) if equipo.get("origen") != "manual" else None
+
+    ip_conflicto = None
+    if request.args.get("error") == "ip_duplicada" and request.args.get("ip_conflicto_id"):
+        ip_conflicto = db.get_equipo(int(request.args["ip_conflicto_id"]))
+
     return render_template(
         "ficha.html", e=equipo, tickets=tickets, rdp_history=rdp_history, usuarios=usuarios,
         dispositivos=dispositivos, disponibilidad=disponibilidad, error=request.args.get("error"),
+        categorias_equipo=db.CATEGORIAS_EQUIPO,
+        origen=request.args.get("origen"),
+        ip_conflicto=ip_conflicto, ip_nueva=request.args.get("ip_nueva"),
     )
+
+
+@app.route("/equipo/<int:equipo_id>/fusionar_ip", methods=["POST"])
+def fusionar_equipo_ip(equipo_id):
+    """Confirma la fusion ofrecida cuando el cambio de IP de un equipo choca
+    con un registro duplicado (ver ficha() mas arriba y
+    db.fusionar_equipo_por_ip). El duplicado se borra y esta ficha se queda
+    con la IP nueva y con cualquier dato tecnico que le faltara."""
+    ip_nueva = request.form.get("ip_nueva", "").strip()
+    if ip_nueva:
+        db.fusionar_equipo_por_ip(equipo_id, ip_nueva)
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        html = _render_panel_editar_equipo(equipo_id)
+        resp = make_response(html if html is not None else "")
+        resp.headers["X-Netwatch-Guardado"] = "1"
+        return resp
+    if request.form.get("origen") == "inventario":
+        return redirect(url_for("admin_equipos"))
+    return redirect(url_for("ficha", equipo_id=equipo_id))
 
 
 @app.route("/equipo/<int:equipo_id>/rdp")
@@ -1041,7 +1261,9 @@ def _dispositivos_con_puertos():
     imprimible."""
     dispositivos = db.list_dispositivos()
     equipos_por_dispositivo = db.list_equipos_por_dispositivo()
-    conexiones_por_dispositivo = db.list_conexiones_dispositivos()
+    conexiones = db.list_conexiones_dispositivos()
+    conexiones_origen = conexiones["origen"]
+    conexiones_destino = conexiones["destino"]
     dispositivos_by_id = {d["id"]: d for d in dispositivos}
 
     for lista_eq in equipos_por_dispositivo.values():
@@ -1058,17 +1280,49 @@ def _dispositivos_con_puertos():
             for eq in equipos_por_dispositivo.get(d["id"], [])
             if eq.get("puerto")
         }
-        ocupados_dispositivo = dict(conexiones_por_dispositivo.get(d["id"], {}))
+        # una boca puede estar ocupada porque ESTE dispositivo inicio la conexion
+        # hacia otro switch, o porque OTRO dispositivo eligio esta boca especifica
+        # como destino -- ambos casos la dejan ocupada por igual.
+        ocupados_dispositivo = dict(conexiones_origen.get(d["id"], {}))
+        for puerto, info in conexiones_destino.get(d["id"], {}).items():
+            ocupados_dispositivo.setdefault(puerto, info)
 
         puertos = db.get_puertos_definicion(d)
         for p in puertos:
             p["equipo"] = ocupados_equipo.pop(p["label"], None)
-            destino_id = ocupados_dispositivo.pop(p["label"], None)
-            p["dispositivo_destino"] = dispositivos_by_id.get(destino_id) if destino_id else None
+            destino_info = ocupados_dispositivo.pop(p["label"], None)
+            destino_disp = dispositivos_by_id.get(destino_info["id"]) if destino_info else None
+            # OJO: nunca guardar aca el dict COMPLETO del otro dispositivo (ese
+            # mismo dict, mas abajo en su propia vuelta del for, recibe su
+            # propia clave "puertos"). Si dos switches se apuntan uno al otro
+            # (un cable real switch-switch, cada lado con su propia boca
+            # asignada), guardar el objeto completo arma una referencia
+            # circular (A -> puertos -> destino B -> puertos -> destino A -> ...)
+            # que json.dumps/tojson no puede serializar ("Circular reference
+            # detected") y rompe toda la pagina de Infraestructura. Por eso se
+            # copian aca solo los campos que la pantalla realmente necesita
+            # mostrar, en un dict nuevo y plano.
+            p["dispositivo_destino"] = {
+                "id": destino_disp["id"],
+                "nombre": destino_disp["nombre"],
+                "tipo": destino_disp.get("tipo"),
+                "marca": destino_disp.get("marca"),
+                "modelo": destino_disp.get("modelo"),
+                "ip": destino_disp.get("ip"),
+                "numero_serie": destino_disp.get("numero_serie"),
+                "mac": destino_disp.get("mac"),
+                "enlace": destino_disp.get("enlace"),
+            } if destino_disp else None
+            p["dispositivo_destino_puerto"] = destino_info["puerto_destino"] if destino_info else None
         d["puertos"] = puertos
         # equipos con un puerto asignado que no calza con la grilla de bocas definida
         # (ej. si todavia no se configuro plantilla/bocas, o texto libre viejo)
         d["puertos_fuera_de_grilla"] = list(ocupados_equipo.values())
+        # resumen "boca usadas / total" para el listado de Infraestructura, asi
+        # se ve de un vistazo que switches ya estan llenos y cuales tienen
+        # espacio -- sin tener que abrir "Editar puertos" uno por uno.
+        d["puertos_ocupados"] = sum(1 for p in puertos if p.get("equipo") or p.get("dispositivo_destino"))
+        d["puertos_total"] = len(puertos)
 
     return dispositivos
 
@@ -1177,17 +1431,27 @@ def topologia_resumen():
 
 
 TIPO_DISPOSITIVO_COLOR = {
-    "switch": "#34d399",
-    "router": "#60a5fa",
-    "fortinet": "#fbbf24",
+    "switch": "#60a5fa",
+    "router": "#a78bfa",
+    "fortinet": "#fb923c",
+    "conversor": "#2dd4bf",
+    "modem": "#fbbf24",
     "otro": "#9aa3b8",
 }
 TIPO_DISPOSITIVO_SIGLA = {
     "switch": "SW",
     "router": "RT",
     "fortinet": "FW",
+    "conversor": "CV",
+    "modem": "MD",
     "otro": "?",
 }
+# Orden de prioridad para elegir la "raiz" visual de cada cadena conectada en el
+# diagrama de flujo (de donde empieza la columna 0 hacia la derecha): se prefiere
+# arrancar desde el equipo mas "aguas arriba" de la red (firewall/router), y que
+# los switches/modems/conversores queden aguas abajo, en vez de un orden
+# arbitrario que hacia que las lineas de conexion salieran para cualquier lado.
+TIPO_PRIORIDAD_RAIZ = {"fortinet": 0, "router": 1, "switch": 2, "modem": 3, "conversor": 4, "otro": 5}
 
 
 def _anchor_puerto(nodo, otro):
@@ -1201,6 +1465,61 @@ def _anchor_puerto(nodo, otro):
     return (nodo["x"] + nodo["w"] if dx > 0 else nodo["x"]), cy
 
 
+def _construir_componentes(disps, adyacencia):
+    """Divide una lista de dispositivos en "componentes" (grupos que estan
+    fisicamente conectados entre si por conexiones_dispositivos), y dentro de
+    cada componente calcula la profundidad BFS de cada dispositivo desde una
+    raiz elegida por tipo (ver TIPO_PRIORIDAD_RAIZ).
+
+    Antes el diagrama ponia TODOS los dispositivos de una ciudad en una sola
+    fila, en el orden en que salian de la base de datos -- sin importar si
+    estaban conectados entre si o no. Con equipos sin ninguna relacion
+    quedando pegados unos a otros, las lineas de conexion terminaban cruzando
+    todo el dibujo de cualquier manera ("todo derecho hacia un lado"). Esta
+    funcion arma en cambio, por cada grupo de dispositivos realmente
+    conectados, una cadena ordenada izquierda-a-derecha (columna = saltos de
+    distancia desde la raiz), para que el dibujo se lea como un flujo real de
+    la red en vez de una lista sin orden. Los dispositivos sueltos (sin
+    ninguna conexion a otro dispositivo) quedan cada uno como su propio
+    "componente" de un solo nodo en columna 0."""
+    ids_en_grupo = {d["id"] for d in disps}
+    por_id = {d["id"]: d for d in disps}
+    visitados = set()
+    componentes = []
+
+    for d in disps:
+        if d["id"] in visitados:
+            continue
+        comp_ids = {d["id"]}
+        visitados.add(d["id"])
+        cola = deque([d["id"]])
+        while cola:
+            actual = cola.popleft()
+            for vecino in adyacencia.get(actual, ()):
+                if vecino in ids_en_grupo and vecino not in visitados:
+                    visitados.add(vecino)
+                    comp_ids.add(vecino)
+                    cola.append(vecino)
+
+        comp_disps = [por_id[i] for i in comp_ids]
+        raiz = min(comp_disps, key=lambda x: (TIPO_PRIORIDAD_RAIZ.get(x.get("tipo"), 9), x["nombre"] or ""))
+
+        profundidad = {raiz["id"]: 0}
+        cola = deque([raiz["id"]])
+        while cola:
+            actual = cola.popleft()
+            for vecino in adyacencia.get(actual, ()):
+                if vecino in comp_ids and vecino not in profundidad:
+                    profundidad[vecino] = profundidad[actual] + 1
+                    cola.append(vecino)
+        for cid in comp_ids:
+            profundidad.setdefault(cid, 0)
+
+        componentes.append({"disps": comp_disps, "profundidad": profundidad})
+
+    return componentes
+
+
 @app.route("/topologia/diagrama")
 def topologia_diagrama():
     """Diagrama de flujo de la red: cada dispositivo como caja con su mini
@@ -1212,9 +1531,36 @@ def topologia_diagrama():
     datos y enlaces. El selector de ciudad filtra que se dibuja/imprime."""
     todos_dispositivos = _dispositivos_con_puertos()
     todas_ciudades = sorted({d.get("ciudad") or "Sin ciudad asignada" for d in todos_dispositivos})
+    # combos ciudad+sucursal para el filtro "Subred" -- mas fino que el de
+    # ciudad sola, para poder mirar solo un local puntual (ej. "Antofagasta
+    # Matta - Comercial") en vez de que salgan mezclados todos los dispositivos
+    # de toda la ciudad, incluidos los que estan Fuera de servicio en otra
+    # sucursal sin ninguna relacion.
+    combos_vistos = set()
+    todas_subredes = []
+    for d in sorted(todos_dispositivos, key=lambda x: ((x.get("ciudad") or "Sin ciudad asignada"), x.get("sucursal") or "")):
+        ciudad_d = d.get("ciudad") or "Sin ciudad asignada"
+        sucursal_d = d.get("sucursal") or ""
+        combo = (ciudad_d, sucursal_d)
+        if combo in combos_vistos:
+            continue
+        combos_vistos.add(combo)
+        todas_subredes.append({
+            "valor": f"{ciudad_d}::{sucursal_d}",
+            "etiqueta": f"{ciudad_d} {sucursal_d}".strip() if sucursal_d else ciudad_d,
+        })
 
     ciudad_filtro = request.args.get("ciudad", "todos")
-    if ciudad_filtro and ciudad_filtro != "todos":
+    subred_filtro = request.args.get("subred", "todos")
+
+    if subred_filtro and subred_filtro != "todos" and "::" in subred_filtro:
+        ciudad_sub, sucursal_sub = subred_filtro.split("::", 1)
+        dispositivos = [
+            d for d in todos_dispositivos
+            if (d.get("ciudad") or "Sin ciudad asignada") == ciudad_sub
+            and (d.get("sucursal") or "") == sucursal_sub
+        ]
+    elif ciudad_filtro and ciudad_filtro != "todos":
         dispositivos = [
             d for d in todos_dispositivos
             if (d.get("ciudad") or "Sin ciudad asignada") == ciudad_filtro
@@ -1222,10 +1568,29 @@ def topologia_diagrama():
     else:
         dispositivos = todos_dispositivos
 
+    # agrupar por Ciudad + Sucursal (no solo ciudad): asi cada recuadro
+    # punteado representa un local fisico real, que es la unidad natural en la
+    # que los dispositivos estan realmente cableados entre si.
     grupos = {}
+    orden_grupos = []
     for d in dispositivos:
-        clave = d.get("ciudad") or "Sin ciudad asignada"
-        grupos.setdefault(clave, []).append(d)
+        clave = (d.get("ciudad") or "Sin ciudad asignada", d.get("sucursal") or None)
+        if clave not in grupos:
+            grupos[clave] = []
+            orden_grupos.append(clave)
+        grupos[clave].append(d)
+
+    # adyacencia dispositivo-a-dispositivo (grafo no dirigido) de TODO lo que
+    # esta visible con el filtro actual, para poder ordenar cada grupo segun
+    # como estan conectados de verdad entre si, en vez de por orden alfabetico.
+    dispositivos_by_id = {d["id"]: d for d in dispositivos}
+    adyacencia = {d["id"]: set() for d in dispositivos}
+    for d in dispositivos:
+        for p in d["puertos"]:
+            destino = p.get("dispositivo_destino")
+            if destino and destino["id"] in dispositivos_by_id:
+                adyacencia[d["id"]].add(destino["id"])
+                adyacencia[destino["id"]].add(d["id"])
 
     node_w, node_h = 200, 118
     col_gap, row_gap = 110, 90
@@ -1239,64 +1604,92 @@ def topologia_diagrama():
             return 0
         return drawer_top_pad + cantidad * (leaf_h + leaf_gap) - leaf_gap + 12
 
+    def _armar_nodo(d, ciudad):
+        equipos_conectados = [p["equipo"] for p in d["puertos"] if p.get("equipo")]
+        equipos_conectados.sort(key=lambda e: bool(e.get("en_linea")))
+        equipos_detalle = [{
+            "hostname": e.get("hostname") or e.get("ip"),
+            "ip": e.get("ip"),
+            "en_linea": bool(e.get("en_linea")),
+            "has_rdp": bool(e.get("has_rdp")),
+            "responsable": e.get("responsable"),
+        } for e in equipos_conectados]
+        return {
+            "id": d["id"],
+            "nombre": d["nombre"],
+            "tipo": d.get("tipo"),
+            "color": TIPO_DISPOSITIVO_COLOR.get(d.get("tipo"), "#9aa3b8"),
+            "sigla": TIPO_DISPOSITIVO_SIGLA.get(d.get("tipo"), "?"),
+            "ip": d.get("ip"),
+            "mac": d.get("mac"),
+            "numero_serie": d.get("numero_serie"),
+            "estado": d.get("estado"),
+            "sucursal": d.get("sucursal"),
+            "piso": d.get("piso"),
+            "notas": d.get("notas"),
+            "ciudad": ciudad,
+            "w": node_w,
+            "h": node_h,
+            "equipos_total": len(equipos_conectados),
+            "equipos_offline": sum(1 for e in equipos_conectados if not e.get("en_linea")),
+            "equipos_dots": equipos_conectados[:20],
+            "equipos_extra": max(0, len(equipos_conectados) - 20),
+            "equipos_detalle": equipos_detalle,
+            "enlaces_detalle": [],
+        }
+
     nodos = {}
     grupos_layout = []
-    fila_y = margin + grupo_pad
-    max_cols = 1
-    for ciudad, disps in grupos.items():
-        col_x = margin + grupo_pad
-        fila_nodos = []
-        for d in disps:
-            equipos_conectados = [p["equipo"] for p in d["puertos"] if p.get("equipo")]
-            equipos_conectados.sort(key=lambda e: bool(e.get("en_linea")))
-            equipos_detalle = [{
-                "hostname": e.get("hostname") or e.get("ip"),
-                "ip": e.get("ip"),
-                "en_linea": bool(e.get("en_linea")),
-                "has_rdp": bool(e.get("has_rdp")),
-                "responsable": e.get("responsable"),
-            } for e in equipos_conectados]
-            nodo = {
-                "id": d["id"],
-                "nombre": d["nombre"],
-                "tipo": d.get("tipo"),
-                "color": TIPO_DISPOSITIVO_COLOR.get(d.get("tipo"), "#9aa3b8"),
-                "sigla": TIPO_DISPOSITIVO_SIGLA.get(d.get("tipo"), "?"),
-                "ip": d.get("ip"),
-                "mac": d.get("mac"),
-                "numero_serie": d.get("numero_serie"),
-                "estado": d.get("estado"),
-                "sucursal": d.get("sucursal"),
-                "piso": d.get("piso"),
-                "notas": d.get("notas"),
-                "ciudad": ciudad,
-                "x": col_x,
-                "w": node_w,
-                "h": node_h,
-                "equipos_total": len(equipos_conectados),
-                "equipos_offline": sum(1 for e in equipos_conectados if not e.get("en_linea")),
-                "equipos_dots": equipos_conectados[:20],
-                "equipos_extra": max(0, len(equipos_conectados) - 20),
-                "equipos_detalle": equipos_detalle,
-                "enlaces_detalle": [],
-            }
-            nodos[d["id"]] = nodo
-            fila_nodos.append(nodo)
-            col_x += node_w + col_gap
-        cols_en_fila = len(disps)
-        max_cols = max(max_cols, cols_en_fila)
-        fila_extra = max((_extra_h(len(n["equipos_detalle"])) for n in fila_nodos), default=0)
-        for n in fila_nodos:
-            n["y"] = fila_y
-            n["drawer_y"] = fila_y + node_h + drawer_top_pad
-        grupos_layout.append({
-            "nombre": ciudad,
-            "x": margin,
-            "y": fila_y - grupo_pad,
-            "w": cols_en_fila * node_w + (cols_en_fila - 1) * col_gap + grupo_pad * 2,
-            "h": node_h + fila_extra + grupo_pad * 2 - 10,
-        })
-        fila_y += node_h + fila_extra + row_gap
+    ancho_max_grupo = 0
+    y_cursor = margin
+
+    for (ciudad, sucursal) in orden_grupos:
+        disps = grupos[(ciudad, sucursal)]
+        # cada componente = un grupo de dispositivos realmente conectados
+        # entre si dentro de este local; se dibujan como una cadena
+        # ordenada izquierda-a-derecha segun la distancia (en saltos) desde
+        # la raiz elegida, en vez de amontonar todo en una sola fila.
+        componentes = _construir_componentes(disps, adyacencia)
+        componentes.sort(key=lambda c: (-len(c["disps"]), (c["disps"][0].get("nombre") or "")))
+
+        grupo_y_caja = y_cursor
+        fila_y = grupo_y_caja + grupo_pad
+        grupo_ancho = 0
+
+        for idx_comp, comp in enumerate(componentes):
+            por_columna = {}
+            for dd in comp["disps"]:
+                por_columna.setdefault(comp["profundidad"][dd["id"]], []).append(dd)
+            for col in por_columna:
+                por_columna[col].sort(key=lambda x: (x.get("nombre") or ""))
+
+            max_col = max(por_columna) if por_columna else 0
+            max_filas = max((len(v) for v in por_columna.values()), default=1)
+            comp_ancho = (max_col + 1) * node_w + max_col * col_gap
+            grupo_ancho = max(grupo_ancho, comp_ancho)
+
+            comp_extra_h = 0
+            for col, disps_en_col in por_columna.items():
+                x = margin + grupo_pad + col * (node_w + col_gap)
+                for row_idx, dd in enumerate(disps_en_col):
+                    nodo = _armar_nodo(dd, ciudad)
+                    nodo["x"] = x
+                    nodo["y"] = fila_y + row_idx * (node_h + row_gap)
+                    nodo["drawer_y"] = nodo["y"] + node_h + drawer_top_pad
+                    nodos[dd["id"]] = nodo
+                    comp_extra_h = max(comp_extra_h, _extra_h(len(nodo["equipos_detalle"])))
+
+            comp_h = max_filas * node_h + (max_filas - 1) * row_gap + comp_extra_h
+            fila_y += comp_h
+            if idx_comp < len(componentes) - 1:
+                fila_y += row_gap
+
+        grupo_h = (fila_y - grupo_y_caja) + grupo_pad
+        grupo_w = grupo_ancho + grupo_pad * 2
+        nombre_grupo = f"{ciudad} - {sucursal}" if sucursal else ciudad
+        grupos_layout.append({"nombre": nombre_grupo, "x": margin, "y": grupo_y_caja, "w": grupo_w, "h": grupo_h})
+        ancho_max_grupo = max(ancho_max_grupo, grupo_w)
+        y_cursor = grupo_y_caja + grupo_h + row_gap * 1.5
 
     # lineas dispositivo-a-dispositivo, sin duplicar el mismo par en ambos sentidos
     vistos = set()
@@ -1334,8 +1727,8 @@ def topologia_diagrama():
                 "puerto_origen": p["label"],
             })
 
-    ancho = max((max_cols * (node_w + col_gap)) + margin * 2, 560)
-    alto = fila_y + margin
+    ancho = max(ancho_max_grupo + margin * 2, 560)
+    alto = y_cursor + margin
 
     return render_template(
         "topologia_diagrama.html",
@@ -1348,6 +1741,8 @@ def topologia_diagrama():
         generado_en=datetime.now().strftime("%d-%m-%Y %H:%M"),
         todas_ciudades=todas_ciudades,
         ciudad_filtro=ciudad_filtro,
+        todas_subredes=todas_subredes,
+        subred_filtro=subred_filtro,
     )
 
 
@@ -1409,17 +1804,55 @@ def editar_dispositivo(dispositivo_id):
     return redirect(url_for("topologia"))
 
 
+@app.route("/topologia/dispositivos/<int:dispositivo_id>/eliminar", methods=["POST"])
+def eliminar_dispositivo(dispositivo_id):
+    db.eliminar_dispositivo(dispositivo_id)
+    return redirect(url_for("topologia"))
+
+
 @app.route("/topologia/dispositivos/<int:dispositivo_id>/puertos", methods=["POST"])
 def asignar_puerto(dispositivo_id):
     puerto = request.form.get("puerto", "").strip()
     destino = request.form.get("destino", "")
+    destino_puerto = request.form.get("destino_puerto", "").strip() or None
     destino_tipo, destino_id = "", None
     if destino.startswith("equipo:"):
         destino_tipo, destino_id = "equipo", int(destino.split(":", 1)[1])
     elif destino.startswith("dispositivo:"):
         destino_tipo, destino_id = "dispositivo", int(destino.split(":", 1)[1])
+
+    # Ademas de este dispositivo, hay que refrescar tambien: el switch que
+    # quedaba conectado ANTES en esta boca (si se reasigno/desconecto, para
+    # que su boca vuelva a verse libre) y el switch destino NUEVO (si se
+    # conecto a una boca especifica de otro dispositivo) -- si no, el otro
+    # lado del cable se queda mostrando el estado viejo hasta recargar toda
+    # la pagina.
+    ids_relacionados = set()
     if puerto:
-        db.set_puerto_destino(dispositivo_id, puerto, destino_tipo, destino_id)
+        anterior_destino_id = db.get_destino_dispositivo_anterior(dispositivo_id, puerto)
+        if anterior_destino_id:
+            ids_relacionados.add(anterior_destino_id)
+        db.set_puerto_destino(dispositivo_id, puerto, destino_tipo, destino_id, destino_puerto)
+    if destino_tipo == "dispositivo" and destino_id:
+        ids_relacionados.add(destino_id)
+    ids_relacionados.discard(dispositivo_id)
+
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        # Devuelve los puertos ya frescos de ESTE dispositivo para que el
+        # frontend actualice el mapa in-place, sin recargar toda la pagina
+        # (asi se puede seguir asignando bocas del mismo switch sin perder
+        # el lugar -- antes cada Guardar recargaba y cerraba el acordeon).
+        dispositivos = _dispositivos_con_puertos()
+        por_id = {x["id"]: x for x in dispositivos}
+        d = por_id.get(dispositivo_id)
+        if d is None:
+            return jsonify({"ok": False}), 404
+        relacionados = [
+            {"id": rid, "puertos": por_id[rid]["puertos"]}
+            for rid in ids_relacionados if rid in por_id
+        ]
+        return jsonify({"ok": True, "puertos": d["puertos"], "relacionados": relacionados})
+
     return redirect(url_for("topologia"))
 
 
@@ -1600,7 +2033,8 @@ def export_infraestructura_excel():
     }
     tipo_colores = {
         "switch": ("#d1fae5", "#065f46"), "router": ("#dbeafe", "#1d4ed8"),
-        "fortinet": ("#fef3c7", "#b45309"), "otro": ("#e5e7eb", "#374151"),
+        "fortinet": ("#fef3c7", "#b45309"), "conversor": ("#ccfbf1", "#0f766e"),
+        "modem": ("#fef9c3", "#854d0e"), "otro": ("#e5e7eb", "#374151"),
     }
 
     filas_html = []
@@ -1696,8 +2130,11 @@ def disponibilidad():
     dias = request.args.get("dias", 30, type=int)
     if dias not in (7, 30, 90):
         dias = 30
-    ranking = db.ranking_disponibilidad(dias=dias, limite=25)
-    return render_template("disponibilidad.html", ranking=ranking, dias=dias)
+    orden = request.args.get("orden", "disponibilidad")
+    if orden not in ("disponibilidad", "caidas", "dias", "ip"):
+        orden = "disponibilidad"
+    ranking = db.ranking_disponibilidad(dias=dias, limite=25, orden=orden)
+    return render_template("disponibilidad.html", ranking=ranking, dias=dias, orden=orden)
 
 
 if __name__ == "__main__":
@@ -1707,4 +2144,4 @@ if __name__ == "__main__":
     # solo y la pagina sigue respondiendo aunque se haya presionado Detener
     # (visto en la practica el 2026-07-14). Al desactivar el reloader queda
     # un solo proceso, que se cierra de verdad con Stop-Process.
-    app.run(debug=True, port=5001, threaded=True, use_reloader=False)
+    app.run(host="0.0.0.0", port=5001, debug=True, threaded=True, use_reloader=False)

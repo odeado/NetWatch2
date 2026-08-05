@@ -14,9 +14,16 @@
 </header>
 
 <nav class="filters">
-  <a href="{{ url_for('disponibilidad', dias=7) }}" class="{{ 'active' if dias == 7 else '' }}">Ultimos 7 dias</a>
-  <a href="{{ url_for('disponibilidad', dias=30) }}" class="{{ 'active' if dias == 30 else '' }}">Ultimos 30 dias</a>
-  <a href="{{ url_for('disponibilidad', dias=90) }}" class="{{ 'active' if dias == 90 else '' }}">Ultimos 90 dias</a>
+  <a href="{{ url_for('disponibilidad', dias=7, orden=orden) }}" class="{{ 'active' if dias == 7 else '' }}">Ultimos 7 dias</a>
+  <a href="{{ url_for('disponibilidad', dias=30, orden=orden) }}" class="{{ 'active' if dias == 30 else '' }}">Ultimos 30 dias</a>
+  <a href="{{ url_for('disponibilidad', dias=90, orden=orden) }}" class="{{ 'active' if dias == 90 else '' }}">Ultimos 90 dias</a>
+</nav>
+
+<nav class="filters">
+  <a href="{{ url_for('disponibilidad', dias=dias, orden='disponibilidad') }}" class="{{ 'active' if orden == 'disponibilidad' else '' }}">Peor disponibilidad</a>
+  <a href="{{ url_for('disponibilidad', dias=dias, orden='caidas') }}" class="{{ 'active' if orden == 'caidas' else '' }}">Mas caidas</a>
+  <a href="{{ url_for('disponibilidad', dias=dias, orden='dias') }}" class="{{ 'active' if orden == 'dias' else '' }}">Mas tiempo caido</a>
+  <a href="{{ url_for('disponibilidad', dias=dias, orden='ip') }}" class="{{ 'active' if orden == 'ip' else '' }}">IP</a>
 </nav>
 
 {% if not ranking %}
@@ -32,6 +39,7 @@
       <th>Ubicacion</th>
       <th>Caidas</th>
       <th>Estado actual</th>
+      <th>Lleva caido</th>
     </tr>
   </thead>
   <tbody>
@@ -50,6 +58,7 @@
       <td>
         <span class="tag {{ 'tag-confirmado' if r.en_linea else 'tag-descartado' }}"><span class="dot {{ 'dot-on' if r.en_linea else 'dot-off' }}"></span> {{ 'Online' if r.en_linea else 'Offline' }}</span>
       </td>
+      <td class="muted">{{ (r.desde | tiempo_relativo) if not r.en_linea else '-' }}</td>
     </tr>
     {% endfor %}
   </tbody>

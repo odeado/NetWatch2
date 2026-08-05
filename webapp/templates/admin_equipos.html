@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
+{% import "_macros_equipo.html" as m %}
 <header>
   <p class="back"><a href="{{ url_for('index') }}">&larr; Volver al inventario</a></p>
   <div class="header-row">
@@ -38,6 +39,10 @@
 <div class="import-resumen import-resumen-error">Selecciona un archivo antes de importar.</div>
 {% elif error == 'archivo_sin_filas' %}
 <div class="import-resumen import-resumen-error">No se encontraron filas de datos en ese archivo (revisa que sea la tabla exportada correcta).</div>
+{% elif error == 'ip_duplicada' %}
+<div class="import-resumen import-resumen-error">Ya existe otro equipo con esa IP/identificador -- no se guardo ese cambio (el resto de los campos si se guardaron).</div>
+{% elif error == 'ip_requerida' %}
+<div class="import-resumen import-resumen-error">La IP/identificador no puede quedar vacio -- no se guardo ese cambio (el resto de los campos si se guardaron).</div>
 {% endif %}
 
 <section class="toolbar">
@@ -49,6 +54,8 @@
       {% endfor %}
     </select>
     <button type="submit" class="btn btn-primary">Importar</button>
+    <button type="submit" formaction="{{ url_for('import_scan_todos') }}" class="btn btn-ghost"
+      title="Aplica todos los archivos de la lista de una vez (ej. uno por sucursal remota)">Importar todos</button>
   </form>
   <span class="hint">o deja <code>monitor.py</code> corriendo en una terminal para que esto se llene solo</span>
 </section>
@@ -93,8 +100,21 @@
   </form>
 </details>
 
+<div class="admin-stats">
+  <span class="admin-stat-chip"><strong>{{ equipos|length }}</strong> equipo{{ 's' if equipos|length != 1 else '' }} PC</span>
+  <span class="admin-stat-chip"><strong>{{ usuarios|length }}</strong> usuario{{ 's' if usuarios|length != 1 else '' }} activo{{ 's' if usuarios|length != 1 else '' }}</span>
+</div>
+
 <div class="admin-toolbar">
   <input type="text" id="buscador-equipos" class="admin-buscador" placeholder="Buscar por hostname, IP, marca, modelo, responsable o ubicacion...">
+</div>
+
+<div class="categoria-tabs" id="categoria-tabs">
+  <button type="button" class="categoria-tab activa" data-categoria="" onclick="netwatchFiltrarCategoria(this)">Todos</button>
+  {% for cat in categorias_equipo %}
+  <button type="button" class="categoria-tab" data-categoria="{{ cat }}" onclick="netwatchFiltrarCategoria(this)">{{ cat }}</button>
+  {% endfor %}
+  <button type="button" class="categoria-tab" data-categoria="__sin_categoria__" onclick="netwatchFiltrarCategoria(this)">Sin categoria</button>
 </div>
 
 <div class="import-resumen" id="barra-seleccion" style="display:none; align-items:center; justify-content:space-between; gap:12px;">
@@ -114,8 +134,9 @@
     <tr>
       <th><input type="checkbox" id="check-todos" onclick="netwatchToggleTodos(this)" title="Seleccionar todos"></th>
       <th>Equipo</th>
+      <th>Categoria</th>
       <th>IP</th>
-      <th>MAC</th>
+      <th>N. Serie</th>
       <th>Marca / Modelo</th>
       <th>Responsable</th>
       <th>Ubicacion</th>
@@ -127,16 +148,24 @@
   </thead>
   <tbody>
     {% for e in equipos %}
-    <tr data-buscar="{{ (e.hostname or '') ~ ' ' ~ e.ip ~ ' ' ~ (e.marca or '') ~ ' ' ~ (e.modelo or '') ~ ' ' ~ (e.responsable or '') ~ ' ' ~ (e.ubicacion or '') | lower }}">
+    <tr data-buscar="{{ ((e.hostname or '') ~ ' ' ~ e.ip ~ ' ' ~ (e.marca or '') ~ ' ' ~ (e.modelo or '') ~ ' ' ~ (e.numero_serie or '') ~ ' ' ~ (e.responsable or '') ~ ' ' ~ (e.ubicacion or '') ~ ' ' ~ (e.categoria or '') ~ ' ' ~ (e.estado_deteccion or '') ~ ' ' ~ ('online' if e.en_linea else 'offline')) | lower }}"
+        data-categoria="{{ e.categoria or '' }}">
       <td>
         <input type="checkbox" class="equipo-check" name="equipo_ids" value="{{ e.id }}"
                form="form-eliminar-masivo" onchange="netwatchActualizarSeleccion()">
       </td>
-      <td class="empleado-nombre">{{ e.hostname or '-' }}{% if e.origen == 'manual' %} <span class="tag" style="background:#2a3348;color:var(--blue)">manual</span>{% endif %}</td>
-      <td><a href="{{ url_for('ficha', equipo_id=e.id) }}" class="ip-link">{{ e.ip }}</a></td>
-      <td>{{ e.mac or '-' }}</td>
+      <td class="empleado-nombre">{{ e.hostname or e.responsable or '-' }}{% if e.origen == 'manual' %} <span class="tag" style="background:#2a3348;color:var(--blue)">manual</span>{% endif %}</td>
+      <td>{% if e.categoria %}<span class="tag" style="background:#2a3348;color:var(--blue)">{{ e.categoria }}</span>{% else %}<span class="muted">-</span>{% endif %}</td>
+      <td><a href="{{ url_for('ficha', equipo_id=e.id, origen='inventario') }}" class="ip-link" target="_blank" rel="noopener">{{ e.ip }}</a></td>
+      <td class="mono">{{ e.numero_serie or '-' }}</td>
       <td>{{ (e.marca or '-') }} {{ e.modelo or '' }}</td>
-      <td>{{ e.responsable or '-' }}</td>
+      <td>
+        {% if e.responsable_id %}
+        <a href="#" class="ip-link" onclick="event.preventDefault(); netwatchAbrirPerfilResponsable({{ e.responsable_id }})" title="Ver ficha de {{ e.responsable }} y sus equipos asignados">{{ e.responsable }}</a>
+        {% else %}
+        {{ e.responsable or '-' }}
+        {% endif %}
+      </td>
       <td>{{ e.ubicacion or '-' }}</td>
       <td>
         {% if e.origen == 'manual' %}
@@ -154,7 +183,29 @@
         {% endif %}
       </td>
       <td class="actions">
-        <a href="{{ url_for('ficha', equipo_id=e.id) }}" class="btn btn-confirm">Editar</a>
+        <button type="button" class="btn btn-confirm" onclick="netwatchToggleAcordeon('equipo-{{ e.id }}')">Editar</button>
+        <a href="{{ url_for('ficha', equipo_id=e.id, origen='inventario') }}" class="btn btn-ghost" target="_blank" rel="noopener" title="Ver tickets, historial RDP y disponibilidad de este equipo (se abre en una pestana nueva)">Ficha completa</a>
+      </td>
+    </tr>
+    <tr class="acordeon-panel" id="panel-equipo-{{ e.id }}" style="display:{{ 'table-row' if error_equipo_id == e.id else 'none' }}">
+      <td colspan="12">
+        <form method="post" action="{{ url_for('ficha', equipo_id=e.id) }}" class="modal-form acordeon-form ficha-form" enctype="multipart/form-data">
+          <input type="hidden" name="origen" value="inventario">
+          {% if error_equipo_id == e.id %}
+          {{ m.campos_equipo(e, usuarios, dispositivos, categorias_equipo, error, ip_conflicto, ip_nueva, 'inventario') }}
+          {% else %}
+          {{ m.campos_equipo(e, usuarios, dispositivos, categorias_equipo) }}
+          {% endif %}
+          <div class="modal-footer">
+            <button type="button" class="btn btn-reset" onclick="netwatchToggleAcordeon('equipo-{{ e.id }}')">Cancelar</button>
+            <button type="submit" class="btn btn-primary">Guardar Cambios</button>
+          </div>
+        </form>
+        {% if error_equipo_id == e.id and error == 'ip_duplicada' and ip_conflicto %}
+          {# Fuera (hermano) del form de arriba a proposito -- ver
+             _macros_equipo.html sobre por que no puede ir anidado. #}
+          {{ m.fusion_equipo(e, ip_nueva, 'inventario') }}
+        {% endif %}
       </td>
     </tr>
     {% endfor %}
@@ -164,19 +215,283 @@
 <p id="equipos-vacio" class="empty" style="display:none; margin-top: 14px;">Ningun equipo coincide con la busqueda.</p>
 {% endif %}
 
+<!-- Modal: ficha del responsable (solo lectura), para ver sus equipos asignados
+     sin salir de Inventario de Equipos -- al cerrar, se queda exactamente donde
+     estaba (busqueda/categoria/scroll intactos). Para editar sus datos hay que
+     ir a Gestion de Empleados (link al pie del modal, en pestana nueva). -->
+<div class="modal-overlay" id="modal-perfil-responsable" onclick="if(event.target===this) netwatchCerrarPerfilResponsable()">
+  <div class="modal-box modal-perfil-box">
+    <div class="perfil-banner">
+      <span class="perfil-avatar">
+        <img id="perfilr-foto" style="display:none" alt="">
+        <span id="perfilr-foto-placeholder">?</span>
+      </span>
+      <span class="tag perfil-estado-badge" id="perfilr-estado-badge"></span>
+      <button type="button" class="modal-close perfil-close" onclick="netwatchCerrarPerfilResponsable()">&times;</button>
+    </div>
+    <div class="perfil-body">
+      <h3 id="perfilr-nombre"></h3>
+      <p class="muted"><a href="#" id="perfilr-correo" class="contacto-link" title="Preparar correo"></a></p>
+
+      <div class="perfil-grid">
+        <div><p class="perfil-label">Telefono</p><p class="perfil-valor"><a href="#" id="perfilr-telefono" class="contacto-link" title="Abrir WhatsApp">-</a></p></div>
+        <div><p class="perfil-label">Cargo</p><p class="perfil-valor" id="perfilr-cargo">-</p></div>
+        <div><p class="perfil-label">Lugar de trabajo</p><p class="perfil-valor" id="perfilr-lugar">-</p></div>
+        <div><p class="perfil-label">Departamento</p><p class="perfil-valor" id="perfilr-departamento">-</p></div>
+        <div><p class="perfil-label">Ciudad</p><p class="perfil-valor" id="perfilr-ciudad">-</p></div>
+        <div><p class="perfil-label">Sistemas autorizados</p><p class="perfil-valor" id="perfilr-sistemas">-</p></div>
+      </div>
+
+      <div class="perfil-vpn-row">
+        <span class="perfil-label">Conexion VPN</span>
+        <span class="badge" id="perfilr-vpn-badge"></span>
+      </div>
+
+      <div class="perfil-equipos-section">
+        <h4 id="perfilr-equipos-titulo">Equipos asignados (0)</h4>
+        <div class="table-scroll">
+        <table class="mapa-table" id="perfilr-equipos-tabla">
+          <thead><tr><th>Equipo</th><th>IP</th><th>Estado</th></tr></thead>
+          <tbody id="perfilr-equipos-tbody"></tbody>
+        </table>
+        </div>
+        <p class="empty small" id="perfilr-equipos-vacio" style="display:none">Sin equipos asignados.</p>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-reset" onclick="netwatchCerrarPerfilResponsable()">Cerrar</button>
+        <a id="perfilr-editar-link" href="#" target="_blank" rel="noopener" class="btn btn-confirm">Editar en Gestion de Empleados</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="application/json" id="usuarios-perfil-data">{{ usuarios_perfil | tojson }}</script>
 <script>
-document.getElementById('buscador-equipos').addEventListener('input', function (ev) {
-  const q = ev.target.value.trim().toLowerCase();
-  const filas = document.querySelectorAll('#tabla-equipos tbody tr');
+const NETWATCH_USUARIOS_PERFIL = JSON.parse(document.getElementById('usuarios-perfil-data').textContent);
+const NETWATCH_URL_ADMIN_PERFIL = "{{ url_for('admin') }}";
+
+function netwatchWhatsappLinkResponsable(telefono) {
+  if (!telefono) return null;
+  let digitos = telefono.replace(/\D/g, '');
+  if (!digitos) return null;
+  if (digitos.startsWith('56') && (digitos.length === 10 || digitos.length === 11)) {
+    // ya viene con codigo de pais
+  } else if (digitos.length === 9 && digitos.startsWith('9')) {
+    digitos = '56' + digitos;
+  } else if (digitos.length === 8) {
+    digitos = '569' + digitos;
+  }
+  return 'whatsapp://send?phone=' + digitos;
+}
+
+function netwatchAbrirPerfilResponsable(id) {
+  const u = NETWATCH_USUARIOS_PERFIL.find(function (x) { return x.id === id; });
+  if (!u) return;
+
+  document.getElementById('perfilr-nombre').textContent = u.nombre;
+  const correoEl = document.getElementById('perfilr-correo');
+  correoEl.textContent = u.correo || '';
+  correoEl.href = u.correo ? ('mailto:' + u.correo) : '#';
+
+  const telefonoEl = document.getElementById('perfilr-telefono');
+  telefonoEl.textContent = u.telefono || '-';
+  const waLink = netwatchWhatsappLinkResponsable(u.telefono);
+  telefonoEl.href = waLink || '#';
+  document.getElementById('perfilr-cargo').textContent = u.cargo || '-';
+  document.getElementById('perfilr-lugar').textContent = u.lugar_trabajo || '-';
+  document.getElementById('perfilr-departamento').textContent = u.departamento || '-';
+  document.getElementById('perfilr-ciudad').textContent = u.ciudad || '-';
+  document.getElementById('perfilr-sistemas').textContent = u.sistemas_autorizados || '-';
+
+  const estadoBadge = document.getElementById('perfilr-estado-badge');
+  estadoBadge.textContent = u.activo ? 'Activo' : 'Inactivo';
+  estadoBadge.className = 'tag perfil-estado-badge ' + (u.activo ? 'tag-confirmado' : 'tag-descartado');
+
+  const vpnBadge = document.getElementById('perfilr-vpn-badge');
+  if (u.tipo_vpn) {
+    vpnBadge.textContent = (u.vpn_activa ? 'VPN Conectada' : 'VPN Desconectada') + ' (' + u.tipo_vpn + ')';
+    vpnBadge.className = 'badge ' + (u.vpn_activa ? 'badge-confiable' : 'badge-sin_respuesta');
+  } else {
+    vpnBadge.textContent = 'Sin VPN asignada';
+    vpnBadge.className = 'badge badge-sin_respuesta';
+  }
+
+  const fotoImg = document.getElementById('perfilr-foto');
+  const fotoPlaceholder = document.getElementById('perfilr-foto-placeholder');
+  if (u.foto_perfil) {
+    fotoImg.src = u.foto_perfil.startsWith('http') ? u.foto_perfil : ('/static/' + u.foto_perfil);
+    fotoImg.style.display = 'block';
+    fotoPlaceholder.style.display = 'none';
+  } else {
+    fotoImg.style.display = 'none';
+    fotoPlaceholder.style.display = 'block';
+  }
+
+  const equipos = u.equipos_asignados || [];
+  document.getElementById('perfilr-equipos-titulo').textContent = 'Equipos asignados (' + equipos.length + ')';
+  const tbody = document.getElementById('perfilr-equipos-tbody');
+  const tabla = document.getElementById('perfilr-equipos-tabla');
+  const vacio = document.getElementById('perfilr-equipos-vacio');
+  tbody.innerHTML = '';
+  if (equipos.length === 0) {
+    tabla.style.display = 'none';
+    vacio.style.display = 'block';
+  } else {
+    tabla.style.display = '';
+    vacio.style.display = 'none';
+    equipos.forEach(function (eq) {
+      const tr = document.createElement('tr');
+
+      const tdEquipo = document.createElement('td');
+      const a = document.createElement('a');
+      a.href = '/equipo/' + eq.id + '?origen=inventario';
+      a.target = '_blank';
+      a.rel = 'noopener';
+      a.className = 'ip-link';
+      a.textContent = eq.hostname || eq.ip;
+      tdEquipo.appendChild(a);
+
+      const tdIp = document.createElement('td');
+      tdIp.textContent = eq.ip;
+
+      const tdEstado = document.createElement('td');
+      const tag = document.createElement('span');
+      tag.className = 'tag ' + (eq.en_linea ? 'tag-confirmado' : 'tag-descartado');
+      tag.textContent = eq.en_linea ? 'ONLINE' : 'OFFLINE';
+      tdEstado.appendChild(tag);
+
+      tr.appendChild(tdEquipo);
+      tr.appendChild(tdIp);
+      tr.appendChild(tdEstado);
+      tbody.appendChild(tr);
+    });
+  }
+
+  document.getElementById('perfilr-editar-link').href = NETWATCH_URL_ADMIN_PERFIL + '?perfil=' + id;
+
+  document.getElementById('modal-perfil-responsable').classList.add('modal-open');
+}
+
+function netwatchCerrarPerfilResponsable() {
+  document.getElementById('modal-perfil-responsable').classList.remove('modal-open');
+}
+
+document.addEventListener('keydown', function (e) {
+  if (e.key === 'Escape') netwatchCerrarPerfilResponsable();
+});
+</script>
+
+<script>
+function netwatchAplicarCategoriaEquipo(sel) {
+  const red = (sel.dataset.categoriasRed || '').split(',').filter(Boolean);
+  const esRed = red.indexOf(sel.value) !== -1;
+  const form = sel.closest('.ficha-form');
+  if (!form) return;
+  form.querySelectorAll('.fieldset-solo-pc').forEach(function (fs) { fs.style.display = esRed ? 'none' : ''; });
+}
+
+function netwatchFotoEquipoSeleccionada(input, id) {
+  if (!input.files || !input.files[0]) return;
+  const reader = new FileReader();
+  reader.onload = function (ev) {
+    const img = document.getElementById('foto-equipo-img-' + id);
+    const placeholder = document.getElementById('foto-equipo-placeholder-' + id);
+    img.src = ev.target.result;
+    img.style.display = 'block';
+    if (placeholder) placeholder.style.display = 'none';
+    document.getElementById('foto-equipo-eliminar-' + id).value = '0';
+  };
+  reader.readAsDataURL(input.files[0]);
+}
+
+function netwatchEliminarFotoEquipo(id) {
+  const img = document.getElementById('foto-equipo-img-' + id);
+  img.style.display = 'none';
+  img.src = '';
+  const placeholder = document.getElementById('foto-equipo-placeholder-' + id);
+  if (placeholder) placeholder.style.display = 'flex';
+  document.getElementById('foto-equipo-archivo-' + id).value = '';
+  document.getElementById('foto-equipo-eliminar-' + id).value = '1';
+}
+
+let netwatchCategoriaActiva = '';
+
+// Aplica a la vez el texto del buscador Y la pestana de categoria activa --
+// ambos filtros conviven (ej. buscar "matta" dentro de solo los Servidores).
+function netwatchAplicarFiltrosEquipos() {
+  const q = document.getElementById('buscador-equipos').value.trim().toLowerCase();
+  // :not(.acordeon-panel) para no tocar las filas del panel "Editar" inline
+  // (esas no tienen data-buscar/data-categoria, son el formulario de edicion).
+  const filas = document.querySelectorAll('#tabla-equipos tbody tr:not(.acordeon-panel)');
   let visibles = 0;
   filas.forEach(function (tr) {
-    const coincide = !q || tr.dataset.buscar.indexOf(q) !== -1;
-    tr.style.display = coincide ? '' : 'none';
-    if (coincide) visibles++;
+    const coincideTexto = !q || tr.dataset.buscar.indexOf(q) !== -1;
+    let coincideCategoria = true;
+    if (netwatchCategoriaActiva === '__sin_categoria__') {
+      coincideCategoria = !tr.dataset.categoria;
+    } else if (netwatchCategoriaActiva) {
+      coincideCategoria = tr.dataset.categoria === netwatchCategoriaActiva;
+    }
+    const visible = coincideTexto && coincideCategoria;
+    tr.style.display = visible ? '' : 'none';
+    if (visible) visibles++;
   });
   const vacio = document.getElementById('equipos-vacio');
   if (vacio) vacio.style.display = visibles === 0 ? 'block' : 'none';
+}
+
+// Recordar busqueda/categoria/scroll entre recargas -- al guardar una edicion
+// el formulario hace un POST normal que recarga la pagina, y sin esto se
+// perdia el texto buscado, la pestana de categoria y el lugar donde ibas.
+const NETWATCH_FILTRO_TEXTO_KEY = 'netwatchEquiposFiltroTexto';
+const NETWATCH_FILTRO_CATEGORIA_KEY = 'netwatchEquiposFiltroCategoria';
+const NETWATCH_SCROLL_KEY = 'netwatchEquiposScroll';
+
+document.getElementById('buscador-equipos').addEventListener('input', function () {
+  localStorage.setItem(NETWATCH_FILTRO_TEXTO_KEY, this.value);
+  netwatchAplicarFiltrosEquipos();
 });
+
+function netwatchFiltrarCategoria(btn) {
+  netwatchCategoriaActiva = btn.dataset.categoria;
+  localStorage.setItem(NETWATCH_FILTRO_CATEGORIA_KEY, netwatchCategoriaActiva);
+  document.querySelectorAll('#categoria-tabs .categoria-tab').forEach(function (b) {
+    b.classList.toggle('activa', b === btn);
+  });
+  netwatchAplicarFiltrosEquipos();
+}
+
+// Guarda donde estabas parado justo antes de que "Guardar Cambios" recargue la pagina.
+document.querySelectorAll('.acordeon-form').forEach(function (form) {
+  form.addEventListener('submit', function () {
+    sessionStorage.setItem(NETWATCH_SCROLL_KEY, String(window.scrollY));
+  });
+});
+
+// Al cargar la pagina (incluyendo justo despues de guardar una edicion):
+// restaura la busqueda, la pestana de categoria activa y el scroll de antes.
+(function netwatchRestaurarEstadoEquipos() {
+  const textoGuardado = localStorage.getItem(NETWATCH_FILTRO_TEXTO_KEY);
+  if (textoGuardado) {
+    document.getElementById('buscador-equipos').value = textoGuardado;
+  }
+  const categoriaGuardada = localStorage.getItem(NETWATCH_FILTRO_CATEGORIA_KEY);
+  if (categoriaGuardada !== null) {
+    netwatchCategoriaActiva = categoriaGuardada;
+    document.querySelectorAll('#categoria-tabs .categoria-tab').forEach(function (b) {
+      b.classList.toggle('activa', b.dataset.categoria === categoriaGuardada);
+    });
+  }
+  netwatchAplicarFiltrosEquipos();
+  const scrollGuardado = sessionStorage.getItem(NETWATCH_SCROLL_KEY);
+  if (scrollGuardado) {
+    sessionStorage.removeItem(NETWATCH_SCROLL_KEY);
+    requestAnimationFrame(function () {
+      window.scrollTo(0, parseInt(scrollGuardado, 10));
+    });
+  }
+})();
 
 // --- seleccion multiple + eliminar en bloque ------------------------------
 function netwatchActualizarSeleccion() {
@@ -206,6 +521,22 @@ function netwatchToggleTodos(origen) {
     if (fila && fila.style.display !== 'none') cb.checked = origen.checked;
   });
   netwatchActualizarSeleccion();
+}
+
+// --- panel "Editar" inline (acordeon), igual que en Infraestructura --------
+// Asi se puede editar un equipo sin salir de Inventario de Equipos y seguir
+// de inmediato con el siguiente.
+function netwatchToggleAcordeon(key) {
+  const panel = document.getElementById('panel-' + key);
+  if (!panel) return;
+  const abriendo = panel.style.display === 'none';
+  document.querySelectorAll('.acordeon-panel').forEach(function (p) {
+    p.style.display = 'none';
+  });
+  panel.style.display = abriendo ? 'table-row' : 'none';
+  if (abriendo) {
+    panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
 }
 </script>
 

@@ -136,18 +136,42 @@ def ping_host(ip, timeout_ms=800, retries=1):
 # Puertos
 # --------------------------------------------------------------------------
 
+# Pool compartido para las pruebas de puertos: antes cada IP muerta pagaba
+# 0.6s POR CADA uno de los 6 puertos en fila (hasta 3.6s solo para descartar
+# una IP que ni siquiera esta en uso) -- con cientos de IPs muertas por
+# subred (la mayoria de un /24), eso era el cuello de botella real del
+# escaneo. Ahora los 6 puertos de una IP se prueban al mismo tiempo (el
+# timeout se paga una sola vez), usando un pool acotado y compartido entre
+# todas las IPs para no crear miles de hilos sueltos si hay muchas subredes
+# en paralelo (ver scan_subnets).
+_PORT_POOL_WORKERS = 200
+_port_executor = None
+
+
+def _get_port_executor():
+    global _port_executor
+    if _port_executor is None:
+        _port_executor = ThreadPoolExecutor(max_workers=_PORT_POOL_WORKERS)
+    return _port_executor
+
+
+def _check_port(args):
+    ip, port, timeout = args
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.settimeout(timeout)
+            return sock.connect_ex((ip, port)) == 0
+    except OSError:
+        return False
+
+
 def scan_ports(ip, ports, timeout=0.6):
-    open_ports = []
-    for p in ports:
-        port = p["port"]
-        try:
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-                sock.settimeout(timeout)
-                if sock.connect_ex((ip, port)) == 0:
-                    open_ports.append({"port": port, "label": p["label"]})
-        except OSError:
-            continue
-    return open_ports
+    if not ports:
+        return []
+    executor = _get_port_executor()
+    args = [(ip, p["port"], timeout) for p in ports]
+    resultados = list(executor.map(_check_port, args))
+    return [p for p, abierto in zip(ports, resultados) if abierto]
 
 
 # --------------------------------------------------------------------------
@@ -328,6 +352,34 @@ def scan_subnet(cidr, config, max_workers=64, on_progress=None):
     return results
 
 
+def scan_subnets(subnets, config, max_workers=64, on_progress=None):
+    """Escanea VARIAS subredes en un solo pool de hilos compartido, en vez de
+    una subred completa despues de la otra. Con sitios remotos de por medio
+    (Arica, Iquique), escanearlas en fila multiplicaba el tiempo del ciclo
+    por la cantidad de subredes -- si cada una demoraba ~1 min, 5 subredes
+    en fila eran ~5 min por ciclo en vez de los 60s configurados, y por eso
+    un equipo podia tardar varios minutos de mas en reflejar que se cayo.
+    Devuelve {cidr: [resultados...]} en el mismo formato que scan_subnet."""
+    networks = [(sn["cidr"], ipaddress.ip_network(sn["cidr"], strict=False)) for sn in subnets]
+    tareas = [(cidr, ip) for cidr, network in networks for ip in network.hosts()]
+    resultados_por_cidr = {cidr: [] for cidr, _ in networks}
+
+    total = len(tareas)
+    done = 0
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(scan_host, ip, config): cidr for cidr, ip in tareas}
+        for future in as_completed(futures):
+            cidr = futures[future]
+            resultados_por_cidr[cidr].append(future.result())
+            done += 1
+            if on_progress:
+                on_progress(done, total)
+
+    for cidr in resultados_por_cidr:
+        resultados_por_cidr[cidr].sort(key=lambda r: ipaddress.ip_address(r["ip"]))
+    return resultados_por_cidr
+
+
 # --------------------------------------------------------------------------
 # CLI
 # --------------------------------------------------------------------------
@@ -359,11 +411,19 @@ def print_table(results):
         )
 
 
-def save_json(all_results, out_dir):
+def save_json(all_results, out_dir, filename=None):
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    out_path = out_dir / f"scan_{ts}.json"
+    if filename:
+        # Nombre fijo (ej. "scan_matta.json"): se SOBRESCRIBE en cada corrida
+        # en vez de acumular un archivo nuevo por ciclo. Pensado para sitios
+        # remotos que escanean solos cada cierto tiempo (Task Scheduler) y
+        # dejan el resultado en una carpeta sincronizada (OneDrive/Drive) --
+        # sin esto, cada ciclo dejaria un JSON nuevo para siempre.
+        out_path = out_dir / filename
+    else:
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        out_path = out_dir / f"scan_{ts}.json"
     payload = {
         "generated_at": datetime.now().isoformat(),
         "subnets": list(all_results.keys()),
@@ -371,6 +431,32 @@ def save_json(all_results, out_dir):
     }
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2, ensure_ascii=False)
+    return out_path
+
+
+def _run_once(subnets_to_scan, config, max_workers, out_dir, out_name, quiet=False, firebase_sitio=None):
+    all_results = {}
+    start = time.time()
+    for sn in subnets_to_scan:
+        if not quiet:
+            print(f"\nEscaneando {sn['cidr']} ({sn['label']})...")
+        results = scan_subnet(sn["cidr"], config, max_workers, on_progress=None if quiet else print_progress)
+        all_results[sn["cidr"]] = results
+        if not quiet:
+            print_table(results)
+
+    elapsed = time.time() - start
+    out_path = save_json(all_results, out_dir, filename=out_name)
+    marca = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    print(f"[{marca}] Escaneo completo en {elapsed:.1f}s. Resultados guardados en: {out_path}")
+
+    if firebase_sitio:
+        # Sube el resultado a Firebase para que el PC central lo recoja solo,
+        # sin depender de que la VPN a este sitio este conectada (ver
+        # scanner/firebase_push.py y monitor.py).
+        import firebase_push
+        firebase_push.publicar(firebase_sitio, all_results, log=print)
+
     return out_path
 
 
@@ -383,6 +469,21 @@ def main():
     parser.add_argument("--config", default=None, help="Ruta a config.json alternativo")
     parser.add_argument("--workers", type=int, default=None, help="Hilos concurrentes (default: config.json)")
     parser.add_argument("--out", default=str(BASE_DIR / "results"), help="Carpeta de salida para el JSON")
+    parser.add_argument(
+        "--out-name", default=None, metavar="ARCHIVO.json",
+        help="Nombre de archivo FIJO para el resultado (se sobrescribe cada vez, no se acumula). "
+             "Util para sitios remotos: ej. --out-name scan_matta.json",
+    )
+    parser.add_argument(
+        "--repeat", type=int, default=None, metavar="SEGUNDOS",
+        help="Deja el escaneo corriendo solo, repitiendo cada N segundos (Ctrl+C para detener). "
+             "Pensado para dejarlo prendido en un sitio remoto sin Task Scheduler.",
+    )
+    parser.add_argument(
+        "--firebase-sitio", default=None, metavar="NOMBRE",
+        help="Sube el resultado de cada ciclo a Firebase (nodo escaneos_remotos/NOMBRE) para que el "
+             "PC central lo recoja solo sin depender de VPN. Necesita scanner/firebase_config.json.",
+    )
     args = parser.parse_args()
 
     config = load_config(args.config)
@@ -406,17 +507,29 @@ def main():
         default_cidr = config.get("default_subnet", "172.30.100.0/24")
         subnets_to_scan.append({"cidr": default_cidr, "label": "predeterminada (trabajo)"})
 
-    all_results = {}
-    start = time.time()
-    for sn in subnets_to_scan:
-        print(f"\nEscaneando {sn['cidr']} ({sn['label']})...")
-        results = scan_subnet(sn["cidr"], config, max_workers, on_progress=print_progress)
-        all_results[sn["cidr"]] = results
-        print_table(results)
-
-    elapsed = time.time() - start
-    out_path = save_json(all_results, args.out)
-    print(f"\nEscaneo completo en {elapsed:.1f}s. Resultados guardados en: {out_path}")
+    if args.repeat:
+        print(f"Repitiendo cada {args.repeat}s. Ctrl+C para detener.")
+        while True:
+            try:
+                _run_once(subnets_to_scan, config, max_workers, args.out, args.out_name,
+                           quiet=True, firebase_sitio=args.firebase_sitio)
+            except Exception as e:
+                # OJO -- bug real encontrado el 2026-07-20 en el sitio Rendic:
+                # un corte de internet a mitad de la subida a Firebase
+                # (http.client.RemoteDisconnected) no quedaba atrapado por
+                # nada aca, asi que mataba el proceso entero -- y como nada lo
+                # volvia a levantar, el sitio se quedaba "congelado" hasta que
+                # alguien iba en persona a reiniciarlo. Ahora CUALQUIER error
+                # inesperado en un ciclo (de red, de Firebase, o cualquier
+                # otro que aparezca a futuro) se registra y se sigue al
+                # proximo ciclo en vez de morir -- este proceso esta pensado
+                # para quedar prendido dias/semanas sin supervision.
+                marca = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                print(f"[{marca}] [ERROR EN EL CICLO, se reintenta en {args.repeat}s] {type(e).__name__}: {e}")
+            time.sleep(args.repeat)
+    else:
+        _run_once(subnets_to_scan, config, max_workers, args.out, args.out_name,
+                   firebase_sitio=args.firebase_sitio)
 
 
 if __name__ == "__main__":

@@ -13,7 +13,7 @@ import json
 import re
 import sqlite3
 import unicodedata
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 DB_PATH = Path(__file__).resolve().parent / "netwatch.db"
@@ -67,10 +67,12 @@ CREATE TABLE IF NOT EXISTS equipos (
     estado_ciclo_vida TEXT DEFAULT 'activo',
     critico INTEGER DEFAULT 0,
     gestionado INTEGER DEFAULT 0,
+    ip_temporal INTEGER DEFAULT 0,
     notas TEXT,
     os TEXT,
     office TEXT,
-    antivirus TEXT
+    antivirus TEXT,
+    categoria TEXT
 );
 
 CREATE TABLE IF NOT EXISTS eventos (
@@ -144,6 +146,7 @@ CREATE TABLE IF NOT EXISTS dispositivos_red (
     plantilla TEXT DEFAULT 'generico',
     ip TEXT,
     mac TEXT,
+    mascara TEXT,
     sucursal TEXT,
     ciudad TEXT,
     ubicacion TEXT,
@@ -160,6 +163,7 @@ CREATE TABLE IF NOT EXISTS conexiones_dispositivos (
     dispositivo_id INTEGER NOT NULL,
     puerto TEXT NOT NULL,
     destino_dispositivo_id INTEGER NOT NULL,
+    destino_puerto TEXT,
     ts TEXT,
     UNIQUE(dispositivo_id, puerto)
 );
@@ -172,7 +176,38 @@ FICHA_FIELDS = [
     "cpu", "ram", "almacenamiento", "gpu", "placa_madre",
     "estado_ciclo_vida", "notas", "puerto",
     "os", "office", "antivirus",
+    "categoria",
 ]
+
+CATEGORIAS_EQUIPO = [
+    "PC de Escritorio", "Notebook", "All in One", "Servidor",
+    "Switch", "Router", "Firewall/UTM", "Access Point", "ONT/Modem",
+    "Impresora", "Camara/DVR", "Otro",
+]
+
+# De estas categorias para abajo son dispositivos de red/perifericos, no PCs
+# -- no tiene sentido mostrarles campos de CPU/RAM/OS/Office/Antivirus (ver
+# fieldset-solo-pc en _macros_equipo.html). Los que sean equipos ya
+# gestionados de verdad como switch/router deberian vivir en Infraestructura
+# (dispositivos_red), pero mientras el escaneo los detecte como "equipo"
+# suelto esto evita el desorden de campos que no aplican.
+CATEGORIAS_DISPOSITIVO_RED = [
+    "Switch", "Router", "Firewall/UTM", "Access Point", "ONT/Modem",
+    "Impresora", "Camara/DVR",
+]
+
+
+def _marca_sync():
+    """Timestamp para actualizado_en -- a diferencia del resto de fechas de
+    esta base (guardadas en hora local para que se vean naturales en
+    pantalla, ej. ultima_deteccion/primera_deteccion/desde), este campo
+    SIEMPRE va en UTC con offset explicito. Se compara directo contra el que
+    manda la web-admin (JS `new Date().toISOString()`, que tambien es UTC)
+    para decidir quien gano la ultima edicion al presionar "Sincronizar con
+    la nube" (ver firebase_sync.py) -- si se guardara en hora local, la
+    comparacion quedaria corrida por el huso horario del servidor y "quien
+    edito mas reciente" podria salir mal."""
+    return datetime.now(timezone.utc).isoformat()
 
 
 def get_connection():
@@ -214,6 +249,12 @@ def init_db():
         conn.execute("ALTER TABLE equipos ADD COLUMN actualizado_en TEXT")
     if "metodo_deteccion" not in cols:
         conn.execute("ALTER TABLE equipos ADD COLUMN metodo_deteccion TEXT")
+    if "categoria" not in cols:
+        conn.execute("ALTER TABLE equipos ADD COLUMN categoria TEXT")
+    if "ip_temporal" not in cols:
+        conn.execute("ALTER TABLE equipos ADD COLUMN ip_temporal INTEGER DEFAULT 0")
+    if "foto" not in cols:
+        conn.execute("ALTER TABLE equipos ADD COLUMN foto TEXT")
     disp_cols = {row["name"] for row in conn.execute("PRAGMA table_info(dispositivos_red)")}
     if disp_cols:
         if "marca" not in disp_cols:
@@ -230,6 +271,8 @@ def init_db():
             conn.execute("ALTER TABLE dispositivos_red ADD COLUMN plantilla TEXT DEFAULT 'generico'")
         if "mac" not in disp_cols:
             conn.execute("ALTER TABLE dispositivos_red ADD COLUMN mac TEXT")
+        if "mascara" not in disp_cols:
+            conn.execute("ALTER TABLE dispositivos_red ADD COLUMN mascara TEXT")
         if "ciudad" not in disp_cols:
             conn.execute("ALTER TABLE dispositivos_red ADD COLUMN ciudad TEXT")
         if "piso" not in disp_cols:
@@ -244,6 +287,25 @@ def init_db():
             conn.execute("ALTER TABLE dispositivos_red ADD COLUMN firebase_id TEXT")
         if "actualizado_en" not in disp_cols:
             conn.execute("ALTER TABLE dispositivos_red ADD COLUMN actualizado_en TEXT")
+        # Reclasificacion de datos (no de esquema): los modems/ONT (Movistar,
+        # Huawei OptiXstar, GPT, etc.) quedaban con tipo "otro" porque ese tipo
+        # no existia -- ahora que existe "modem", los movemos una sola vez.
+        # Idempotente: una vez reclasificado ya no es tipo='otro', asi que en
+        # arranques siguientes esta consulta no vuelve a tocarlos.
+        conn.execute(
+            """
+            UPDATE dispositivos_red SET tipo = 'modem'
+             WHERE tipo = 'otro' AND (
+                 plantilla = 'ont_router_gpon'
+                 OR LOWER(COALESCE(marca, '')) LIKE '%movistar%'
+                 OR LOWER(COALESCE(marca, '')) LIKE '%huawei%'
+                 OR LOWER(COALESCE(marca, '')) LIKE '%optixstar%'
+                 OR LOWER(COALESCE(modelo, '')) LIKE '%ont%'
+                 OR LOWER(COALESCE(modelo, '')) LIKE '%gpt%'
+                 OR LOWER(COALESCE(modelo, '')) LIKE '%modem%'
+             )
+            """
+        )
     usr_cols = {row["name"] for row in conn.execute("PRAGMA table_info(usuarios)")}
     if usr_cols:
         if "foto_perfil" not in usr_cols:
@@ -286,10 +348,18 @@ def init_db():
             dispositivo_id INTEGER NOT NULL,
             puerto TEXT NOT NULL,
             destino_dispositivo_id INTEGER NOT NULL,
+            destino_puerto TEXT,
             ts TEXT,
             UNIQUE(dispositivo_id, puerto)
         )
     """)
+    # migracion suave: bases ya creadas antes de agregar destino_puerto (boca
+    # especifica del OTRO switch a la que se conecta esta boca -- antes solo
+    # se guardaba "el switch destino" completo, sin decir a que boca de ese
+    # switch llegaba el cable).
+    conex_cols = {row["name"] for row in conn.execute("PRAGMA table_info(conexiones_dispositivos)")}
+    if "destino_puerto" not in conex_cols:
+        conn.execute("ALTER TABLE conexiones_dispositivos ADD COLUMN destino_puerto TEXT")
     conn.commit()
     conn.close()
 
@@ -300,7 +370,7 @@ def list_scan_files(results_dir: Path):
     return sorted(results_dir.glob("scan_*.json"), reverse=True)
 
 
-def apply_scan_results(subred, results, source="monitor", offline_after_misses=2):
+def apply_scan_results(subred, results, source="monitor", offline_after_misses=2, subred_label=None):
     """
     Aplica los resultados de un escaneo (vivos y no-vivos) a la base de datos:
     actualiza cada equipo ya conocido, inserta los nuevos que si respondieron,
@@ -381,16 +451,21 @@ def apply_scan_results(subred, results, source="monitor", offline_after_misses=2
         else:
             if alive:
                 open_ports_json = json.dumps(h.get("open_ports", []))
+                # subred_label viene del "label" de config.json (ej. "Arica",
+                # "Iquique") -- se guarda como ciudad solo al crear el equipo la
+                # primera vez, para que el gauge de resumen muestre un nombre
+                # legible en vez del CIDR crudo. No se pisa en updates
+                # posteriores por si alguien lo corrigio a mano en la ficha.
                 cur = conn.execute(
                     """
                     INSERT INTO equipos (
-                        ip, hostname, mac, subred, open_ports,
+                        ip, hostname, mac, subred, ciudad, open_ports,
                         confidence_score, confidence_label, metodo_deteccion, estado_deteccion,
                         en_linea, desde, primera_deteccion, ultima_deteccion, ultimo_scan_file
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pendiente', 1, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pendiente', 1, ?, ?, ?, ?)
                     """,
                     (
-                        ip, h.get("hostname"), h.get("mac"), subred, open_ports_json,
+                        ip, h.get("hostname"), h.get("mac"), subred, subred_label, open_ports_json,
                         h.get("confidence_score"), h.get("confidence_label"), h.get("metodo_deteccion"),
                         now, now, now, source,
                     ),
@@ -407,6 +482,113 @@ def apply_scan_results(subred, results, source="monitor", offline_after_misses=2
     conn.commit()
     conn.close()
     return eventos
+
+
+def aplicar_reporte_agente(data):
+    """Aplica el auto-reporte de tools/agente_inventario.ps1 (datos WMI reales
+    del propio PC) haciendo upsert por IP -- mismo patron que apply_scan_results
+    (COALESCE para no borrar un dato ya conocido si esta vez el agente no lo
+    pudo leer), pero solo sobre campos TECNICOS/de hardware. Los campos
+    administrativos (responsable, sucursal, ciudad, departamento, categoria,
+    critico, gestionado, notas) nunca se tocan aca -- son del tecnico, no del
+    escaneo. Devuelve (equipo_id, es_nuevo)."""
+    now = datetime.now().isoformat()
+    marca_ts = _marca_sync()
+    ip = (data.get("ip") or "").strip()
+
+    def limpio(v):
+        if not isinstance(v, str):
+            return None
+        v = v.strip()
+        return v or None
+
+    campos = {
+        "hostname": limpio(data.get("hostname")),
+        "mac": limpio(data.get("mac")),
+        "os": limpio(data.get("os")),
+        "marca": limpio(data.get("brand")),
+        "modelo": limpio(data.get("model")),
+        "numero_serie": limpio(data.get("serial_number")),
+        "cpu": limpio(data.get("cpu")),
+        "ram": limpio(data.get("ram")),
+        "almacenamiento": limpio(data.get("storage")),
+        "gpu": limpio(data.get("gpu")),
+        "placa_madre": limpio(data.get("motherboard")),
+        "office": limpio(data.get("office")),
+        "antivirus": limpio(data.get("antivirus")),
+    }
+
+    conn = get_connection()
+    existing = conn.execute(
+        "SELECT id, en_linea FROM equipos WHERE ip = ?", (ip,)
+    ).fetchone()
+
+    if existing:
+        eq_id = existing["id"]
+        was_online = bool(existing["en_linea"])
+        conn.execute(
+            """
+            UPDATE equipos
+               SET hostname = COALESCE(?, hostname),
+                   mac = COALESCE(?, mac),
+                   os = COALESCE(?, os),
+                   marca = COALESCE(?, marca),
+                   modelo = COALESCE(?, modelo),
+                   numero_serie = COALESCE(?, numero_serie),
+                   cpu = COALESCE(?, cpu),
+                   ram = COALESCE(?, ram),
+                   almacenamiento = COALESCE(?, almacenamiento),
+                   gpu = COALESCE(?, gpu),
+                   placa_madre = COALESCE(?, placa_madre),
+                   office = COALESCE(?, office),
+                   antivirus = COALESCE(?, antivirus),
+                   metodo_deteccion = 'agente',
+                   ultima_deteccion = ?,
+                   en_linea = 1,
+                   fallos_consecutivos = 0,
+                   desde = CASE WHEN en_linea = 0 THEN ? ELSE desde END,
+                   actualizado_en = ?
+             WHERE id = ?
+            """,
+            (
+                campos["hostname"], campos["mac"], campos["os"], campos["marca"], campos["modelo"],
+                campos["numero_serie"], campos["cpu"], campos["ram"], campos["almacenamiento"],
+                campos["gpu"], campos["placa_madre"], campos["office"], campos["antivirus"],
+                now, now, marca_ts, eq_id,
+            ),
+        )
+        if not was_online:
+            conn.execute(
+                "INSERT INTO eventos (equipo_id, ip, hostname, tipo, ts) VALUES (?, ?, ?, 'online', ?)",
+                (eq_id, ip, campos["hostname"], now),
+            )
+        conn.commit()
+        conn.close()
+        return eq_id, False
+
+    cur = conn.execute(
+        """
+        INSERT INTO equipos (
+            ip, hostname, mac, os, marca, modelo, numero_serie, cpu, ram, almacenamiento,
+            gpu, placa_madre, office, antivirus, metodo_deteccion, estado_deteccion,
+            en_linea, desde, primera_deteccion, ultima_deteccion, ultimo_scan_file, actualizado_en
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'agente', 'pendiente', 1, ?, ?, ?, 'agente', ?)
+        """,
+        (
+            ip, campos["hostname"], campos["mac"], campos["os"], campos["marca"], campos["modelo"],
+            campos["numero_serie"], campos["cpu"], campos["ram"], campos["almacenamiento"],
+            campos["gpu"], campos["placa_madre"], campos["office"], campos["antivirus"],
+            now, now, now, marca_ts,
+        ),
+    )
+    eq_id = cur.lastrowid
+    conn.execute(
+        "INSERT INTO eventos (equipo_id, ip, hostname, tipo, ts) VALUES (?, ?, ?, 'nuevo', ?)",
+        (eq_id, ip, campos["hostname"], now),
+    )
+    conn.commit()
+    conn.close()
+    return eq_id, True
 
 
 def import_scan(scan_path: Path):
@@ -469,7 +651,32 @@ def update_estado(equipo_id, estado):
     conn.close()
 
 
+def set_critico(equipo_id, valor):
+    """Prende/apaga el flag critico de un equipo sin pasar por el form
+    completo de la ficha. Recibe el valor final explicito (no es un toggle
+    ciego) para que sea seguro repetir la llamada -- si el boton se llega a
+    presionar dos veces rapido (ej. con el servidor mas lento por el escaneo
+    de varias subredes), ambas peticiones piden el mismo resultado final en
+    vez de cancelarse entre si. Devuelve True si el equipo existia."""
+    conn = get_connection()
+    cur = conn.execute(
+        "UPDATE equipos SET critico = ?, actualizado_en = ? WHERE id = ?",
+        (1 if valor else 0, _marca_sync(), equipo_id),
+    )
+    conn.commit()
+    afectado = cur.rowcount > 0
+    conn.close()
+    return afectado
+
+
 def update_ficha(equipo_id, fields: dict):
+    # actualizado_en se pisa siempre con "ahora" -- es lo que despues usa
+    # firebase_sync para decidir quien manda en "Sincronizar con la nube"
+    # (gana el lado con la edicion mas reciente, ver _gana_local()). Se hace
+    # aca adentro (no en cada llamador) para que TODA edicion de ficha quede
+    # cubierta sin acordarse de agregarlo cada vez.
+    fields = dict(fields)
+    fields["actualizado_en"] = _marca_sync()
     cols = ", ".join(f"{k} = ?" for k in fields)
     values = list(fields.values()) + [equipo_id]
     conn = get_connection()
@@ -483,6 +690,64 @@ def get_equipo_by_ip(ip):
     row = conn.execute("SELECT id FROM equipos WHERE ip = ?", (ip,)).fetchone()
     conn.close()
     return row["id"] if row else None
+
+
+# Campos que el escaneo llena SOLO (nunca a mano) -- al fusionar, se copian del
+# duplicado hacia la ficha que se conserva UNICAMENTE si esta ultima los tiene
+# vacios, para no pisar nunca un dato administrativo ya cargado.
+_CAMPOS_TECNICOS_FUSION = [
+    "hostname", "mac", "open_ports", "confidence_score", "confidence_label",
+    "estado_deteccion", "en_linea", "os", "office", "antivirus",
+    "metodo_deteccion", "subred",
+]
+
+
+def fusionar_equipo_por_ip(equipo_id, ip_nueva):
+    """Un equipo real cambio de IP (ej. le asignaron una IP nueva porque la
+    vieja se dio de baja), pero el escaneo ya creo un registro aparte para esa
+    IP nueva apenas la vio en la red -- por eso "ya existe" al intentar
+    guardar el cambio. Esto fusiona ambos en uno solo: la ficha que se esta
+    editando (con su responsable, notas, historial, etc.) adopta la IP nueva
+    y se completa con los datos tecnicos que el duplicado ya tenia detectados
+    si le faltaban; el duplicado se borra, pero primero se le pasan sus
+    tickets/rdp_history/eventos (por si tuviera alguno) para no perder nada.
+    Devuelve True si fusiono algo, False si no encontro el duplicado."""
+    conn = get_connection()
+    dup_row = conn.execute("SELECT * FROM equipos WHERE ip = ?", (ip_nueva,)).fetchone()
+    if not dup_row:
+        conn.close()
+        return False
+    duplicado = dict(dup_row)
+    dup_id = duplicado["id"]
+    if dup_id == equipo_id:
+        conn.close()
+        return False
+
+    actual_row = conn.execute("SELECT * FROM equipos WHERE id = ?", (equipo_id,)).fetchone()
+    if not actual_row:
+        conn.close()
+        return False
+    actual = dict(actual_row)
+
+    updates = {"ip": ip_nueva, "actualizado_en": _marca_sync()}
+    for campo in _CAMPOS_TECNICOS_FUSION:
+        if not actual.get(campo) and duplicado.get(campo):
+            updates[campo] = duplicado[campo]
+
+    # OJO -- el duplicado hay que borrarlo ANTES de ponerle su IP al equipo
+    # que se conserva: equipos.ip es UNIQUE, asi que mientras el duplicado
+    # siga existiendo con esa IP, el UPDATE de abajo choca contra esa misma
+    # restriccion (visto en pruebas: fallaba con UNIQUE constraint failed).
+    conn.execute("UPDATE eventos SET equipo_id = ? WHERE equipo_id = ?", (equipo_id, dup_id))
+    conn.execute("UPDATE tickets SET equipo_id = ? WHERE equipo_id = ?", (equipo_id, dup_id))
+    conn.execute("UPDATE rdp_history SET equipo_id = ? WHERE equipo_id = ?", (equipo_id, dup_id))
+    conn.execute("DELETE FROM equipos WHERE id = ?", (dup_id,))
+
+    set_clause = ", ".join(f"{c} = ?" for c in updates)
+    conn.execute(f"UPDATE equipos SET {set_clause} WHERE id = ?", list(updates.values()) + [equipo_id])
+    conn.commit()
+    conn.close()
+    return True
 
 
 def create_equipo_manual(ip, hostname=None, mac=None, marca=None, modelo=None, numero_serie=None,
@@ -1037,15 +1302,43 @@ def calcular_disponibilidad(equipo_id, dias=30):
     return resultado
 
 
-def ranking_disponibilidad(dias=30, limite=15):
-    """Los equipos con peor disponibilidad en los ultimos `dias` dias
-    (ordenados por % online ascendente, luego por mas caidas primero) --
+_RANKING_IP_RE = re.compile(r"^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$")
+
+
+def _ranking_clave_orden(orden):
+    """Devuelve la funcion de clave de sort para cada criterio soportado por
+    /disponibilidad. 'dias' = tiempo que lleva offline: los que estan online
+    ahora (sin "desde" en la ventana) quedan al final, no arriba, porque no
+    estan "cayendose" en este momento."""
+    if orden == "caidas":
+        return lambda r: (-r["caidas"], r["pct_online"])
+    if orden == "dias":
+        def _clave(r):
+            if not r["desde"]:
+                return (1, "")
+            return (0, r["desde"])
+        return _clave
+    if orden == "ip":
+        def _clave(r):
+            m = _RANKING_IP_RE.match(r["ip"] or "")
+            if m:
+                return (0, tuple(int(g) for g in m.groups()))
+            return (1, (r["ip"] or "").lower())
+        return _clave
+    return lambda r: (r["pct_online"], -r["caidas"])  # 'disponibilidad' (default)
+
+
+def ranking_disponibilidad(dias=30, limite=15, orden="disponibilidad"):
+    """Los equipos con peor disponibilidad en los ultimos `dias` dias --
     para encontrar el que anda fallando seguido, no solo el que esta caido
     ahora mismo. Deja afuera los equipos manuales (sin deteccion real) y los
-    que no tuvieron ninguna caida en la ventana."""
+    que no tuvieron ninguna caida en la ventana. `orden` cambia el criterio
+    de ordenamiento (ver _ranking_clave_orden): 'disponibilidad' (default,
+    peor % primero), 'caidas' (mas caidas primero), 'dias' (lleva mas tiempo
+    offline primero) o 'ip'."""
     conn = get_connection()
     equipos = conn.execute(
-        "SELECT id, hostname, ip, responsable, sucursal, ciudad, en_linea, primera_deteccion "
+        "SELECT id, hostname, ip, responsable, sucursal, ciudad, en_linea, primera_deteccion, desde "
         "FROM equipos WHERE origen != 'manual'"
     ).fetchall()
 
@@ -1058,25 +1351,31 @@ def ranking_disponibilidad(dias=30, limite=15):
             "id": e["id"], "hostname": e["hostname"], "ip": e["ip"],
             "responsable": e["responsable"], "sucursal": e["sucursal"], "ciudad": e["ciudad"],
             "en_linea": bool(e["en_linea"]),
+            # "desde" es cuando entro al estado ACTUAL (ver apply_scan_results) --
+            # solo tiene sentido como "lleva caido hace X" cuando esta offline.
+            "desde": e["desde"] if not e["en_linea"] else None,
             "pct_online": disp["pct_online"], "caidas": disp["caidas"],
         })
     conn.close()
 
-    resultados.sort(key=lambda r: (r["pct_online"], -r["caidas"]))
+    resultados.sort(key=_ranking_clave_orden(orden))
     return resultados[:limite]
 
 
 def equipos_criticos_pendientes_alerta(umbral_minutos=15):
     """Equipos marcados como 'critico', offline hace mas del umbral elegido,
     y a los que todavia no se les mando el aviso para esta caida (para no
-    mandar el mismo aviso de nuevo en cada ciclo mientras siga caido)."""
+    mandar el mismo aviso de nuevo en cada ciclo mientras siga caido).
+    Excluye los marcados 'ip_temporal' (equipo bueno usando temporalmente la
+    IP de otro que fallo fisicamente) -- ese offline es esperado/conocido
+    mientras dura el reemplazo, no una falla real que avisar."""
     conn = get_connection()
     rows = conn.execute(
         """
         SELECT id, ip, hostname, responsable, sucursal, ciudad, desde
         FROM equipos
         WHERE critico = 1 AND en_linea = 0 AND alerta_offline_enviada = 0
-          AND desde IS NOT NULL
+          AND desde IS NOT NULL AND COALESCE(ip_temporal, 0) = 0
         """
     ).fetchall()
     conn.close()
@@ -1264,6 +1563,7 @@ def get_usuario(usuario_id):
 def update_usuario(usuario_id, nombre, correo=None, cargo=None, sucursal=None, telefono=None,
                     foto_perfil=None, departamento=None, ciudad=None, lugar_trabajo="Presencial",
                     sistemas_autorizados=None, tipo_vpn=None, vpn_activa=0, activo=1, actualizar_foto=True):
+    ahora = _marca_sync()
     conn = get_connection()
     if actualizar_foto:
         conn.execute(
@@ -1271,12 +1571,14 @@ def update_usuario(usuario_id, nombre, correo=None, cargo=None, sucursal=None, t
             UPDATE usuarios
                SET nombre = ?, correo = ?, cargo = ?, sucursal = ?, telefono = ?,
                    foto_perfil = ?, departamento = ?, ciudad = ?, lugar_trabajo = ?,
-                   sistemas_autorizados = ?, tipo_vpn = ?, vpn_activa = ?, activo = ?
+                   sistemas_autorizados = ?, tipo_vpn = ?, vpn_activa = ?, activo = ?,
+                   actualizado_en = ?
              WHERE id = ?
             """,
             (nombre, correo, cargo, sucursal, telefono,
              foto_perfil, departamento, ciudad, lugar_trabajo,
-             sistemas_autorizados, tipo_vpn, 1 if vpn_activa else 0, 1 if activo else 0, usuario_id),
+             sistemas_autorizados, tipo_vpn, 1 if vpn_activa else 0, 1 if activo else 0,
+             ahora, usuario_id),
         )
     else:
         # no se subio/pego una foto nueva: conserva la que ya tenia
@@ -1285,12 +1587,14 @@ def update_usuario(usuario_id, nombre, correo=None, cargo=None, sucursal=None, t
             UPDATE usuarios
                SET nombre = ?, correo = ?, cargo = ?, sucursal = ?, telefono = ?,
                    departamento = ?, ciudad = ?, lugar_trabajo = ?,
-                   sistemas_autorizados = ?, tipo_vpn = ?, vpn_activa = ?, activo = ?
+                   sistemas_autorizados = ?, tipo_vpn = ?, vpn_activa = ?, activo = ?,
+                   actualizado_en = ?
              WHERE id = ?
             """,
             (nombre, correo, cargo, sucursal, telefono,
              departamento, ciudad, lugar_trabajo,
-             sistemas_autorizados, tipo_vpn, 1 if vpn_activa else 0, 1 if activo else 0, usuario_id),
+             sistemas_autorizados, tipo_vpn, 1 if vpn_activa else 0, 1 if activo else 0,
+             ahora, usuario_id),
         )
     conn.commit()
     conn.close()
@@ -1387,8 +1691,8 @@ def set_responsable_equipo(equipo_id, usuario_id):
             correo_responsable = usuario["correo"]
     conn = get_connection()
     conn.execute(
-        "UPDATE equipos SET responsable_id = ?, responsable = ?, correo_responsable = ? WHERE id = ?",
-        (usuario_id, responsable, correo_responsable, equipo_id),
+        "UPDATE equipos SET responsable_id = ?, responsable = ?, correo_responsable = ?, actualizado_en = ? WHERE id = ?",
+        (usuario_id, responsable, correo_responsable, _marca_sync(), equipo_id),
     )
     conn.commit()
     conn.close()
@@ -1396,7 +1700,10 @@ def set_responsable_equipo(equipo_id, usuario_id):
 
 def update_usuario_estado(usuario_id, activo):
     conn = get_connection()
-    conn.execute("UPDATE usuarios SET activo = ? WHERE id = ?", (1 if activo else 0, usuario_id))
+    conn.execute(
+        "UPDATE usuarios SET activo = ?, actualizado_en = ? WHERE id = ?",
+        (1 if activo else 0, _marca_sync(), usuario_id),
+    )
     conn.commit()
     conn.close()
 
@@ -1453,11 +1760,13 @@ def delete_ciudad(ciudad_id):
 # Topologia (dispositivos de red: switch/router/fortinet/otro, mapeo manual de puertos)
 # --------------------------------------------------------------------------
 
-TIPOS_DISPOSITIVO = ["switch", "router", "fortinet", "otro"]
+TIPOS_DISPOSITIVO = ["switch", "router", "fortinet", "conversor", "modem", "otro"]
 TIPO_DISPOSITIVO_LABELS = {
-    "switch": "Switch administrable",
+    "switch": "Switch L3",
     "router": "Router",
     "fortinet": "Firewall Fortinet",
+    "conversor": "Conversor",
+    "modem": "Modem",
     "otro": "Otro dispositivo",
 }
 ESTADOS_DISPOSITIVO = ["Nuevo", "Usado", "En reparacion", "Fuera de servicio"]
@@ -1547,7 +1856,16 @@ def get_puertos_definicion(d):
     cantidad_bocas / bocas_fibra (compatibilidad con dispositivos ya creados)."""
     plantilla = d.get("plantilla") or "generico"
     if plantilla in PLANTILLAS_PUERTOS:
-        return list(PLANTILLAS_PUERTOS[plantilla]["puertos"])
+        # OJO: copia cada diccionario de boca (no solo la lista contenedora).
+        # PLANTILLAS_PUERTOS es un dict a nivel de modulo compartido por TODOS
+        # los dispositivos con la misma plantilla (ej. 5 Fortinets FG-60F). Si
+        # solo se copia la lista externa, _dispositivos_con_puertos() termina
+        # mutando (p["equipo"] = ...) los MISMOS diccionarios de boca para
+        # cada dispositivo, asi que el ultimo dispositivo procesado con esa
+        # plantilla pisa el dato de ocupacion de todos los demas -- eso hacia
+        # que una asignacion se guardara bien en la base de datos pero se
+        # viera "libre" en pantalla si otro Fortinet se procesaba despues.
+        return [dict(p) for p in PLANTILLAS_PUERTOS[plantilla]["puertos"]]
     puertos = []
     for i in range(1, (d.get("cantidad_bocas") or 0) + 1):
         puertos.append({"label": str(i), "tipo": "cobre"})
@@ -1601,12 +1919,38 @@ def update_dispositivo(dispositivo_id, nombre, tipo="switch", marca=None, modelo
         UPDATE dispositivos_red
            SET nombre = ?, tipo = ?, marca = ?, modelo = ?, numero_serie = ?, cantidad_bocas = ?,
                bocas_fibra = ?, plantilla = ?, ip = ?, mac = ?, sucursal = ?, ciudad = ?,
-               ubicacion = ?, piso = ?, estado = ?, fecha_ingreso = ?, notas = ?, enlace = ?
+               ubicacion = ?, piso = ?, estado = ?, fecha_ingreso = ?, notas = ?, enlace = ?,
+               actualizado_en = ?
          WHERE id = ?
         """,
         (nombre, tipo, marca, modelo, numero_serie, cantidad_bocas, bocas_fibra, plantilla,
-         ip, mac, sucursal, ciudad, ubicacion, piso, estado, fecha_ingreso, notas, enlace, dispositivo_id),
+         ip, mac, sucursal, ciudad, ubicacion, piso, estado, fecha_ingreso, notas, enlace,
+         _marca_sync(), dispositivo_id),
     )
+    conn.commit()
+    conn.close()
+
+
+def eliminar_dispositivo(dispositivo_id):
+    """Borra un dispositivo de red (switch/router/fortinet/etc), dejando todo
+    limpio para que no queden referencias colgando -- pensado para sacar
+    duplicados que quedaron mal cargados en una importacion:
+    1) los equipos (PCs) que estaban conectados a una boca de este dispositivo
+       quedan sin dispositivo/puerto asignado (no se borran, solo se
+       desvinculan).
+    2) cualquier conexion switch-a-switch donde este dispositivo era origen O
+       destino se elimina, para que la boca del otro lado quede libre en vez
+       de mostrar para siempre "ocupado" por un dispositivo que ya no existe.
+    3) se borra la fila de dispositivos_red.
+    """
+    conn = get_connection()
+    conn.execute(
+        "UPDATE equipos SET dispositivo_id = NULL, puerto = NULL WHERE dispositivo_id = ?",
+        (dispositivo_id,),
+    )
+    conn.execute("DELETE FROM conexiones_dispositivos WHERE dispositivo_id = ?", (dispositivo_id,))
+    conn.execute("DELETE FROM conexiones_dispositivos WHERE destino_dispositivo_id = ?", (dispositivo_id,))
+    conn.execute("DELETE FROM dispositivos_red WHERE id = ?", (dispositivo_id,))
     conn.commit()
     conn.close()
 
@@ -1623,10 +1967,10 @@ def _inferir_tipo_y_plantilla(marca, modelo, bocas_num):
     if "cisco" in marca_l and any(m in modelo_l for m in ("2901", "2900", "2800", "2811", "2911", "isr")):
         return "router", "cisco_2901_isr"
     if "raisecom" in marca_l or "conversor" in modelo_l:
-        return "otro", "conversor_medios"
+        return "conversor", "conversor_medios"
     if ("movistar" in marca_l or "huawei" in marca_l or "gpt" in modelo_l
             or "ont" in modelo_l or "modem" in modelo_l or "optixstar" in marca_l):
-        return "otro", "ont_router_gpon"
+        return "modem", "ont_router_gpon"
     if "juniper" in marca_l and "ex2200" in modelo_l:
         return ("switch", "juniper_ex2200_48p") if bocas_num and bocas_num >= 48 else ("switch", "juniper_ex2200_24p")
     if "cisco" in marca_l or "tp-link" in marca_l:
@@ -1750,19 +2094,40 @@ def assign_puerto(dispositivo_id, puerto, equipo_id):
     )
     if equipo_id:
         conn.execute(
-            "UPDATE equipos SET dispositivo_id = ?, puerto = ? WHERE id = ?",
-            (dispositivo_id, puerto, equipo_id),
+            "UPDATE equipos SET dispositivo_id = ?, puerto = ?, actualizado_en = ? WHERE id = ?",
+            (dispositivo_id, puerto, _marca_sync(), equipo_id),
         )
     conn.commit()
     conn.close()
 
 
-def set_puerto_destino(dispositivo_id, puerto, destino_tipo, destino_id):
+def get_destino_dispositivo_anterior(dispositivo_id, puerto):
+    """Si esta boca ya estaba conectada a OTRO dispositivo (switch-switch),
+    devuelve el id de ese dispositivo destino anterior -- se usa para saber a
+    quien mas hay que refrescar en pantalla cuando se reasigna o se libera la
+    boca (si no, el otro switch se queda mostrando la boca como ocupada
+    aunque ya se desconecto, hasta que alguien recargue toda la pagina)."""
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT destino_dispositivo_id FROM conexiones_dispositivos WHERE dispositivo_id = ? AND puerto = ?",
+        (dispositivo_id, puerto),
+    ).fetchone()
+    conn.close()
+    return row["destino_dispositivo_id"] if row else None
+
+
+def set_puerto_destino(dispositivo_id, puerto, destino_tipo, destino_id, destino_puerto=None):
     """Asigna a esa boca de un dispositivo su destino, que puede ser un equipo
     (workstation/servidor) o otro dispositivo de red (switch-switch, fortinet-switch, etc).
     Libera cualquier ocupante anterior de esa boca (de cualquiera de los dos tipos).
-    destino_tipo: "equipo" | "dispositivo" | "" (deja la boca libre)."""
+    destino_tipo: "equipo" | "dispositivo" | "" (deja la boca libre).
+    destino_puerto: cuando destino_tipo es "dispositivo", la boca ESPECIFICA del otro
+    switch a la que llega el cable (ej. conectar la fibra SFP4 de este switch a la
+    boca 24 del switch central) -- asi la boca destino tambien queda marcada como
+    ocupada del otro lado, en vez de solo anotar "conectado a tal switch" sin decir
+    a que boca de ese switch."""
     conn = get_connection()
+    # 1) liberar lo que estuviera antes en ESTA boca (como origen de cualquier tipo)
     conn.execute(
         "UPDATE equipos SET dispositivo_id = NULL, puerto = NULL WHERE dispositivo_id = ? AND puerto = ?",
         (dispositivo_id, puerto),
@@ -1771,34 +2136,69 @@ def set_puerto_destino(dispositivo_id, puerto, destino_tipo, destino_id):
         "DELETE FROM conexiones_dispositivos WHERE dispositivo_id = ? AND puerto = ?",
         (dispositivo_id, puerto),
     )
+    # 2) si esta boca era el DESTINO de una conexion de otro dispositivo, tambien se libera
+    conn.execute(
+        "DELETE FROM conexiones_dispositivos WHERE destino_dispositivo_id = ? AND destino_puerto = ?",
+        (dispositivo_id, puerto),
+    )
+
+    ahora = _marca_sync()
     if destino_tipo == "equipo" and destino_id:
         conn.execute(
-            "UPDATE equipos SET dispositivo_id = ?, puerto = ? WHERE id = ?",
-            (dispositivo_id, puerto, destino_id),
+            "UPDATE equipos SET dispositivo_id = ?, puerto = ?, actualizado_en = ? WHERE id = ?",
+            (dispositivo_id, puerto, ahora, destino_id),
         )
-    elif destino_tipo == "dispositivo" and destino_id:
+    elif destino_tipo == "dispositivo" and destino_id and destino_puerto:
+        # liberar lo que estuviera antes ocupando la boca DESTINO en el otro switch,
+        # para que una misma boca nunca quede con dos ocupantes a la vez.
+        conn.execute(
+            "UPDATE equipos SET dispositivo_id = NULL, puerto = NULL WHERE dispositivo_id = ? AND puerto = ?",
+            (destino_id, destino_puerto),
+        )
+        conn.execute(
+            "DELETE FROM conexiones_dispositivos WHERE dispositivo_id = ? AND puerto = ?",
+            (destino_id, destino_puerto),
+        )
+        conn.execute(
+            "DELETE FROM conexiones_dispositivos WHERE destino_dispositivo_id = ? AND destino_puerto = ?",
+            (destino_id, destino_puerto),
+        )
         now = datetime.now().isoformat()
         conn.execute(
-            "INSERT INTO conexiones_dispositivos (dispositivo_id, puerto, destino_dispositivo_id, ts) "
-            "VALUES (?, ?, ?, ?)",
-            (dispositivo_id, puerto, destino_id, now),
+            "INSERT INTO conexiones_dispositivos (dispositivo_id, puerto, destino_dispositivo_id, destino_puerto, ts) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (dispositivo_id, puerto, destino_id, destino_puerto, now),
         )
     conn.commit()
     conn.close()
 
 
 def list_conexiones_dispositivos():
-    """Devuelve {dispositivo_id: {puerto: destino_dispositivo_id}} para todas las
-    conexiones dispositivo-a-dispositivo (switch-switch, fortinet-switch, etc)."""
+    """Devuelve todas las conexiones dispositivo-a-dispositivo (switch-switch,
+    fortinet-switch, etc) en ambos sentidos, para poder marcar ocupada tanto la
+    boca del lado que inicio la conexion como la boca destino especifica en el
+    otro dispositivo:
+    - origen: {dispositivo_id: {puerto: {"id": destino_dispositivo_id, "puerto_destino": destino_puerto}}}
+    - destino: {dispositivo_id: {puerto: {"id": origen_dispositivo_id, "puerto_destino": origen_puerto}}}
+    """
     conn = get_connection()
     rows = conn.execute(
-        "SELECT dispositivo_id, puerto, destino_dispositivo_id FROM conexiones_dispositivos"
+        "SELECT dispositivo_id, puerto, destino_dispositivo_id, destino_puerto FROM conexiones_dispositivos"
     ).fetchall()
     conn.close()
-    result = {}
+    origen = {}
+    destino = {}
     for r in rows:
-        result.setdefault(r["dispositivo_id"], {})[r["puerto"]] = r["destino_dispositivo_id"]
-    return result
+        origen.setdefault(r["dispositivo_id"], {})[r["puerto"]] = {
+            "id": r["destino_dispositivo_id"],
+            "puerto_destino": r["destino_puerto"],
+        }
+        if r["destino_puerto"]:
+            destino.setdefault(r["destino_dispositivo_id"], {})[r["destino_puerto"]] = {
+                "id": r["dispositivo_id"],
+                "puerto_destino": r["puerto"],
+            }
+    return {"origen": origen, "destino": destino}
 
 
 def list_equipos_export():

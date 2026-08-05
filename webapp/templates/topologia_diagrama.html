@@ -137,9 +137,18 @@
     <label class="filtro-ciudad">
       Ciudad:
       <select onchange="location.href = '{{ url_for('topologia_diagrama') }}?ciudad=' + encodeURIComponent(this.value)">
-        <option value="todos" {{ 'selected' if ciudad_filtro == 'todos' else '' }}>Todas (imprime todo)</option>
+        <option value="todos" {{ 'selected' if ciudad_filtro == 'todos' and subred_filtro == 'todos' else '' }}>Todas (imprime todo)</option>
         {% for c in todas_ciudades %}
-        <option value="{{ c }}" {{ 'selected' if ciudad_filtro == c else '' }}>{{ c }}</option>
+        <option value="{{ c }}" {{ 'selected' if ciudad_filtro == c and subred_filtro == 'todos' else '' }}>{{ c }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="filtro-ciudad">
+      Subred:
+      <select onchange="location.href = '{{ url_for('topologia_diagrama') }}?subred=' + encodeURIComponent(this.value)">
+        <option value="todos" {{ 'selected' if subred_filtro == 'todos' else '' }}>Todos</option>
+        {% for s in todas_subredes %}
+        <option value="{{ s.valor }}" {{ 'selected' if subred_filtro == s.valor else '' }}>{{ s.etiqueta }}</option>
         {% endfor %}
       </select>
     </label>
@@ -157,9 +166,11 @@
   Haz clic en un dispositivo para ver su detalle completo, o usa el boton de abajo para ver todos los equipos conectados a la vez.</p>
 
 <div class="leyenda">
-  <span class="leyenda-item"><span class="leyenda-badge" style="background:#34d399">SW</span>Switch administrable</span>
-  <span class="leyenda-item"><span class="leyenda-badge" style="background:#60a5fa">RT</span>Router</span>
-  <span class="leyenda-item"><span class="leyenda-badge" style="background:#fbbf24">FW</span>Firewall Fortinet</span>
+  <span class="leyenda-item"><span class="leyenda-badge" style="background:#60a5fa">SW</span>Switch L3</span>
+  <span class="leyenda-item"><span class="leyenda-badge" style="background:#a78bfa">RT</span>Router</span>
+  <span class="leyenda-item"><span class="leyenda-badge" style="background:#fb923c">FW</span>Firewall Fortinet</span>
+  <span class="leyenda-item"><span class="leyenda-badge" style="background:#2dd4bf">CV</span>Conversor</span>
+  <span class="leyenda-item"><span class="leyenda-badge" style="background:#fbbf24">MD</span>Modem</span>
   <span class="leyenda-item"><span class="leyenda-dot" style="background:#34d399"></span>Equipo online</span>
   <span class="leyenda-item"><span class="leyenda-dot" style="background:#f87171"></span>Equipo offline</span>
   <button type="button" class="btn-toggle-equipos" id="btn-equipos" onclick="netwatchToggleEquipos()">+ Ver equipos conectados (PC/impresora)</button>

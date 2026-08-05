@@ -24,6 +24,8 @@
   </div>
 </header>
 
+<section class="firebase-status" id="firebase-status"></section>
+
 <section class="subredes-gauges" id="subredes-gauges"></section>
 
 <section class="summary" id="resumen-cards">
@@ -80,6 +82,12 @@
 
 <div class="toast-container" id="toast-container"></div>
 
+<div class="panel-overlay" id="panel-editar-overlay" onclick="netwatchCerrarPanelEdicionClickFuera(event)">
+  <aside class="panel-editar" id="panel-editar" onclick="event.stopPropagation()">
+    <div id="panel-editar-contenido"></div>
+  </aside>
+</div>
+
 <script id="netwatch-equipos-data" type="application/json">{{ rows | tojson }}</script>
 <script id="netwatch-summary-data" type="application/json">{{ summary | tojson }}</script>
 <script id="netwatch-eventos-data" type="application/json">{{ eventos | tojson }}</script>
@@ -92,6 +100,13 @@ let NETWATCH_ULTIMO_EVENTO_ID = NETWATCH_EVENTOS.length ? Math.max.apply(null, N
 let netwatchFiltroTipo = null;   // 'online' | 'estado' | 'tickets' | null (total)
 let netwatchFiltroValor = null;  // 'online'/'offline' o 'confirmado'/'descartado'/'pendiente'
 let netwatchBusqueda = '';
+
+// Al descartar una ficha desde una vista que no es "Descartados" (ej. mientras
+// se revisan los offline uno por uno), se saca de la vista al toque -- si no,
+// se queda mezclada ahi con tag gris y hay que seguir mirandola entre las que
+// todavia faltan revisar. Solo dura la sesion (se limpia si se restaura o se
+// recarga la pagina); el estado real ya quedo guardado en la base al tiro.
+const NETWATCH_OCULTOS_TRAS_DESCARTE = new Set();
 let netwatchSonidoActivo = localStorage.getItem('netwatch_sonido') !== 'off';
 
 function netwatchEscapeHtml(s) {
@@ -144,7 +159,9 @@ function netwatchIpANumero(ip) {
 
 function netwatchAplicarFiltros() {
   const q = netwatchBusqueda.trim().toLowerCase();
+  const verDescartados = netwatchFiltroTipo === 'estado' && netwatchFiltroValor === 'descartado';
   const filtrados = NETWATCH_EQUIPOS.filter(function (e) {
+    if (!verDescartados && NETWATCH_OCULTOS_TRAS_DESCARTE.has(e.id)) return false;
     if (netwatchFiltroTipo === 'online') {
       const enLinea = !!e.en_linea;
       if (netwatchFiltroValor === 'online' && !enLinea) return false;
@@ -350,6 +367,9 @@ function netwatchFichaHtml(e) {
   if (e.critico) {
     html += '<span class="status-pill status-pill-critico" title="Marcado como critico">Critico</span>';
   }
+  if (e.ip_temporal) {
+    html += '<span class="status-pill status-pill-temporal" title="Equipo bueno usando temporalmente la IP de otro que fallo -- sin alertas de WhatsApp mientras dure">IP temporal</span>';
+  }
   if (e.has_rdp) {
     html += '<span class="status-pill status-pill-rdp">RDP habilitado</span>';
   }
@@ -368,6 +388,8 @@ function netwatchFichaHtml(e) {
       '<button type="submit" name="action" value="pendiente" class="btn btn-ghost btn-sm">Restaurar</button>' +
       '</form>';
   }
+  html += '<button type="button" class="btn btn-sm ' + (e.critico ? 'btn-critico-on' : 'btn-ghost') + '" ' +
+    'onclick="netwatchToggleCritico(event, ' + e.id + ')">' + (e.critico ? 'Quitar critico' : 'Marcar critico') + '</button>';
   if (e.has_rdp) {
     html += '<a href="/equipo/' + e.id + '/rdp-open" class="rdp-icon-btn" title="Conectar por RDP">' + NETWATCH_RDP_ICON + '</a>';
   }
@@ -377,8 +399,130 @@ function netwatchFichaHtml(e) {
   return html;
 }
 
+// Editar ya no navega a la ficha completa -- abre el panel lateral encima
+// de la misma pantalla, asi al guardar o cancelar uno se queda exactamente
+// donde estaba (mismo scroll, mismo filtro, mismo buscador).
 function netwatchAbrirFicha(id) {
-  window.location.href = '/equipo/' + id;
+  netwatchAbrirPanelEdicion(id);
+}
+
+async function netwatchAbrirPanelEdicion(id, queryExtra) {
+  const overlay = document.getElementById('panel-editar-overlay');
+  const contenido = document.getElementById('panel-editar-contenido');
+  overlay.classList.add('panel-open');
+  contenido.innerHTML = '<p class="empty small">Cargando...</p>';
+  try {
+    const res = await fetch('/equipo/' + id + '/panel' + (queryExtra || ''), {
+      headers: { 'X-Requested-With': 'XMLHttpRequest' },
+    });
+    contenido.innerHTML = await res.text();
+    netwatchInicializarPanelForm(id);
+  } catch (err) {
+    contenido.innerHTML = '<p class="empty small">No se pudo cargar la ficha del equipo.</p>';
+  }
+}
+
+function netwatchCerrarPanelEdicion() {
+  document.getElementById('panel-editar-overlay').classList.remove('panel-open');
+}
+
+function netwatchCerrarPanelEdicionClickFuera(ev) {
+  if (ev.target && ev.target.id === 'panel-editar-overlay') netwatchCerrarPanelEdicion();
+}
+
+function netwatchInicializarPanelForm(id) {
+  const form = document.getElementById('form-panel-editar');
+  if (form) form.addEventListener('submit', function (ev) { netwatchGuardarPanelEdicion(ev, id); });
+  const formFusion = form ? form.parentElement.querySelector('[id^="form-fusion-"]') : null;
+  if (formFusion) formFusion.addEventListener('submit', function (ev) { netwatchGuardarFusionPanel(ev, id); });
+}
+
+async function netwatchGuardarPanelEdicion(ev, id) {
+  ev.preventDefault();
+  const form = ev.target;
+  const contenido = document.getElementById('panel-editar-contenido');
+  try {
+    const res = await fetch(form.action, {
+      method: 'POST',
+      headers: { 'X-Requested-With': 'XMLHttpRequest' },
+      body: new FormData(form),
+    });
+    const guardado = res.headers.get('X-Netwatch-Guardado') === '1';
+    if (guardado) {
+      netwatchCerrarPanelEdicion();
+      netwatchPoll(); // refresca la tarjeta con los datos nuevos sin recargar la pagina
+    } else {
+      contenido.innerHTML = await res.text();
+      netwatchInicializarPanelForm(id);
+    }
+  } catch (err) {
+    // red caida momentaneamente: se deja el formulario tal cual para reintentar
+  }
+  return false;
+}
+
+async function netwatchGuardarFusionPanel(ev, id) {
+  // El onsubmit del formulario (definido en la macro fusion_equipo) ya
+  // muestra el confirm() -- si el usuario cancelo, el evento ya viene con
+  // defaultPrevented y no hay que hacer nada mas aca.
+  if (ev.defaultPrevented) return;
+  ev.preventDefault();
+  const form = ev.target;
+  const contenido = document.getElementById('panel-editar-contenido');
+  try {
+    const res = await fetch(form.action, {
+      method: 'POST',
+      headers: { 'X-Requested-With': 'XMLHttpRequest' },
+      body: new FormData(form),
+    });
+    if (res.headers.get('X-Netwatch-Guardado') === '1') {
+      netwatchCerrarPanelEdicion();
+      netwatchPoll();
+    } else {
+      contenido.innerHTML = await res.text();
+      netwatchInicializarPanelForm(id);
+    }
+  } catch (err) {
+    // red caida momentaneamente: se reintenta manualmente
+  }
+  return false;
+}
+
+// Ocultar Hardware/Software cuando la categoria elegida es un dispositivo de
+// red (switch, impresora, camara, etc.) -- esos campos no aplican y solo
+// desordenaban el formulario. Ver comentario en _macros_equipo.html sobre por
+// que la lista viaja separada por comas y no como tojson.
+function netwatchAplicarCategoriaEquipo(sel) {
+  const red = (sel.dataset.categoriasRed || '').split(',').filter(Boolean);
+  const esRed = red.indexOf(sel.value) !== -1;
+  const form = sel.closest('.ficha-form');
+  if (!form) return;
+  form.querySelectorAll('.fieldset-solo-pc').forEach(function (fs) { fs.style.display = esRed ? 'none' : ''; });
+}
+
+// Imagen del equipo dentro del panel (mismo patron que en ficha.html/admin_equipos.html).
+function netwatchFotoEquipoSeleccionada(input, id) {
+  if (!input.files || !input.files[0]) return;
+  const reader = new FileReader();
+  reader.onload = function (ev) {
+    const img = document.getElementById('foto-equipo-img-' + id);
+    const placeholder = document.getElementById('foto-equipo-placeholder-' + id);
+    img.src = ev.target.result;
+    img.style.display = 'block';
+    if (placeholder) placeholder.style.display = 'none';
+    document.getElementById('foto-equipo-eliminar-' + id).value = '0';
+  };
+  reader.readAsDataURL(input.files[0]);
+}
+
+function netwatchEliminarFotoEquipo(id) {
+  const img = document.getElementById('foto-equipo-img-' + id);
+  img.style.display = 'none';
+  img.src = '';
+  const placeholder = document.getElementById('foto-equipo-placeholder-' + id);
+  if (placeholder) placeholder.style.display = 'flex';
+  document.getElementById('foto-equipo-archivo-' + id).value = '';
+  document.getElementById('foto-equipo-eliminar-' + id).value = '1';
 }
 
 // Desde "Ultimos cambios"/toast: no editar, solo ubicar la ficha en la
@@ -426,6 +570,11 @@ async function netwatchActualizarEstado(ev, id) {
   }
 
   if (equipo) equipo.estado_deteccion = action;
+  if (action === 'descartado') {
+    NETWATCH_OCULTOS_TRAS_DESCARTE.add(id);
+  } else {
+    NETWATCH_OCULTOS_TRAS_DESCARTE.delete(id);
+  }
   if (anterior && NETWATCH_CONTADOR_POR_ESTADO[anterior]) {
     NETWATCH_SUMMARY[NETWATCH_CONTADOR_POR_ESTADO[anterior]] = Math.max(0, (NETWATCH_SUMMARY[NETWATCH_CONTADOR_POR_ESTADO[anterior]] || 0) - 1);
   }
@@ -435,6 +584,39 @@ async function netwatchActualizarEstado(ev, id) {
   netwatchRenderResumen();
   netwatchRenderFichas();
   return false;
+}
+
+// Marcar/quitar critico desde la tarjeta, sin abrir la ficha completa ni
+// recargar la pagina (mismo patron que Confirmar/Descartar arriba).
+async function netwatchToggleCritico(ev, id) {
+  ev.preventDefault();
+  ev.stopPropagation();
+
+  const boton = ev.currentTarget;
+  if (boton && boton.disabled) return; // ya hay un cambio en curso -- ignora clicks de mas
+
+  const equipo = NETWATCH_EQUIPOS.find(function (e) { return e.id === id; });
+  if (!equipo) return;
+  const nuevoValor = equipo.critico ? 0 : 1;
+  if (boton) boton.disabled = true;
+
+  try {
+    // Se manda el valor final explicito (no un "toggle" ciego): si el click
+    // se llega a disparar dos veces, ambas peticiones piden lo mismo en vez
+    // de cancelarse entre si y dejar el estado real distinto al que se ve
+    // en pantalla hasta el proximo poll.
+    await fetch('/toggle-critico', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest' },
+      body: 'id=' + encodeURIComponent(id) + '&critico=' + nuevoValor,
+    });
+    equipo.critico = nuevoValor;
+  } catch (err) {
+    // red caida momentaneamente: el proximo poll (7s) va a corregir el estado igual
+  }
+
+  netwatchRenderResumen();
+  netwatchRenderFichas();
 }
 
 function netwatchRenderFichas() {
@@ -485,19 +667,26 @@ function netwatchReproducirSonido(tipo) {
   try {
     if (!netwatchAudioCtx) netwatchAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
     const ctx = netwatchAudioCtx;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain); gain.connect(ctx.destination);
-    osc.type = 'sine';
     const freqs = tipo === 'online' ? [660, 880] : tipo === 'offline' ? [440, 300] : [520, 520];
-    const now = ctx.currentTime;
-    gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.exponentialRampToValueAtTime(0.16, now + 0.02);
-    osc.frequency.setValueAtTime(freqs[0], now);
-    osc.frequency.setValueAtTime(freqs[1], now + 0.12);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.35);
-    osc.start(now);
-    osc.stop(now + 0.4);
+    // Ping mas fuerte y mas largo que antes (subido de volumen 0.16 -> 0.35 y
+    // de 0.4s a 0.55s) -- quedaba muy discreto y era facil no notarlo. Para
+    // "offline" ademas se repite dos veces (como una alarma corta), ya que es
+    // el aviso mas importante de no perderse.
+    const pulsos = tipo === 'offline' ? 2 : 1;
+    for (let i = 0; i < pulsos; i++) {
+      const inicio = ctx.currentTime + i * 0.32;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.type = 'sine';
+      gain.gain.setValueAtTime(0.0001, inicio);
+      gain.gain.exponentialRampToValueAtTime(0.35, inicio + 0.02);
+      osc.frequency.setValueAtTime(freqs[0], inicio);
+      osc.frequency.setValueAtTime(freqs[1], inicio + 0.15);
+      gain.gain.exponentialRampToValueAtTime(0.0001, inicio + 0.5);
+      osc.start(inicio);
+      osc.stop(inicio + 0.55);
+    }
   } catch (err) { /* audio no disponible en este navegador, se ignora */ }
 }
 
@@ -640,9 +829,51 @@ async function netwatchPollConsola() {
         (data.existe ? '' : 'Todavia no hay log del monitor. Deja monitor.py corriendo para verlo aca.');
       if (yaEstabaAbajo) body.scrollTop = body.scrollHeight;
     }
+
+    netwatchRenderFirebaseStatus(data.lineas || []);
   } catch (err) {
     // red caida momentaneamente: se reintenta en el proximo ciclo
   }
+}
+
+// --- resumen "llego la firebase de hoy" -----------------------------------
+// Lee las mismas lineas de monitor.log que ya se pollean para la consola
+// (no hace falta otro endpoint) y se queda con la ULTIMA vez que cada sitio
+// remoto publico a Firebase, para no tener que bajar a leer la consola linea
+// por linea cada vez que se quiere confirmar que ya llego el dato del dia.
+const NETWATCH_FIREBASE_LINEA_RE = /\[FIREBASE\]\s+(\S+)\s+\([^)]*\):\s*(\d+)\/(\d+)\s+activos\s+\(publicado\s+([^)]+)\)/;
+
+function netwatchRenderFirebaseStatus(lineas) {
+  const cont = document.getElementById('firebase-status');
+  if (!cont) return;
+
+  const porSitio = {};
+  lineas.forEach(function (linea) {
+    const m = linea.match(NETWATCH_FIREBASE_LINEA_RE);
+    if (!m) return;
+    porSitio[m[1]] = { activos: m[2], total: m[3], publicado: m[4].trim() };
+  });
+
+  const nombres = Object.keys(porSitio).sort();
+  if (!nombres.length) { cont.innerHTML = ''; return; }
+
+  const hoy = new Date();
+  const hoyStr = hoy.getFullYear() + '-' + String(hoy.getMonth() + 1).padStart(2, '0') + '-' + String(hoy.getDate()).padStart(2, '0');
+
+  cont.innerHTML = nombres.map(function (nombre) {
+    const info = porSitio[nombre];
+    const fechaPublicado = info.publicado.slice(0, 10);
+    const esDeHoy = fechaPublicado === hoyStr;
+    const relativo = netwatchTiempoRelativo(info.publicado) || info.publicado;
+    const claseEstado = esDeHoy ? 'firebase-chip-ok' : 'firebase-chip-warn';
+    const texto = esDeHoy ? ('hoy, ' + relativo) : ('sin datos de hoy - ' + relativo);
+    return '<span class="firebase-chip ' + claseEstado + '" title="' +
+      netwatchEscapeHtml(nombre + ': ' + info.activos + '/' + info.total + ' activos, publicado ' + info.publicado) + '">' +
+      '<span class="firebase-chip-dot"></span>' +
+      '<span class="firebase-chip-nombre">' + netwatchEscapeHtml(nombre) + '</span>' +
+      '<span class="firebase-chip-texto">' + netwatchEscapeHtml(texto) + '</span>' +
+      '</span>';
+  }).join('');
 }
 
 netwatchAplicarColapsoConsola();
