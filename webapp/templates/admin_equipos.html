@@ -21,9 +21,9 @@
 </header>
 
 <nav class="admin-tabs">
-  <a href="{{ url_for('admin') }}" class="{{ 'active' if active_tab == 'empleados' else '' }}">Gestion de Empleados</a>
-  <a href="{{ url_for('admin_equipos') }}" class="{{ 'active' if active_tab == 'equipos' else '' }}">Inventario de Equipos</a>
-  <a href="{{ url_for('admin_parametros') }}" class="{{ 'active' if active_tab == 'parametros' else '' }}">Parametros y Red</a>
+  <a href="{{ url_for('admin.admin') }}" class="{{ 'active' if active_tab == 'empleados' else '' }}">Gestion de Empleados</a>
+  <a href="{{ url_for('admin.admin_equipos') }}" class="{{ 'active' if active_tab == 'equipos' else '' }}">Inventario de Equipos</a>
+  <a href="{{ url_for('admin.admin_parametros') }}" class="{{ 'active' if active_tab == 'parametros' else '' }}">Parametros y Red</a>
   <a href="{{ url_for('topologia.topologia') }}" class="{{ 'active' if active_tab == 'infraestructura' else '' }}">Infraestructura (Switches/Monitores)</a>
 </nav>
 
@@ -67,7 +67,7 @@
     Si la IP no existe, crea el equipo nuevo. Sirve para este archivo y para cualquier otro que traigas a futuro
     con las mismas columnas (Hostname, IP, MAC, OS, Office, Antivirus, Status, RDP Habilitado, Responsable,
     Cargo, City, Department, Brand, Model, Serial Number, Location).</p>
-  <form method="post" action="{{ url_for('importar_inventario') }}" enctype="multipart/form-data" class="ticket-form">
+  <form method="post" action="{{ url_for('admin.importar_inventario') }}" enctype="multipart/form-data" class="ticket-form">
     <label>Archivo <input type="file" name="archivo" accept=".xls,.xlsx,.html,.htm,.csv" required></label>
     <button type="submit" class="btn btn-primary">Importar inventario</button>
   </form>
@@ -119,7 +119,7 @@
 
 <div class="import-resumen" id="barra-seleccion" style="display:none; align-items:center; justify-content:space-between; gap:12px;">
   <span id="contador-seleccion">0 seleccionados</span>
-  <form id="form-eliminar-masivo" method="post" action="{{ url_for('eliminar_equipos_masivo') }}"
+  <form id="form-eliminar-masivo" method="post" action="{{ url_for('admin.eliminar_equipos_masivo') }}"
         onsubmit="return confirm('Eliminar ' + document.querySelectorAll('.equipo-check:checked').length + ' equipo(s) del inventario? Esta accion no se puede deshacer.')">
     <button type="submit" class="btn btn-dark">Eliminar seleccionados</button>
   </form>
@@ -269,7 +269,7 @@
 <script type="application/json" id="usuarios-perfil-data">{{ usuarios_perfil | tojson }}</script>
 <script>
 const NETWATCH_USUARIOS_PERFIL = JSON.parse(document.getElementById('usuarios-perfil-data').textContent);
-const NETWATCH_URL_ADMIN_PERFIL = "{{ url_for('admin') }}";
+const NETWATCH_URL_ADMIN_PERFIL = "{{ url_for('admin.admin') }}";
 
 function netwatchWhatsappLinkResponsable(telefono) {
   if (!telefono) return null;

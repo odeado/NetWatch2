@@ -15,7 +15,7 @@
     </div>
     <div class="nav-links">
       <a href="{{ url_for('disponibilidad.disponibilidad') }}" class="tickets-nav-link">Disponibilidad</a>
-      <a href="{{ url_for('admin') }}" class="tickets-nav-link">Administracion</a>
+      <a href="{{ url_for('admin.admin') }}" class="tickets-nav-link">Administracion</a>
       <a href="{{ url_for('tickets.tickets') }}" class="tickets-nav-link">
         Tickets de soporte
         {% if summary.tickets_abiertos %}<span class="pill">{{ summary.tickets_abiertos }}</span>{% endif %}

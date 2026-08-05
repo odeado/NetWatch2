@@ -18,9 +18,9 @@
 </header>
 
 <nav class="admin-tabs">
-  <a href="{{ url_for('admin') }}" class="{{ 'active' if active_tab == 'empleados' else '' }}">Gestion de Empleados</a>
-  <a href="{{ url_for('admin_equipos') }}" class="{{ 'active' if active_tab == 'equipos' else '' }}">Inventario de Equipos</a>
-  <a href="{{ url_for('admin_parametros') }}" class="{{ 'active' if active_tab == 'parametros' else '' }}">Parametros y Red</a>
+  <a href="{{ url_for('admin.admin') }}" class="{{ 'active' if active_tab == 'empleados' else '' }}">Gestion de Empleados</a>
+  <a href="{{ url_for('admin.admin_equipos') }}" class="{{ 'active' if active_tab == 'equipos' else '' }}">Inventario de Equipos</a>
+  <a href="{{ url_for('admin.admin_parametros') }}" class="{{ 'active' if active_tab == 'parametros' else '' }}">Parametros y Red</a>
   <a href="{{ url_for('topologia.topologia') }}" class="{{ 'active' if active_tab == 'infraestructura' else '' }}">Infraestructura (Switches/Monitores)</a>
 </nav>
 
@@ -31,7 +31,7 @@
       {% for d in departamentos %}
       <li>
         <span>{{ d.nombre }}</span>
-        <form method="post" action="{{ url_for('eliminar_departamento', departamento_id=d.id) }}">
+        <form method="post" action="{{ url_for('admin.eliminar_departamento', departamento_id=d.id) }}">
           <button type="submit" class="btn btn-discard" onclick="return confirm('Eliminar departamento {{ d.nombre }}?')">Eliminar</button>
         </form>
       </li>
@@ -39,7 +39,7 @@
       <li class="muted">Sin departamentos cargados</li>
       {% endfor %}
     </ul>
-    <form method="post" action="{{ url_for('crear_departamento') }}" class="catalogo-add-form">
+    <form method="post" action="{{ url_for('admin.crear_departamento') }}" class="catalogo-add-form">
       <input type="text" name="nombre" placeholder="Ej: Sistemas / TI" required>
       <button type="submit" class="btn btn-primary">Agregar</button>
     </form>
@@ -50,7 +50,7 @@
       {% for c in ciudades %}
       <li>
         <span>{{ c.nombre }}</span>
-        <form method="post" action="{{ url_for('eliminar_ciudad', ciudad_id=c.id) }}">
+        <form method="post" action="{{ url_for('admin.eliminar_ciudad', ciudad_id=c.id) }}">
           <button type="submit" class="btn btn-discard" onclick="return confirm('Eliminar ciudad {{ c.nombre }}?')">Eliminar</button>
         </form>
       </li>
@@ -58,7 +58,7 @@
       <li class="muted">Sin ciudades cargadas</li>
       {% endfor %}
     </ul>
-    <form method="post" action="{{ url_for('crear_ciudad') }}" class="catalogo-add-form">
+    <form method="post" action="{{ url_for('admin.crear_ciudad') }}" class="catalogo-add-form">
       <input type="text" name="nombre" placeholder="Ej: Calama" required>
       <button type="submit" class="btn btn-primary">Agregar</button>
     </form>

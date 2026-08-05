@@ -10,7 +10,7 @@
 <header>
   <p class="back">
     {% if origen == 'inventario' %}
-    <a href="{{ url_for('admin_equipos') }}">&larr; Volver a Inventario de Equipos</a>
+    <a href="{{ url_for('admin.admin_equipos') }}">&larr; Volver a Inventario de Equipos</a>
     {% else %}
     <a href="{{ url_for('index') }}">&larr; Volver al inventario</a>
     {% endif %}

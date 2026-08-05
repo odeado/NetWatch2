@@ -20,9 +20,9 @@
 </header>
 
 <nav class="admin-tabs">
-  <a href="{{ url_for('admin') }}" class="{{ 'active' if active_tab == 'empleados' else '' }}">Gestion de Empleados</a>
-  <a href="{{ url_for('admin_equipos') }}" class="{{ 'active' if active_tab == 'equipos' else '' }}">Inventario de Equipos</a>
-  <a href="{{ url_for('admin_parametros') }}" class="{{ 'active' if active_tab == 'parametros' else '' }}">Parametros y Red</a>
+  <a href="{{ url_for('admin.admin') }}" class="{{ 'active' if active_tab == 'empleados' else '' }}">Gestion de Empleados</a>
+  <a href="{{ url_for('admin.admin_equipos') }}" class="{{ 'active' if active_tab == 'equipos' else '' }}">Inventario de Equipos</a>
+  <a href="{{ url_for('admin.admin_parametros') }}" class="{{ 'active' if active_tab == 'parametros' else '' }}">Parametros y Red</a>
   <a href="{{ url_for('topologia.topologia') }}" class="{{ 'active' if active_tab == 'infraestructura' else '' }}">Infraestructura (Switches/Monitores)</a>
 </nav>
 
@@ -72,7 +72,7 @@
     cargado. Si el nombre no existe, crea el empleado nuevo. Sirve para este archivo y para cualquier otro
     que traigas a futuro con las mismas columnas (Nombre Completo, Email, Departamento, Ciudad, Telefono,
     Lugar de Trabajo, VPN Activa, Tipo de VPN, Cargo, Sistemas Autorizados).</p>
-  <form method="post" action="{{ url_for('importar_empleados') }}" enctype="multipart/form-data" class="ticket-form">
+  <form method="post" action="{{ url_for('admin.importar_empleados') }}" enctype="multipart/form-data" class="ticket-form">
     <label>Archivo <input type="file" name="archivo" accept=".xls,.xlsx,.html,.htm,.csv" required></label>
     <button type="submit" class="btn btn-primary">Importar directorio</button>
   </form>
@@ -86,7 +86,7 @@
     Solo completa los campos que esten vacios en tu inventario actual -- nunca pisa ni borra lo que ya
     tengas cargado en NetWatch. Si un equipo tiene varios usuarios asignados, el primero queda como
     responsable y el resto se anota en las notas del equipo para no perder el dato.</p>
-  <form method="post" action="{{ url_for('importar_gestion') }}" enctype="multipart/form-data" class="ticket-form">
+  <form method="post" action="{{ url_for('admin.importar_gestion') }}" enctype="multipart/form-data" class="ticket-form">
     <label>Archivo <input type="file" name="archivo" accept=".xlsx" required></label>
     <button type="submit" class="btn btn-primary">Importar</button>
   </form>
@@ -111,7 +111,7 @@
 
 <div class="import-resumen" id="barra-seleccion" style="display:none; align-items:center; justify-content:space-between; gap:12px;">
   <span id="contador-seleccion">0 seleccionados</span>
-  <form id="form-eliminar-masivo" method="post" action="{{ url_for('eliminar_usuarios_masivo') }}"
+  <form id="form-eliminar-masivo" method="post" action="{{ url_for('admin.eliminar_usuarios_masivo') }}"
         onsubmit="return confirm('Eliminar ' + document.querySelectorAll('.usuario-check:checked').length + ' empleado(s)? Esta accion no se puede deshacer.')">
     <button type="submit" class="btn btn-dark">Eliminar seleccionados</button>
   </form>
@@ -179,14 +179,14 @@
       </td>
       <td class="actions" onclick="event.stopPropagation()">
         <button type="button" class="btn btn-confirm" onclick="netwatchToggleAcordeon('empleado-{{ u.id }}')">Editar</button>
-        <form method="post" action="{{ url_for('eliminar_usuario', usuario_id=u.id) }}" onsubmit="return confirm('Eliminar a {{ u.nombre }}? Esta accion no se puede deshacer.')">
+        <form method="post" action="{{ url_for('admin.eliminar_usuario', usuario_id=u.id) }}" onsubmit="return confirm('Eliminar a {{ u.nombre }}? Esta accion no se puede deshacer.')">
           <button type="submit" class="btn btn-dark">Eliminar</button>
         </form>
       </td>
     </tr>
     <tr class="acordeon-panel" id="panel-empleado-{{ u.id }}" style="display:none" onclick="event.stopPropagation()">
       <td colspan="11">
-        <form method="post" action="{{ url_for('editar_usuario', usuario_id=u.id) }}" enctype="multipart/form-data" class="modal-form acordeon-form">
+        <form method="post" action="{{ url_for('admin.editar_usuario', usuario_id=u.id) }}" enctype="multipart/form-data" class="modal-form acordeon-form">
           {{ me.campos_empleado(u, departamentos, ciudades, u.id) }}
           <div class="modal-footer">
             <button type="button" class="btn btn-reset" onclick="netwatchToggleAcordeon('empleado-{{ u.id }}')">Cancelar</button>
@@ -362,7 +362,7 @@
 <script>
 const NETWATCH_USUARIOS = JSON.parse(document.getElementById('usuarios-data').textContent);
 const NETWATCH_EQUIPOS_BASICO = JSON.parse(document.getElementById('equipos-basico-data').textContent);
-const NETWATCH_URL_CREAR_USUARIO = "{{ url_for('crear_usuario') }}";
+const NETWATCH_URL_CREAR_USUARIO = "{{ url_for('admin.crear_usuario') }}";
 const NETWATCH_PERFIL_ABIERTO = {{ (perfil_abierto | tojson) if perfil_abierto else 'null' }};
 
 function netwatchWhatsappLink(telefono) {
@@ -613,7 +613,7 @@ function netwatchSincronizarNube() {
   fill.style.width = '0%';
   texto.textContent = 'Conectando con Firebase...';
 
-  fetch('{{ url_for("sincronizar_firebase") }}', { method: 'POST' })
+  fetch('{{ url_for("admin.sincronizar_firebase") }}', { method: 'POST' })
     .then(function (r) { return r.json(); })
     .then(function (r) {
       if (!r.iniciado) {
@@ -628,7 +628,7 @@ function netwatchSincronizarNube() {
 }
 
 function netwatchPollSync() {
-  fetch('{{ url_for("sincronizar_firebase_estado") }}')
+  fetch('{{ url_for("admin.sincronizar_firebase_estado") }}')
     .then(function (r) { return r.json(); })
     .then(function (estado) {
       const texto = document.getElementById('sync-progreso-texto');
@@ -647,12 +647,12 @@ function netwatchPollSync() {
       const btn = document.getElementById('btn-sincronizar-nube');
       if (btn) btn.disabled = false;
       if (estado.error) {
-        window.location.href = '{{ url_for("admin") }}?error=firebase_' + encodeURIComponent(estado.error);
+        window.location.href = '{{ url_for("admin.admin") }}?error=firebase_' + encodeURIComponent(estado.error);
         return;
       }
       if (estado.resumen) {
         const r = estado.resumen;
-        window.location.href = '{{ url_for("admin") }}?sincronizado=1'
+        window.location.href = '{{ url_for("admin.admin") }}?sincronizado=1'
           + '&fu_bajados=' + r.usuarios.bajados_nuevos + '&fu_actualizados=' + r.usuarios.actualizados
           + '&fu_subidos=' + r.usuarios.subidos
           + '&fe_bajados=' + r.equipos.bajados_nuevos + '&fe_actualizados=' + r.equipos.actualizados

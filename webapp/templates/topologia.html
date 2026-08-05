@@ -126,9 +126,9 @@
 </header>
 
 <nav class="admin-tabs">
-  <a href="{{ url_for('admin') }}" class="{{ 'active' if active_tab == 'empleados' else '' }}">Gestion de Empleados</a>
-  <a href="{{ url_for('admin_equipos') }}" class="{{ 'active' if active_tab == 'equipos' else '' }}">Inventario de Equipos</a>
-  <a href="{{ url_for('admin_parametros') }}" class="{{ 'active' if active_tab == 'parametros' else '' }}">Parametros y Red</a>
+  <a href="{{ url_for('admin.admin') }}" class="{{ 'active' if active_tab == 'empleados' else '' }}">Gestion de Empleados</a>
+  <a href="{{ url_for('admin.admin_equipos') }}" class="{{ 'active' if active_tab == 'equipos' else '' }}">Inventario de Equipos</a>
+  <a href="{{ url_for('admin.admin_parametros') }}" class="{{ 'active' if active_tab == 'parametros' else '' }}">Parametros y Red</a>
   <a href="{{ url_for('topologia.topologia') }}" class="{{ 'active' if active_tab == 'infraestructura' else '' }}">Infraestructura (Switches/Monitores)</a>
 </nav>
 
