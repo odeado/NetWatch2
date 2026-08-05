@@ -14,9 +14,9 @@
       <p class="subtitle">Inventario de equipos detectados &mdash; se actualiza solo, sin recargar la pagina</p>
     </div>
     <div class="nav-links">
-      <a href="{{ url_for('disponibilidad') }}" class="tickets-nav-link">Disponibilidad</a>
+      <a href="{{ url_for('disponibilidad.disponibilidad') }}" class="tickets-nav-link">Disponibilidad</a>
       <a href="{{ url_for('admin') }}" class="tickets-nav-link">Administracion</a>
-      <a href="{{ url_for('tickets') }}" class="tickets-nav-link">
+      <a href="{{ url_for('tickets.tickets') }}" class="tickets-nav-link">
         Tickets de soporte
         {% if summary.tickets_abiertos %}<span class="pill">{{ summary.tickets_abiertos }}</span>{% endif %}
       </a>

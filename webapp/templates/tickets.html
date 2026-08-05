@@ -15,12 +15,12 @@
 </header>
 
 <nav class="filters">
-  <a href="{{ url_for('tickets') }}" class="{{ 'active' if not estado_filtro and not prioridad_filtro else '' }}">Todos</a>
-  <a href="{{ url_for('tickets', estado='abierto') }}" class="{{ 'active' if estado_filtro == 'abierto' else '' }}">Abiertos</a>
-  <a href="{{ url_for('tickets', estado='en_progreso') }}" class="{{ 'active' if estado_filtro == 'en_progreso' else '' }}">En progreso</a>
-  <a href="{{ url_for('tickets', estado='resuelto') }}" class="{{ 'active' if estado_filtro == 'resuelto' else '' }}">Resueltos</a>
+  <a href="{{ url_for('tickets.tickets') }}" class="{{ 'active' if not estado_filtro and not prioridad_filtro else '' }}">Todos</a>
+  <a href="{{ url_for('tickets.tickets', estado='abierto') }}" class="{{ 'active' if estado_filtro == 'abierto' else '' }}">Abiertos</a>
+  <a href="{{ url_for('tickets.tickets', estado='en_progreso') }}" class="{{ 'active' if estado_filtro == 'en_progreso' else '' }}">En progreso</a>
+  <a href="{{ url_for('tickets.tickets', estado='resuelto') }}" class="{{ 'active' if estado_filtro == 'resuelto' else '' }}">Resueltos</a>
   <span class="filter-sep"></span>
-  <a href="{{ url_for('tickets', prioridad='alta') }}" class="{{ 'active' if prioridad_filtro == 'alta' else '' }}">Prioridad alta</a>
+  <a href="{{ url_for('tickets.tickets', prioridad='alta') }}" class="{{ 'active' if prioridad_filtro == 'alta' else '' }}">Prioridad alta</a>
 </nav>
 
 {% if not tickets %}
@@ -52,7 +52,7 @@
       <td><span class="tag tag-ticket-{{ t.estado }}">{{ t.estado.replace('_', ' ') }}</span></td>
       <td class="muted">{{ t.creado_en[:16] if t.creado_en else '-' }}</td>
       <td class="actions">
-        <form method="post" action="{{ url_for('ticket_estado', ticket_id=t.id) }}">
+        <form method="post" action="{{ url_for('tickets.ticket_estado', ticket_id=t.id) }}">
           <input type="hidden" name="origen" value="tickets">
           {% if t.estado != 'abierto' %}<button name="estado" value="abierto" class="btn btn-reset">Abierto</button>{% endif %}
           {% if t.estado != 'en_progreso' %}<button name="estado" value="en_progreso" class="btn btn-confirm">En progreso</button>{% endif %}
