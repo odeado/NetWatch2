@@ -110,9 +110,9 @@
 <body>
 
 <div class="toolbar">
-  <a href="{{ url_for('topologia') }}">&larr; Volver a Infraestructura</a>
+  <a href="{{ url_for('topologia.topologia') }}">&larr; Volver a Infraestructura</a>
   <div class="toolbar-acciones">
-    <a href="{{ url_for('topologia_diagrama') }}" target="_blank">Ver diagrama de flujo</a>
+    <a href="{{ url_for('topologia.topologia_diagrama') }}" target="_blank">Ver diagrama de flujo</a>
     <label class="toggle-tinta">
       <input type="checkbox" id="chk-tinta" onchange="document.body.classList.toggle('tinta-ahorro', this.checked)">
       Modo ahorro de tinta (para imprimir en papel)

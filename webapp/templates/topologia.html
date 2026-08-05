@@ -118,8 +118,8 @@
         otro dispositivo de red (switch-switch, fortinet-switch, etc).</p>
     </div>
     <div class="header-acciones">
-      <a href="{{ url_for('topologia_diagrama') }}" target="_blank" class="tickets-nav-link">Generar diagrama de flujo</a>
-      <a href="{{ url_for('topologia_resumen') }}" target="_blank" class="tickets-nav-link">Imprimir resumen de red</a>
+      <a href="{{ url_for('topologia.topologia_diagrama') }}" target="_blank" class="tickets-nav-link">Generar diagrama de flujo</a>
+      <a href="{{ url_for('topologia.topologia_resumen') }}" target="_blank" class="tickets-nav-link">Imprimir resumen de red</a>
       <a href="{{ url_for('export.export_infraestructura_excel') }}" class="tickets-nav-link">Exportar Excel (con formato)</a>
     </div>
   </div>
@@ -129,7 +129,7 @@
   <a href="{{ url_for('admin') }}" class="{{ 'active' if active_tab == 'empleados' else '' }}">Gestion de Empleados</a>
   <a href="{{ url_for('admin_equipos') }}" class="{{ 'active' if active_tab == 'equipos' else '' }}">Inventario de Equipos</a>
   <a href="{{ url_for('admin_parametros') }}" class="{{ 'active' if active_tab == 'parametros' else '' }}">Parametros y Red</a>
-  <a href="{{ url_for('topologia') }}" class="{{ 'active' if active_tab == 'infraestructura' else '' }}">Infraestructura (Switches/Monitores)</a>
+  <a href="{{ url_for('topologia.topologia') }}" class="{{ 'active' if active_tab == 'infraestructura' else '' }}">Infraestructura (Switches/Monitores)</a>
 </nav>
 
 {% if resumen_importacion %}
@@ -152,7 +152,7 @@
     datos); si no, lo crea nuevo infiriendo el tipo y la plantilla de puertos por marca/modelo. Columnas
     esperadas: Ciudad, Lugar, Piso, Observaciones, Marca, Modelo, Bocas, Direccion MAC, Numero de Serie,
     Direccion IP, Enlace, Estado.</p>
-  <form method="post" action="{{ url_for('importar_infraestructura') }}" enctype="multipart/form-data" class="ticket-form">
+  <form method="post" action="{{ url_for('topologia.importar_infraestructura') }}" enctype="multipart/form-data" class="ticket-form">
     <label>Archivo <input type="file" name="archivo" accept=".xls,.xlsx,.html,.htm,.csv" required></label>
     <button type="submit" class="btn btn-primary">Importar infraestructura</button>
   </form>
@@ -223,7 +223,7 @@
         {% if d.puertos %}
         <button type="button" class="btn btn-primary" onclick="netwatchToggleAcordeon('puertos-{{ d.id }}')">Editar puertos</button>
         {% endif %}
-        <form method="post" action="{{ url_for('eliminar_dispositivo', dispositivo_id=d.id) }}" style="display:inline"
+        <form method="post" action="{{ url_for('topologia.eliminar_dispositivo', dispositivo_id=d.id) }}" style="display:inline"
               onsubmit="return confirm('Eliminar {{ d.nombre }}? Esta accion no se puede deshacer -- los equipos conectados a sus bocas quedaran sin dispositivo asignado.')">
           <button type="submit" class="btn btn-dark">Eliminar</button>
         </form>
@@ -231,7 +231,7 @@
     </tr>
     <tr class="acordeon-panel" id="panel-editar-{{ d.id }}" style="display:none">
       <td colspan="10">
-        <form method="post" action="{{ url_for('editar_dispositivo', dispositivo_id=d.id) }}" class="modal-form acordeon-form">
+        <form method="post" action="{{ url_for('topologia.editar_dispositivo', dispositivo_id=d.id) }}" class="modal-form acordeon-form">
           {{ campos_dispositivo(d, 'editar-' + d.id|string) }}
           <div class="modal-footer">
             <button type="button" class="btn btn-reset" onclick="netwatchToggleAcordeon('editar-{{ d.id }}')">Cancelar</button>
@@ -304,7 +304,7 @@
 
 <details class="manual-add">
   <summary>+ Agregar dispositivo de red</summary>
-  <form method="post" action="{{ url_for('crear_dispositivo') }}" class="modal-form">
+  <form method="post" action="{{ url_for('topologia.crear_dispositivo') }}" class="modal-form">
     {{ campos_dispositivo(None, 'nuevo') }}
     <div class="modal-footer">
       <button type="submit" class="btn btn-primary">Agregar</button>

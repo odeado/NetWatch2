@@ -132,11 +132,11 @@
 <body>
 
 <div class="toolbar">
-  <a href="{{ url_for('topologia') }}">&larr; Volver a Infraestructura</a>
+  <a href="{{ url_for('topologia.topologia') }}">&larr; Volver a Infraestructura</a>
   <div class="toolbar-acciones">
     <label class="filtro-ciudad">
       Ciudad:
-      <select onchange="location.href = '{{ url_for('topologia_diagrama') }}?ciudad=' + encodeURIComponent(this.value)">
+      <select onchange="location.href = '{{ url_for('topologia.topologia_diagrama') }}?ciudad=' + encodeURIComponent(this.value)">
         <option value="todos" {{ 'selected' if ciudad_filtro == 'todos' and subred_filtro == 'todos' else '' }}>Todas (imprime todo)</option>
         {% for c in todas_ciudades %}
         <option value="{{ c }}" {{ 'selected' if ciudad_filtro == c and subred_filtro == 'todos' else '' }}>{{ c }}</option>
@@ -145,7 +145,7 @@
     </label>
     <label class="filtro-ciudad">
       Subred:
-      <select onchange="location.href = '{{ url_for('topologia_diagrama') }}?subred=' + encodeURIComponent(this.value)">
+      <select onchange="location.href = '{{ url_for('topologia.topologia_diagrama') }}?subred=' + encodeURIComponent(this.value)">
         <option value="todos" {{ 'selected' if subred_filtro == 'todos' else '' }}>Todos</option>
         {% for s in todas_subredes %}
         <option value="{{ s.valor }}" {{ 'selected' if subred_filtro == s.valor else '' }}>{{ s.etiqueta }}</option>
