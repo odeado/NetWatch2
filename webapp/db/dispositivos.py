@@ -93,6 +93,13 @@ PLANTILLAS_PUERTOS = {
             + [{"label": f"SFP{i}", "tipo": "fibra"} for i in range(1, 5)]
         ),
     },
+    "imc_mediachassis_1": {
+        "nombre": "IMC Networks MediaChassis/1 (chasis de 1 modulo: cobre + fibra SC)",
+        "puertos": [
+            {"label": "RJ45", "tipo": "cobre"},
+            {"label": "SC 1550/1310", "tipo": "fibra"},
+        ],
+    },
 }
 
 
@@ -210,6 +217,8 @@ def _inferir_tipo_y_plantilla(marca, modelo, bocas_num):
         return "router", "cisco_2901_isr"
     if "raisecom" in marca_l or "conversor" in modelo_l:
         return "conversor", "conversor_medios"
+    if "imc" in marca_l or "mediachassis" in modelo_l:
+        return "conversor", "imc_mediachassis_1"
     if ("movistar" in marca_l or "huawei" in marca_l or "gpt" in modelo_l
             or "ont" in modelo_l or "modem" in modelo_l or "optixstar" in marca_l):
         return "modem", "ont_router_gpon"
