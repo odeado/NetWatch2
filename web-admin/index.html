@@ -205,10 +205,29 @@
       <div class="modal-grid">
         <label>Hostname <input type="text" id="eq-hostname"></label>
         <label>IP (o vacio si es dinamica) <input type="text" id="eq-ip"></label>
-        <label>MAC <input type="text" id="eq-mac"></label>
+        <label>MAC <input type="text" id="eq-mac" placeholder="Ej: AA:BB:CC:DD:EE:FF" onblur="netwatchFormatearMac(this)"></label>
         <label>Marca <input type="text" id="eq-marca"></label>
         <label>Modelo <input type="text" id="eq-modelo"></label>
-        <label>N&deg; Serie <input type="text" id="eq-serie"></label>
+        <label>N&deg; Serie <input type="text" id="eq-serie" onblur="netwatchFormatearSerie(this)"></label>
+        <label>Categoria
+          <!-- Mismo listado que db.CATEGORIAS_EQUIPO del sistema local (webapp/db.py) --
+               si se agrega una categoria nueva alla, agregarla aca tambien. -->
+          <select id="eq-categoria">
+            <option value="">-- Sin definir --</option>
+            <option value="PC de Escritorio">PC de Escritorio</option>
+            <option value="Notebook">Notebook</option>
+            <option value="All in One">All in One</option>
+            <option value="Servidor">Servidor</option>
+            <option value="Switch">Switch</option>
+            <option value="Router">Router</option>
+            <option value="Firewall/UTM">Firewall/UTM</option>
+            <option value="Access Point">Access Point</option>
+            <option value="ONT/Modem">ONT/Modem</option>
+            <option value="Impresora">Impresora</option>
+            <option value="Camara/DVR">Camara/DVR</option>
+            <option value="Otro">Otro</option>
+          </select>
+        </label>
         <label>Responsable (empleado vinculado)
           <select id="eq-responsable-emp" onchange="onCambioResponsableEmpleado()"><option value="">-- Sin empleado vinculado --</option></select>
         </label>
@@ -644,6 +663,7 @@ window.abrirModalEquipo = function (key) {
   document.getElementById('eq-marca').value = e.marca || '';
   document.getElementById('eq-modelo').value = e.modelo || '';
   document.getElementById('eq-serie').value = e.numero_serie || '';
+  document.getElementById('eq-categoria').value = e.categoria || '';
   document.getElementById('eq-responsable').value = e.responsable || '';
   document.getElementById('eq-correo-responsable').value = e.correo_responsable || '';
   pintarSelectResponsables();
@@ -680,6 +700,20 @@ window.abrirModalEquipo = function (key) {
 
 window.cerrarModalEquipo = function () { document.getElementById('modal-equipo').classList.remove('modal-open'); };
 
+// Autoformato de MAC/N.Serie -- mismo criterio que el sistema local
+// (webapp/static/formato_campos.js): MAC siempre "AA:BB:CC:DD:EE:FF"
+// (mayuscula, dos puntos cada 2 digitos), serie siempre en mayuscula. En
+// "blur" (al salir del campo), no en cada tecla, para no mandar el cursor
+// al final despues de cada letra mientras se escribe.
+window.netwatchFormatearMac = function (input) {
+  const hex = input.value.toUpperCase().replace(/[^0-9A-F]/g, '').slice(0, 12);
+  const grupos = hex.match(/.{1,2}/g);
+  input.value = grupos ? grupos.join(':') : hex;
+};
+window.netwatchFormatearSerie = function (input) {
+  input.value = input.value.toUpperCase();
+};
+
 window.pintarSelectResponsables = function () {
   const select = document.getElementById('eq-responsable-emp');
   const actual = select.value;
@@ -713,6 +747,7 @@ window.guardarEquipo = function () {
     marca: document.getElementById('eq-marca').value.trim(),
     modelo: document.getElementById('eq-modelo').value.trim(),
     numero_serie: document.getElementById('eq-serie').value.trim(),
+    categoria: document.getElementById('eq-categoria').value,
     responsable: document.getElementById('eq-responsable').value.trim(),
     correo_responsable: document.getElementById('eq-correo-responsable').value.trim(),
     responsable_id: document.getElementById('eq-responsable-emp').value || null,

@@ -52,7 +52,7 @@
     {% endif %}
     <label>IP / identificador <input type="text" name="ip" value="{{ e.ip or '' }}" required></label>
     <label>Hostname <input type="text" name="hostname" value="{{ e.hostname or '' }}" placeholder="Ej: PC-RECEPCION"></label>
-    <label>MAC <input type="text" name="mac" value="{{ e.mac or '' }}" placeholder="Ej: AA:BB:CC:DD:EE:FF"></label>
+    <label>MAC <input type="text" name="mac" value="{{ e.mac or '' }}" placeholder="Ej: AA:BB:CC:DD:EE:FF" onblur="netwatchFormatearMac(this)"></label>
   </fieldset>
 
   <fieldset class="fieldset-compacto">
@@ -75,7 +75,7 @@
     </label>
     <label>Marca <input type="text" name="marca" value="{{ e.marca or '' }}"></label>
     <label>Modelo <input type="text" name="modelo" value="{{ e.modelo or '' }}"></label>
-    <label>N. de serie <input type="text" name="numero_serie" value="{{ e.numero_serie or '' }}"></label>
+    <label>N. de serie <input type="text" name="numero_serie" value="{{ e.numero_serie or '' }}" onblur="netwatchFormatearSerie(this)"></label>
     <label>Fecha adquisicion <input type="date" name="fecha_adquisicion" value="{{ e.fecha_adquisicion or '' }}"></label>
     <label>Garantia hasta <input type="date" name="garantia_hasta" value="{{ e.garantia_hasta or '' }}"></label>
     <label>Responsable
