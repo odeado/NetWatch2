@@ -555,8 +555,12 @@ function netwatchAbrirPerfil(id) {
   });
 
   document.getElementById('perfil-editar-btn').onclick = function () {
+    // El modal de "Agregar Nuevo Empleado" no sirve para editar (siempre
+    // arranca en blanco) -- el edicion real es el panel acordeon inline de
+    // la fila en la tabla (ver netwatchToggleAcordeon), ya precargado con
+    // los datos reales de este empleado via Jinja.
     netwatchCerrarPerfil();
-    netwatchAbrirModalEmpleado(id);
+    netwatchToggleAcordeon('empleado-' + id);
   };
 
   document.getElementById('modal-perfil').classList.add('modal-open');
