@@ -606,7 +606,7 @@ window.pintarEquipos = function () {
   let visibles = 0;
   entradas.forEach(function (par) {
     const key = par[0], e = par[1];
-    const texto = [e.hostname, e.ip, e.marca, e.modelo, e.responsable, e.ciudad].join(' ').toLowerCase();
+    const texto = [e.hostname, e.ip, e.mac, e.numero_serie, e.marca, e.modelo, e.responsable, e.ciudad].join(' ').toLowerCase();
     if (q && texto.indexOf(q) === -1) return;
     visibles++;
     const tr = document.createElement('tr');
