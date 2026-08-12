@@ -77,6 +77,7 @@
         <th>IP</th>
         <th>MAC</th>
         <th>Marca / Modelo</th>
+        <th>Serie</th>
         <th>Responsable</th>
         <th>Ubicacion</th>
         <th>Conectado a</th>
@@ -617,6 +618,7 @@ window.pintarEquipos = function () {
       + '<td>' + escapeHtml(e.ip || '-') + '</td>'
       + '<td>' + escapeHtml(e.mac || '-') + '</td>'
       + '<td>' + escapeHtml((e.marca || '-') + (e.modelo ? ' ' + e.modelo : '')) + '</td>'
+      + '<td>' + escapeHtml(e.numero_serie || '-') + '</td>'
       + '<td>' + escapeHtml(e.responsable || '-') + '</td>'
       + '<td>' + escapeHtml(e.ciudad || e.sucursal || '-') + '</td>'
       + '<td>' + (e.dispositivo_nombre ? escapeHtml(e.dispositivo_nombre) + (e.puerto ? ' / ' + escapeHtml(e.puerto) : '') : '<span class="muted">-</span>') + '</td>'
