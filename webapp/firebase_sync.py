@@ -79,6 +79,31 @@ def _remoto_gana(local, campos_remotos):
         return False
     return ts_remoto > ts_local
 
+
+def _subir_diferencias_locales(cfg, id_token, nodo, fb_id, local, campos_remotos, lista_campos):
+    """Cuando el LOCAL gana el registro (ver _remoto_gana), empuja a Firebase
+    los campos donde el local difiere de lo que hay ahi -- si no, un equipo
+    ya vinculado (con firebase_id, o sea que se subio una vez hace tiempo)
+    nunca volvia a reflejar sus ediciones locales posteriores en la nube: el
+    codigo viejo solo subia registros COMPLETAMENTE nuevos (sin firebase_id),
+    y una vez vinculado, "Sincronizar con la nube" solo miraba
+    nube-hacia-local, nunca al reves. Resultado real (caso Andres
+    2026-08-12): edito un equipo local, agrego responsable, sincronizo, y la
+    web-admin siguio mostrando los datos viejos -- 0 actualizados, 0 subidos.
+    Devuelve True si empujo algo."""
+    cambios = {}
+    for campo in lista_campos:
+        val_local = local.get(campo)
+        if val_local in (None, ""):
+            continue
+        if val_local != campos_remotos.get(campo):
+            cambios[campo] = val_local
+    if not cambios:
+        return False
+    cambios["actualizado_en"] = local.get("actualizado_en") or datetime.now(timezone.utc).isoformat()
+    _actualizar_registro(cfg, nodo, id_token, fb_id, cambios)
+    return True
+
 # --- estado compartido para la barra de progreso ---------------------------
 _estado_lock = threading.Lock()
 _estado = {"corriendo": False, "total": 0, "procesados": 0, "fase": "inactivo", "resumen": None, "error": None}
@@ -225,7 +250,7 @@ def _sincronizar_usuarios(cfg, id_token, conn, remotos, locales, on_progreso=Non
     por_clave = {_clave_nombre(u["nombre"]): u for u in locales}
     por_fbid = {u["firebase_id"]: u for u in locales if u.get("firebase_id")}
 
-    creados = actualizados = 0
+    creados = actualizados = subidos = 0
     for fb_id, campos in remotos.items():
         if on_progreso:
             on_progreso()
@@ -240,6 +265,13 @@ def _sincronizar_usuarios(cfg, id_token, conn, remotos, locales, on_progreso=Non
                     val = campos.get(campo)
                     if val not in (None, "") and val != local.get(campo):
                         updates[campo] = val
+            elif local.get("firebase_id") == fb_id:
+                # El local gana y ya esta vinculado a este registro de
+                # Firebase -- empujar la version local hacia arriba, si no
+                # la nube/web-admin se queda mostrando datos viejos aunque
+                # "Sincronizar con la nube" diga que no hubo diferencias.
+                if _subir_diferencias_locales(cfg, id_token, "empleados", fb_id, local, campos, CAMPOS_USUARIO):
+                    subidos += 1
             if local.get("firebase_id") != fb_id:
                 updates["firebase_id"] = fb_id
             if updates:
@@ -272,7 +304,6 @@ def _sincronizar_usuarios(cfg, id_token, conn, remotos, locales, on_progreso=Non
             por_fbid[fb_id] = nuevo
             creados += 1
 
-    subidos = 0
     for u in locales:
         if u["id"] not in pendientes_subir:
             continue
@@ -310,7 +341,7 @@ def _sincronizar_equipos(cfg, id_token, conn, remotos, locales, on_progreso=None
             por_clave[k] = e
     por_fbid = {e["firebase_id"]: e for e in locales if e.get("firebase_id")}
 
-    creados = actualizados = 0
+    creados = actualizados = subidos = 0
     for fb_id, campos in remotos.items():
         if on_progreso:
             on_progreso()
@@ -355,6 +386,20 @@ def _sincronizar_equipos(cfg, id_token, conn, remotos, locales, on_progreso=None
                 disp_id = dispositivos_por_clave.get(_clave_nombre(nombre_disp))
                 if disp_id and disp_id != local.get("dispositivo_id"):
                     updates["dispositivo_id"] = disp_id
+            if not gana_remoto and local.get("firebase_id") == fb_id:
+                # El local gana y ya esta vinculado a este registro de
+                # Firebase -- empujar la version local hacia arriba (incluye
+                # critico/gestionado en su estado real, y el nombre del
+                # switch/dispositivo conectado). Sin esto un equipo ya
+                # subido una vez nunca reflejaba ediciones locales
+                # posteriores en la nube/web-admin.
+                local_con_disp = local
+                if local.get("dispositivo_id") and local["dispositivo_id"] in dispositivos_por_id:
+                    local_con_disp = dict(local)
+                    local_con_disp[CAMPO_EQUIPO_DISPOSITIVO] = dispositivos_por_id[local["dispositivo_id"]]
+                if _subir_diferencias_locales(cfg, id_token, "equipos", fb_id, local_con_disp, campos,
+                                               CAMPOS_EQUIPO + [CAMPO_EQUIPO_DISPOSITIVO]):
+                    subidos += 1
             if local.get("firebase_id") != fb_id:
                 updates["firebase_id"] = fb_id
             if updates:
@@ -407,7 +452,6 @@ def _sincronizar_equipos(cfg, id_token, conn, remotos, locales, on_progreso=None
             por_fbid[fb_id] = nuevo
             creados += 1
 
-    subidos = 0
     for e in locales:
         if e["id"] not in pendientes_subir:
             continue
@@ -434,7 +478,7 @@ def _sincronizar_dispositivos(cfg, id_token, conn, remotos, locales, on_progreso
     por_clave = {_clave_nombre(d["nombre"]): d for d in locales}
     por_fbid = {d["firebase_id"]: d for d in locales if d.get("firebase_id")}
 
-    creados = actualizados = 0
+    creados = actualizados = subidos = 0
     for fb_id, campos in remotos.items():
         if on_progreso:
             on_progreso()
@@ -449,6 +493,9 @@ def _sincronizar_dispositivos(cfg, id_token, conn, remotos, locales, on_progreso
                     val = campos.get(campo)
                     if val not in (None, "") and val != local.get(campo):
                         updates[campo] = val
+            elif local.get("firebase_id") == fb_id:
+                if _subir_diferencias_locales(cfg, id_token, "dispositivos", fb_id, local, campos, CAMPOS_DISPOSITIVO):
+                    subidos += 1
             if local.get("firebase_id") != fb_id:
                 updates["firebase_id"] = fb_id
             if updates:
@@ -479,7 +526,6 @@ def _sincronizar_dispositivos(cfg, id_token, conn, remotos, locales, on_progreso
             por_fbid[fb_id] = nuevo
             creados += 1
 
-    subidos = 0
     for d in locales:
         if d["id"] not in pendientes_subir:
             continue
