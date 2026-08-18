@@ -1,0 +1,6 @@
+{
+  "usuario": "sistemas",
+  "password": "la-contrasena-de-esa-cuenta-admin-local",
+  "aviso_segundos": 60,
+  "mensaje": "Apagado programado desde NetWatch - Sistemas"
+}

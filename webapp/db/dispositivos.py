@@ -350,3 +350,71 @@ def list_conexiones_dispositivos():
                 "puerto_destino": r["puerto"],
             }
     return {"origen": origen, "destino": destino}
+
+
+def aplicar_estado_red(results, offline_after_misses=2):
+    """Aplica resultados de un ciclo de escaneo (mismo formato que
+    equipos.apply_scan_results: lista de dicts con al menos 'ip' y 'alive')
+    a los dispositivos_red que tengan esa IP cargada -- switches, routers,
+    firewalls, etc. Mismo criterio de tolerancia a flapping que los equipos
+    (ver equipos.apply_scan_results): un dispositivo solo pasa a "Apagado"
+    despues de `offline_after_misses` ciclos seguidos sin respuesta, para no
+    generar falsos offline por un hipo de red.
+
+    A diferencia de equipos, esto NO crea dispositivos nuevos ni genera
+    eventos/alertas -- es puramente informativo para la tabla de
+    Infraestructura (el usuario pidio poder ver de un vistazo que switch
+    esta caido, sin duplicar la logica de criticos/WhatsApp que ya existe
+    para equipos). Devuelve la lista de dispositivos que cambiaron de
+    estado en esta pasada (para loguearlo en consola, igual que equipos)."""
+    if not results:
+        return []
+    por_ip = {r["ip"]: bool(r.get("alive")) for r in results}
+    now = datetime.now().isoformat()
+    cambios = []
+
+    with conexion() as conn:
+        dispositivos = conn.execute(
+            "SELECT id, nombre, ip, en_linea, fallos_consecutivos FROM dispositivos_red WHERE ip IS NOT NULL AND ip != ''"
+        ).fetchall()
+        for d in dispositivos:
+            if d["ip"] not in por_ip:
+                continue  # su IP no estaba en la subred escaneada este ciclo -- no tocar
+            alive = por_ip[d["ip"]]
+            # SQLite devuelve el entero 1/0 (no el bool True/False de Python)
+            # para una columna INTEGER -- "1 is True" es FALSE en Python (son
+            # objetos distintos), asi que comparar con "is True/False" mas
+            # abajo requiere convertir explicitamente primero. None se
+            # preserva tal cual (todavia nunca escaneado).
+            raw = d["en_linea"]
+            was_online = None if raw is None else bool(raw)
+
+            if alive:
+                conn.execute(
+                    """UPDATE dispositivos_red
+                          SET en_linea = 1, fallos_consecutivos = 0, ultima_deteccion = ?,
+                              desde = CASE WHEN en_linea IS NOT 1 THEN ? ELSE desde END
+                        WHERE id = ?""",
+                    (now, now, d["id"]),
+                )
+                if was_online is not True:
+                    cambios.append({"id": d["id"], "nombre": d["nombre"], "ip": d["ip"], "tipo": "online"})
+            else:
+                fallos = (d["fallos_consecutivos"] or 0) + 1
+                if was_online is True and fallos < offline_after_misses:
+                    conn.execute(
+                        "UPDATE dispositivos_red SET fallos_consecutivos = ? WHERE id = ?",
+                        (fallos, d["id"]),
+                    )
+                else:
+                    conn.execute(
+                        """UPDATE dispositivos_red
+                              SET en_linea = 0, fallos_consecutivos = ?,
+                                  desde = CASE WHEN en_linea IS 1 THEN ? ELSE desde END
+                            WHERE id = ?""",
+                        (fallos, now, d["id"]),
+                    )
+                    if was_online is True:
+                        cambios.append({"id": d["id"], "nombre": d["nombre"], "ip": d["ip"], "tipo": "offline"})
+        conn.commit()
+    return cambios

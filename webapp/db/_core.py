@@ -150,7 +150,11 @@ CREATE TABLE IF NOT EXISTS dispositivos_red (
     fecha_ingreso TEXT,
     enlace TEXT,
     notas TEXT,
-    creado_en TEXT
+    creado_en TEXT,
+    en_linea INTEGER,
+    fallos_consecutivos INTEGER DEFAULT 0,
+    ultima_deteccion TEXT,
+    desde TEXT
 );
 
 CREATE TABLE IF NOT EXISTS conexiones_dispositivos (
@@ -270,6 +274,19 @@ def init_db():
             conn.execute("ALTER TABLE dispositivos_red ADD COLUMN firebase_id TEXT")
         if "actualizado_en" not in disp_cols:
             conn.execute("ALTER TABLE dispositivos_red ADD COLUMN actualizado_en TEXT")
+        if "en_linea" not in disp_cols:
+            # NULL a proposito (no 0/1): un dispositivo sin IP, o que nunca
+            # cayo dentro de una subred escaneada por el monitor, no debe
+            # mostrarse como "Apagado" -- eso seria un falso offline. Solo se
+            # setea a 0/1 la primera vez que su IP aparece en un ciclo de
+            # escaneo real (ver db.aplicar_estado_red / monitor.py).
+            conn.execute("ALTER TABLE dispositivos_red ADD COLUMN en_linea INTEGER")
+        if "fallos_consecutivos" not in disp_cols:
+            conn.execute("ALTER TABLE dispositivos_red ADD COLUMN fallos_consecutivos INTEGER DEFAULT 0")
+        if "ultima_deteccion" not in disp_cols:
+            conn.execute("ALTER TABLE dispositivos_red ADD COLUMN ultima_deteccion TEXT")
+        if "desde" not in disp_cols:
+            conn.execute("ALTER TABLE dispositivos_red ADD COLUMN desde TEXT")
         # Reclasificacion de datos (no de esquema): los modems/ONT (Movistar,
         # Huawei OptiXstar, GPT, etc.) quedaban con tipo "otro" porque ese tipo
         # no existia -- ahora que existe "modem", los movemos una sola vez.

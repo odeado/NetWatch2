@@ -89,8 +89,10 @@ def run_once(subnets, config, max_workers):
         log(f"[{hora}] Escaneando {subnets[0]['cidr']} ({subnets[0]['label']})...")
         resultados_por_cidr = {subnets[0]["cidr"]: scanner.scan_subnet(subnets[0]["cidr"], config, max_workers)}
 
+    resultados_combinados = []
     for sn in subnets:
         results = resultados_por_cidr[sn["cidr"]]
+        resultados_combinados.extend(results)
         eventos = db.apply_scan_results(
             sn["cidr"], results, source="monitor", offline_after_misses=offline_after_misses,
             subred_label=sn.get("ciudad"),
@@ -102,6 +104,15 @@ def run_once(subnets, config, max_workers):
     for ev in total_eventos:
         etiqueta = ETIQUETAS.get(ev["tipo"], ev["tipo"])
         log(f"  [{etiqueta}] {ev['ip']} ({ev['hostname'] or 'sin hostname'})")
+
+    # Mismo escaneo, pero aplicado a los switches/routers de Infraestructura
+    # (dispositivos_red) que tengan IP cargada -- puramente informativo para
+    # la columna "En linea" de esa tabla, no genera alertas ni eventos de
+    # "Ultimos cambios" (eso sigue siendo solo para equipos).
+    cambios_red = db.aplicar_estado_red(resultados_combinados, offline_after_misses=offline_after_misses)
+    for c in cambios_red:
+        etiqueta = "VOLVIO ONLINE" if c["tipo"] == "online" else "PASO A OFFLINE"
+        log(f"  [{etiqueta}] {c['ip']} (dispositivo de red: {c['nombre']})")
 
     _revisar_alertas_criticos(config)
 
@@ -219,6 +230,17 @@ def _sincronizar_sitios_remotos(config, max_workers=None):
         for ev in eventos:
             etiqueta = ETIQUETAS.get(ev["tipo"], ev["tipo"])
             log(f"  [{etiqueta}] {ev['ip']} ({ev['hostname'] or 'sin hostname'})")
+
+        # Mismo resultado, aplicado tambien a los switches/routers de
+        # Infraestructura de ESTE sitio (dispositivos_red con IP en este
+        # CIDR) -- sitios remotos como Arica/Iquique/Matta no pasan por el
+        # loop principal de run_once(), asi que sin esto sus switches se
+        # quedaban en "sin datos" para siempre aunque el scanner remoto
+        # SI los estuviera viendo.
+        cambios_red = db.aplicar_estado_red(resultados, offline_after_misses=offline_after_misses)
+        for c in cambios_red:
+            etiqueta = "VOLVIO ONLINE" if c["tipo"] == "online" else "PASO A OFFLINE"
+            log(f"  [{etiqueta}] {c['ip']} (dispositivo de red: {c['nombre']})")
 
 
 def _revisar_alertas_criticos(config):

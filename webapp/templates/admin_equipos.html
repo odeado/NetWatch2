@@ -46,6 +46,13 @@
 <div class="import-resumen import-resumen-error">La IP/identificador no puede quedar vacio -- no se guardo ese cambio (el resto de los campos si se guardaron).</div>
 {% endif %}
 
+{% if resumen_apagado %}
+<div class="import-resumen {{ 'import-resumen-error' if resumen_apagado.ok == 0 else '' }}">
+  <strong>{{ 'Reinicio remoto' if resumen_apagado.accion == 'reiniciar' else 'Apagado remoto' }}:</strong>
+  {{ resumen_apagado.ok }} equipo(s) con {{ 'reinicio' if resumen_apagado.accion == 'reiniciar' else 'apagado' }} programado{% if resumen_apagado.fuera %}, {{ resumen_apagado.fuera }} fuera de alcance (Fase 1 solo cubre la LAN local de Rendic/Rendic2){% endif %}{% if resumen_apagado.fallo %}, {{ resumen_apagado.fallo }} fallaron (revisa que la cuenta admin compartida este bien configurada y que el equipo este encendido/alcanzable){% endif %}.
+</div>
+{% endif %}
+
 <section class="toolbar">
   <form method="post" action="{{ url_for('import_scan') }}" class="import-form">
     <label for="file">Importar escaneo manual:</label>
@@ -120,10 +127,28 @@
 
 <div class="import-resumen" id="barra-seleccion" style="display:none; align-items:center; justify-content:space-between; gap:12px;">
   <span id="contador-seleccion">0 seleccionados</span>
-  <form id="form-eliminar-masivo" method="post" action="{{ url_for('admin.eliminar_equipos_masivo') }}"
-        onsubmit="return confirm('Eliminar ' + document.querySelectorAll('.equipo-check:checked').length + ' equipo(s) del inventario? Esta accion no se puede deshacer.')">
-    <button type="submit" class="btn btn-dark">Eliminar seleccionados</button>
-  </form>
+  <div style="display:flex; gap:8px;">
+    <form id="form-reiniciar-masivo" method="post" action="{{ url_for('admin.apagar_equipos_masivo') }}"
+          onsubmit="return netwatchConfirmarApagado(event, 'reiniciar')">
+      <input type="hidden" name="accion" value="reiniciar">
+      <button type="submit" class="btn btn-ghost"
+              title="Reinicia (no apaga) -- util para probar que el mecanismo funciona sin dejar un equipo apagado si algo sale mal. Fase 1: solo LAN local de Rendic/Rendic2.">
+        Reiniciar seleccionados
+      </button>
+    </form>
+    <form id="form-apagar-masivo" method="post" action="{{ url_for('admin.apagar_equipos_masivo') }}"
+          onsubmit="return netwatchConfirmarApagado(event, 'apagar')">
+      <input type="hidden" name="accion" value="apagar">
+      <button type="submit" class="btn btn-dark" style="background:#7a2e2e; border-color:#a13d3d;"
+              title="Fase 1: solo apaga equipos en la LAN local de Rendic/Rendic2. Los demas quedan marcados como fuera de alcance.">
+        Apagar seleccionados
+      </button>
+    </form>
+    <form id="form-eliminar-masivo" method="post" action="{{ url_for('admin.eliminar_equipos_masivo') }}"
+          onsubmit="return confirm('Eliminar ' + document.querySelectorAll('.equipo-check:checked').length + ' equipo(s) del inventario? Esta accion no se puede deshacer.')">
+      <button type="submit" class="btn btn-dark">Eliminar seleccionados</button>
+    </form>
+  </div>
 </div>
 
 {% if not equipos %}
@@ -139,6 +164,7 @@
       <th>IP</th>
       <th>N. Serie</th>
       <th>Marca / Modelo</th>
+      <th id="th-ram" style="cursor:pointer; user-select:none;" onclick="netwatchOrdenarPorRam()" title="Click para ordenar por memoria RAM">RAM &#8597;</th>
       <th>Responsable</th>
       <th>Ubicacion</th>
       <th>Estado Red</th>
@@ -149,8 +175,8 @@
   </thead>
   <tbody>
     {% for e in equipos %}
-    <tr data-buscar="{{ ((e.hostname or '') ~ ' ' ~ e.ip ~ ' ' ~ (e.marca or '') ~ ' ' ~ (e.modelo or '') ~ ' ' ~ (e.numero_serie or '') ~ ' ' ~ (e.responsable or '') ~ ' ' ~ (e.ubicacion or '') ~ ' ' ~ (e.categoria or '') ~ ' ' ~ (e.estado_deteccion or '') ~ ' ' ~ ('online' if e.en_linea else 'offline')) | lower }}"
-        data-categoria="{{ e.categoria or '' }}">
+    <tr data-buscar="{{ ((e.hostname or '') ~ ' ' ~ e.ip ~ ' ' ~ (e.marca or '') ~ ' ' ~ (e.modelo or '') ~ ' ' ~ (e.numero_serie or '') ~ ' ' ~ (e.responsable or '') ~ ' ' ~ (e.ubicacion or '') ~ ' ' ~ (e.categoria or '') ~ ' ' ~ (e.estado_deteccion or '') ~ ' ' ~ (e.ram or '') ~ ' ' ~ ('online' if e.en_linea else 'offline')) | lower }}"
+        data-categoria="{{ e.categoria or '' }}" data-ram="{{ e.ram or '' }}">
       <td>
         <input type="checkbox" class="equipo-check" name="equipo_ids" value="{{ e.id }}"
                form="form-eliminar-masivo" onchange="netwatchActualizarSeleccion()">
@@ -160,6 +186,7 @@
       <td><a href="{{ url_for('ficha', equipo_id=e.id, origen='inventario') }}" class="ip-link" target="_blank" rel="noopener">{{ e.ip }}</a></td>
       <td class="mono">{{ e.numero_serie or '-' }}</td>
       <td>{{ (e.marca or '-') }} {{ e.modelo or '' }}</td>
+      <td>{{ e.ram or '-' }}</td>
       <td>
         {% if e.responsable_id %}
         <a href="#" class="ip-link" onclick="event.preventDefault(); netwatchAbrirPerfilResponsable({{ e.responsable_id }})" title="Ver ficha de {{ e.responsable }} y sus equipos asignados">{{ e.responsable }}</a>
@@ -189,7 +216,7 @@
       </td>
     </tr>
     <tr class="acordeon-panel" id="panel-equipo-{{ e.id }}" style="display:{{ 'table-row' if error_equipo_id == e.id else 'none' }}">
-      <td colspan="12">
+      <td colspan="13">
         <form method="post" action="{{ url_for('ficha', equipo_id=e.id) }}" class="modal-form acordeon-form ficha-form" enctype="multipart/form-data">
           <input type="hidden" name="origen" value="inventario">
           {% if error_equipo_id == e.id %}
@@ -416,6 +443,43 @@ function netwatchEliminarFotoEquipo(id) {
   document.getElementById('foto-equipo-eliminar-' + id).value = '1';
 }
 
+let netwatchOrdenRamAsc = false; // primer click: de mayor a menor RAM
+
+// Ordena las filas de la tabla por memoria RAM (parsea el primer numero que
+// encuentre en el texto, ej. "16 GB" o "4 Giga" -> 16 / 4; equipos sin dato
+// quedan siempre al final, sin importar la direccion). Cada fila de equipo
+// va seguida de su panel "Editar" inline (acordeon-panel) -- hay que mover
+// el par completo junto o el panel se queda huerfano en el lugar viejo.
+function netwatchOrdenarPorRam() {
+  const tabla = document.getElementById('tabla-equipos');
+  if (!tabla) return;
+  const tbody = tabla.querySelector('tbody');
+  const filas = Array.from(tbody.querySelectorAll('tr')).filter(function (tr) {
+    return !tr.classList.contains('acordeon-panel');
+  });
+  const pares = filas.map(function (fila) {
+    const panel = (fila.nextElementSibling && fila.nextElementSibling.classList.contains('acordeon-panel'))
+      ? fila.nextElementSibling : null;
+    const texto = fila.dataset.ram || '';
+    const match = texto.match(/([\d.,]+)/);
+    const valor = match ? parseFloat(match[1].replace(',', '.')) : null;
+    return { fila, panel, valor };
+  });
+  netwatchOrdenRamAsc = !netwatchOrdenRamAsc;
+  pares.sort(function (a, b) {
+    if (a.valor === null && b.valor === null) return 0;
+    if (a.valor === null) return 1;  // sin dato siempre al final
+    if (b.valor === null) return -1;
+    return netwatchOrdenRamAsc ? a.valor - b.valor : b.valor - a.valor;
+  });
+  pares.forEach(function (p) {
+    tbody.appendChild(p.fila);
+    if (p.panel) tbody.appendChild(p.panel);
+  });
+  const th = document.getElementById('th-ram');
+  if (th) th.innerHTML = 'RAM ' + (netwatchOrdenRamAsc ? '&#8593;' : '&#8595;');
+}
+
 let netwatchCategoriaActiva = '';
 
 // Aplica a la vez el texto del buscador Y la pestana de categoria activa --
@@ -493,6 +557,36 @@ document.querySelectorAll('.acordeon-form').forEach(function (form) {
     });
   }
 })();
+
+// --- apagado remoto en bloque (Fase 1: solo LAN local) --------------------
+// Los checkboxes solo estan atados via form="..." al form de eliminar, asi
+// que para el form de apagar hay que copiar los ids marcados como inputs
+// ocultos justo antes de enviarlo.
+function netwatchConfirmarApagado(ev, accion) {
+  const marcados = Array.prototype.map.call(
+    document.querySelectorAll('.equipo-check:checked'), function (cb) { return cb.value; }
+  );
+  if (marcados.length === 0) { ev.preventDefault(); return false; }
+  const verbo = accion === 'reiniciar' ? 'REINICIO' : 'APAGADO';
+  const ok = confirm(
+    'Vas a programar el ' + verbo + ' de ' + marcados.length + ' equipo(s) en 60 segundos.\n\n' +
+    'Fase 1: solo tiene efecto en equipos dentro de la LAN local (Rendic/Rendic2) -- ' +
+    'los que esten en otra red simplemente no se van a tocar.\n\n' +
+    'Cada equipo va a mostrar un aviso de Windows con cuenta regresiva antes de ' +
+    (accion === 'reiniciar' ? 'reiniciarse' : 'apagarse') + '. Continuar?'
+  );
+  if (!ok) { ev.preventDefault(); return false; }
+  const form = ev.target;
+  form.querySelectorAll('input[name="equipo_ids"]').forEach(function (i) { i.remove(); });
+  marcados.forEach(function (id) {
+    const input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = 'equipo_ids';
+    input.value = id;
+    form.appendChild(input);
+  });
+  return true;
+}
 
 // --- seleccion multiple + eliminar en bloque ------------------------------
 function netwatchActualizarSeleccion() {

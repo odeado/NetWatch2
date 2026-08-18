@@ -161,8 +161,41 @@
 {% if not dispositivos %}
   <p class="empty">Todavia no hay dispositivos de red cargados. Agrega el primero con el formulario de abajo.</p>
 {% else %}
+<div class="categoria-tabs" id="tipo-tabs">
+  <button type="button" class="categoria-tab activa" data-tipo-filtro="" onclick="netwatchFiltrarPorTipo('', this)">
+    Todos ({{ dispositivos|length }})
+  </button>
+  {% for t in tipos %}
+  {% set cant = dispositivos|selectattr('tipo', 'equalto', t)|list|length %}
+  {% if cant > 0 %}
+  <button type="button" class="categoria-tab" data-tipo-filtro="{{ t }}" onclick="netwatchFiltrarPorTipo('{{ t }}', this)">
+    {{ tipo_labels.get(t, t) }} ({{ cant }})
+  </button>
+  {% endif %}
+  {% endfor %}
+</div>
+{% set con_ip = dispositivos|selectattr('ip')|list %}
+{% set cant_online = con_ip|selectattr('en_linea', 'equalto', 1)|list|length %}
+{% set cant_offline = con_ip|selectattr('en_linea', 'equalto', 0)|list|length %}
+{% set cant_sin_datos = con_ip|length - cant_online - cant_offline %}
+<div class="categoria-tabs" id="estado-red-tabs">
+  <button type="button" class="categoria-tab activa" data-estado-filtro="" onclick="netwatchFiltrarPorEstadoRed('', this)">
+    Todos
+  </button>
+  <button type="button" class="categoria-tab" data-estado-filtro="online" onclick="netwatchFiltrarPorEstadoRed('online', this)">
+    <span class="status-dot" style="display:inline-block; width:6px; height:6px; border-radius:50%; background:var(--green); margin-right:5px;"></span>Online ({{ cant_online }})
+  </button>
+  <button type="button" class="categoria-tab" data-estado-filtro="offline" onclick="netwatchFiltrarPorEstadoRed('offline', this)">
+    <span class="status-dot" style="display:inline-block; width:6px; height:6px; border-radius:50%; background:var(--red); margin-right:5px;"></span>Offline ({{ cant_offline }})
+  </button>
+  {% if cant_sin_datos > 0 %}
+  <button type="button" class="categoria-tab" data-estado-filtro="sin_datos" onclick="netwatchFiltrarPorEstadoRed('sin_datos', this)">
+    Sin datos ({{ cant_sin_datos }})
+  </button>
+  {% endif %}
+</div>
 <div class="table-scroll">
-<table class="usuarios-table">
+<table class="usuarios-table" id="tabla-infraestructura">
   <thead>
     <tr>
       <th>Nombre</th>
@@ -179,25 +212,39 @@
   </thead>
   <tbody>
     {% for grupo in grupos_topologia %}
-    <tr class="banner-fila banner-ciudad-fila">
+    {% set loop_ciudad = loop %}
+    <tr class="banner-fila banner-ciudad-fila" id="banner-ciudad-{{ loop_ciudad.index }}">
       <td colspan="10">
         <span class="banner-ciudad">{{ grupo.ciudad }}</span>
         <span class="banner-count">{{ grupo.total }} dispositivo{{ 's' if grupo.total != 1 else '' }}</span>
       </td>
     </tr>
     {% for sub in grupo.sucursales %}
-    <tr class="banner-fila banner-sucursal-fila">
+    {% set loop_sucursal = loop %}
+    <tr class="banner-fila banner-sucursal-fila" id="banner-sucursal-{{ loop_ciudad.index }}-{{ loop_sucursal.index }}" data-grupo-ciudad="banner-ciudad-{{ loop_ciudad.index }}">
       <td colspan="10">
         <span class="banner-sucursal">{{ sub.sucursal }}</span>
         <span class="banner-count">{{ sub.total }}</span>
       </td>
     </tr>
     {% for d in sub.dispositivos %}
-    <tr>
+    <tr data-tipo="{{ d.tipo }}" data-grupo-sucursal="banner-sucursal-{{ loop_ciudad.index }}-{{ loop_sucursal.index }}"
+        {% if d.ip %}data-en-linea="{{ '' if d.en_linea is none else d.en_linea }}"{% endif %}>
       <td class="empleado-nombre">{{ d.nombre }}</td>
       <td><span class="tipo-badge tipo-badge-{{ d.tipo if d.tipo in tipo_labels else 'otro' }}">{{ tipo_labels.get(d.tipo, d.tipo) }}</span></td>
       <td>{{ (d.marca or '-') }} {{ d.modelo or '' }}</td>
-      <td>{{ d.ip or '-' }}</td>
+      <td>
+        {{ d.ip or '-' }}
+        {% if d.ip %}
+          {% if d.en_linea == 1 %}
+          <span class="status-pill status-pill-online" title="Responde ping/puerto en el ultimo escaneo del monitor{{ (' (' + d.ultima_deteccion[:16] + ')') if d.ultima_deteccion else '' }}"><span class="status-dot"></span>Online</span>
+          {% elif d.en_linea == 0 %}
+          <span class="status-pill status-pill-offline" title="No responde desde {{ d.desde[:16] if d.desde else 'hace un tiempo' }}"><span class="status-dot"></span>Offline</span>
+          {% else %}
+          <span class="muted" style="font-size:11px;" title="Todavia no paso por un ciclo del monitor con esta IP dentro del rango escaneado">sin datos</span>
+          {% endif %}
+        {% endif %}
+      </td>
       <td class="mono">{{ d.mac or '-' }}</td>
       <td class="mono">{{ d.numero_serie or '-' }}</td>
       <td>
@@ -331,6 +378,86 @@ function netwatchSubred24(ip) {
   const partes = String(ip).trim().split('.');
   return partes.length === 4 ? partes.slice(0, 3).join('.') : null;
 }
+
+const NETWATCH_FILTRO_TIPO_KEY = 'netwatchInfraFiltroTipo';
+const NETWATCH_FILTRO_ESTADO_RED_KEY = 'netwatchInfraFiltroEstadoRed';
+let netwatchTipoActivo = '';
+let netwatchEstadoRedActivo = '';
+
+function netwatchFiltrarPorTipo(tipo, btn) {
+  netwatchTipoActivo = tipo;
+  localStorage.setItem(NETWATCH_FILTRO_TIPO_KEY, tipo);
+  document.querySelectorAll('#tipo-tabs .categoria-tab').forEach(function (b) {
+    b.classList.toggle('activa', btn ? b === btn : b.dataset.tipoFiltro === tipo);
+  });
+  netwatchAplicarFiltrosInfraestructura();
+}
+
+function netwatchFiltrarPorEstadoRed(estado, btn) {
+  netwatchEstadoRedActivo = estado;
+  localStorage.setItem(NETWATCH_FILTRO_ESTADO_RED_KEY, estado);
+  document.querySelectorAll('#estado-red-tabs .categoria-tab').forEach(function (b) {
+    b.classList.toggle('activa', btn ? b === btn : b.dataset.estadoFiltro === estado);
+  });
+  netwatchAplicarFiltrosInfraestructura();
+}
+
+// Un dispositivo tiene que pasar AMBOS filtros a la vez (tipo Y estado de
+// red) para quedar visible -- mismo patron que texto+categoria en
+// admin_equipos.html.
+function netwatchFilaCoincideEstadoRed(fila) {
+  if (!netwatchEstadoRedActivo) return true;
+  const valor = fila.dataset.enLinea; // '1' online, '0' offline, '' sin datos, undefined = sin IP
+  if (valor === undefined) return false; // sin IP no entra en ningun filtro de estado
+  if (netwatchEstadoRedActivo === 'online') return valor === '1';
+  if (netwatchEstadoRedActivo === 'offline') return valor === '0';
+  if (netwatchEstadoRedActivo === 'sin_datos') return valor === '';
+  return true;
+}
+
+function netwatchAplicarFiltrosInfraestructura() {
+  const tabla = document.getElementById('tabla-infraestructura');
+  if (!tabla) return;
+
+  const gruposConVisibles = new Set();
+  tabla.querySelectorAll('tbody tr[data-tipo]').forEach(function (fila) {
+    const coincideTipo = !netwatchTipoActivo || fila.dataset.tipo === netwatchTipoActivo;
+    const coincide = coincideTipo && netwatchFilaCoincideEstadoRed(fila);
+    fila.style.display = coincide ? '' : 'none';
+    if (coincide) gruposConVisibles.add(fila.dataset.grupoSucursal);
+  });
+
+  // Banners de sucursal: se ocultan si NINGUNA de sus filas quedo visible.
+  const ciudadesConVisibles = new Set();
+  tabla.querySelectorAll('tbody tr.banner-sucursal-fila').forEach(function (banner) {
+    const visible = gruposConVisibles.has(banner.id);
+    banner.style.display = visible ? '' : 'none';
+    if (visible) ciudadesConVisibles.add(banner.dataset.grupoCiudad);
+  });
+
+  // Banners de ciudad: se ocultan si ninguna de sus sucursales quedo visible.
+  tabla.querySelectorAll('tbody tr.banner-ciudad-fila').forEach(function (banner) {
+    banner.style.display = ciudadesConVisibles.has(banner.id) ? '' : 'none';
+  });
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+  const tipoGuardado = localStorage.getItem(NETWATCH_FILTRO_TIPO_KEY);
+  if (tipoGuardado) {
+    netwatchTipoActivo = tipoGuardado;
+    document.querySelectorAll('#tipo-tabs .categoria-tab').forEach(function (b) {
+      b.classList.toggle('activa', b.dataset.tipoFiltro === tipoGuardado);
+    });
+  }
+  const estadoGuardado = localStorage.getItem(NETWATCH_FILTRO_ESTADO_RED_KEY);
+  if (estadoGuardado) {
+    netwatchEstadoRedActivo = estadoGuardado;
+    document.querySelectorAll('#estado-red-tabs .categoria-tab').forEach(function (b) {
+      b.classList.toggle('activa', b.dataset.estadoFiltro === estadoGuardado);
+    });
+  }
+  if (tipoGuardado || estadoGuardado) netwatchAplicarFiltrosInfraestructura();
+});
 
 function netwatchToggleAcordeon(key) {
   const panel = document.getElementById('panel-' + key);

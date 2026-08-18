@@ -71,7 +71,7 @@ from .disponibilidad import (  # noqa: F401
 from .dispositivos import (  # noqa: F401
     ESTADOS_DISPOSITIVO, PLANTILLAS_PUERTOS, TIPOS_DISPOSITIVO,
     TIPO_DISPOSITIVO_LABELS, _inferir_tipo_y_plantilla, _parsear_bocas,
-    assign_puerto, create_dispositivo, eliminar_dispositivo,
+    aplicar_estado_red, assign_puerto, create_dispositivo, eliminar_dispositivo,
     get_destino_dispositivo_anterior, get_dispositivo, get_puertos_definicion,
     list_conexiones_dispositivos, list_dispositivos, set_puerto_destino,
     update_dispositivo,

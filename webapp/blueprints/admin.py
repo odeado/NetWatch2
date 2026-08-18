@@ -23,6 +23,7 @@ from pathlib import Path
 
 from flask import Blueprint, jsonify, redirect, render_template, request, url_for
 
+import apagado_remoto
 import db
 import firebase_sync
 from parsers import (
@@ -87,6 +88,15 @@ def admin_equipos():
             "total": int(request.args.get("total", 0)),
         }
 
+    resumen_apagado = None
+    if request.args.get("apagado") == "1":
+        resumen_apagado = {
+            "accion": request.args.get("ap_accion", "apagar"),
+            "ok": int(request.args.get("ap_ok", 0)),
+            "fuera": int(request.args.get("ap_fuera", 0)),
+            "fallo": int(request.args.get("ap_fallo", 0)),
+        }
+
     # Si venimos de un choque de IP al editar (ver ficha()), esto le dice a la
     # fila de ESE equipo especifico que muestre el boton "Fusionar" y se abra
     # sola -- el resto de las filas de la tabla no se tocan.
@@ -107,6 +117,7 @@ def admin_equipos():
         ip_conflicto=ip_conflicto,
         ip_nueva=request.args.get("ip_nueva"),
         resumen_importacion=resumen_importacion,
+        resumen_apagado=resumen_apagado,
         active_tab="equipos",
         hoy=datetime.now().strftime("%Y-%m-%d"),
         categorias_equipo=db.CATEGORIAS_EQUIPO,
@@ -122,6 +133,32 @@ def eliminar_equipos_masivo():
     if ids:
         db.delete_equipos(ids)
     return redirect(url_for("admin.admin_equipos"))
+
+
+@bp.route("/admin/equipos/apagar_masivo", methods=["POST"])
+def apagar_equipos_masivo():
+    """Apaga o reinicia de una sola vez los equipos marcados con el checkbox
+    en Inventario de Equipos (ver apagado_remoto.py). Fase 1: solo alcanza
+    equipos en la LAN local de Rendic/Rendic2 -- el resto vuelve marcado
+    como "fuera de alcance" en el resumen, sin intentar nada con ellos.
+    "Reiniciar" existe sobre todo para probar que el mecanismo (cuenta admin
+    compartida + firewall) funciona sin dejar un equipo apagado de verdad si
+    algo sale mal -- el equipo vuelve solo."""
+    accion = request.form.get("accion") if request.form.get("accion") in ("apagar", "reiniciar") else "apagar"
+    ids = [int(i) for i in request.form.getlist("equipo_ids") if i.isdigit()]
+    if not ids:
+        return redirect(url_for("admin.admin_equipos"))
+    equipos = [db.get_equipo(i) for i in ids]
+    equipos = [e for e in equipos if e]
+    resumen = apagado_remoto.ejecutar_comando_equipos(equipos, accion)
+    return redirect(url_for(
+        "admin.admin_equipos",
+        apagado="1",
+        ap_accion=accion,
+        ap_ok=len(resumen["ok"]),
+        ap_fuera=len(resumen["fuera_de_alcance"]),
+        ap_fallo=len(resumen["fallidos"]),
+    ))
 
 
 @bp.route("/admin/equipos/importar_inventario", methods=["POST"])
