@@ -18,6 +18,7 @@ Uso:
 """
 
 import argparse
+import ipaddress
 import sys
 import time
 from datetime import datetime
@@ -30,6 +31,25 @@ import scanner  # noqa: E402  (scanner.py del mismo folder)
 import db       # noqa: E402  (db.py de ../webapp)
 import whatsapp_alertas  # noqa: E402  (mismo folder)
 import firebase_sync  # noqa: E402  (de ../webapp, para leer sitios remotos sin VPN)
+
+# Subredes donde el PC central esta FISICAMENTE (misma LAN que el servidor,
+# no necesita VPN) -- coincide a proposito con apagado_remoto.REDES_LOCALES.
+# Para estas SI tiene sentido un escaneo directo de respaldo si Firebase
+# viene con datos viejos (ver _sincronizar_sitios_remotos). Para el resto
+# (Matta/Arica/Iquique, que dependen de VPN manual que "se escapa" segun
+# Andres) NO tiene sentido: ver bug del 2026-08-21 mas abajo.
+_REDES_MISMA_LAN_SERVIDOR = [
+    ipaddress.ip_network("172.30.100.0/24"),
+    ipaddress.ip_network("172.30.101.0/24"),
+]
+
+
+def _en_misma_lan_servidor(cidr):
+    try:
+        red = ipaddress.ip_network(cidr, strict=False)
+    except ValueError:
+        return False
+    return any(red == local or red.subnet_of(local) for local in _REDES_MISMA_LAN_SERVIDOR)
 
 ETIQUETAS = {"online": "VOLVIO ONLINE", "offline": "PASO A OFFLINE", "nuevo": "NUEVO EQUIPO"}
 
@@ -182,39 +202,56 @@ def _sincronizar_sitios_remotos(config, max_workers=None):
         antiguedad_max_seg = max(cada * 3, 600)  # al menos 10 min de margen
 
         if antiguedad_seg is not None and antiguedad_seg > antiguedad_max_seg:
-            # OJO -- 2026-07-24: antes, si el scanner local de un sitio se
-            # caia (el PC de esa sucursal se colgaba/apagaba/le sacaban el
-            # .bat), el sitio ENTERO se veia offline aca aunque la red real
-            # siguiera funcionando -- dependiamos 100% de que ese PC puntual
-            # siguiera vivo. Ahora, antes de rendirnos, intentamos un escaneo
-            # DIRECTO de esa subred desde el PC central (esto es lo que se
-            # usaba originalmente, ver config.json). Si hay VPN manual
-            # conectada hacia ese sitio en este momento, vemos el estado real
-            # en vez de "todo offline" solo porque un PC puntual se colgo. Si
-            # tambien falla (sin VPN conectada ahora mismo), recien ahi se
-            # marca todo como no respondido, igual que antes.
-            resultados_directos = None
-            try:
-                resultados_directos = scanner.scan_subnet(sitio["cidr"], config, _WORKERS_ESCANEO_DIRECTO)
-            except Exception as e:
-                log(f"  [ESCANEO DIRECTO FALLO] {nombre} ({sitio['cidr']}): {type(e).__name__}: {e}")
-                resultados_directos = None
-
-            activos_directo = sum(1 for r in resultados_directos if r["alive"]) if resultados_directos else 0
-
-            if resultados_directos and activos_directo > 0:
-                if nombre not in _sitio_ya_avisado_stale:
-                    log(f"  [FIREBASE STALE -> ESCANEO DIRECTO OK] {nombre} ({sitio['cidr']}): el scanner "
-                        f"remoto de ese sitio parece detenido, pero hay VPN conectada -- se usa el escaneo "
-                        f"directo desde el PC central en su lugar ({activos_directo}/{len(resultados_directos)} activos).")
-                    _sitio_ya_avisado_stale.add(nombre)
-                resultados = resultados_directos
+            # OJO -- 2026-08-21: este bloque intento un "escaneo directo" de
+            # la subred desde el PC central cuando los datos de Firebase se
+            # veian viejos, asumiendo que a veces habria una VPN manual
+            # conectada DESDE EL SERVIDOR viendo la red real. Andres aclaro
+            # que para sitios genuinamente remotos (Matta/Arica/Iquique) NO
+            # es asi como trabajan: la VPN manual la usan ellos mismos desde
+            # su propio equipo para entrar por RDP, nunca queda conectada en
+            # el servidor -- por eso pusieron un scanner local en cada
+            # ciudad, "ya que la VPN se escapa". Para esos sitios el escaneo
+            # directo terminaba devolviendo docenas de falsos positivos
+            # (recreo cientos de equipos "vivos" en Iquique estando el sitio
+            # realmente caido, ver conversacion de esa fecha), asi que se
+            # saco.
+            #
+            # PERO rendic/rendic2 son distintos: el servidor esta FISICAMENTE
+            # en esa misma LAN (ver apagado_remoto.REDES_LOCALES / _REDES_
+            # MISMA_LAN_SERVIDOR arriba), sin depender de ninguna VPN. Sacar
+            # el escaneo directo para TODOS los sitios por igual dejo a
+            # rendic/rendic2 sin ningun respaldo cuando su propio colector
+            # local se atrasa publicando a Firebase, y de un momento a otro
+            # marco TODOS sus equipos (hasta los confirmados) como offline
+            # de golpe -- eso fue lo que reporto Andres el mismo dia. Por
+            # eso el respaldo se reactiva, pero SOLO para sitios en la misma
+            # LAN del servidor.
+            if _en_misma_lan_servidor(sitio["cidr"]):
+                try:
+                    directo = scanner.scan_subnet(sitio["cidr"], config, _WORKERS_ESCANEO_DIRECTO)
+                except Exception as exc:  # noqa: BLE001 -- no tumbar el monitor por un escaneo de respaldo
+                    directo = []
+                    log(f"  [ESCANEO DIRECTO] {nombre} ({sitio['cidr']}): fallo el respaldo directo ({exc})")
+                activos_directo = sum(1 for r in directo if r["alive"])
+                if directo and activos_directo > 0:
+                    if nombre not in _sitio_ya_avisado_stale:
+                        log(f"  [FIREBASE STALE] {nombre} ({sitio['cidr']}): sin datos frescos hace "
+                            f"{int(antiguedad_seg // 60)} min (publicado {generado_en}) -- se uso escaneo "
+                            f"directo de respaldo (misma LAN del servidor): {activos_directo}/{len(directo)} activos.")
+                        _sitio_ya_avisado_stale.add(nombre)
+                    resultados = directo
+                else:
+                    if nombre not in _sitio_ya_avisado_stale:
+                        log(f"  [FIREBASE STALE] {nombre} ({sitio['cidr']}): sin datos frescos hace "
+                            f"{int(antiguedad_seg // 60)} min (publicado {generado_en}) y el escaneo directo "
+                            f"de respaldo tampoco vio nada. Se marcan sus equipos como no respondidos.")
+                        _sitio_ya_avisado_stale.add(nombre)
+                    resultados = [dict(r, alive=False) for r in resultados]
             else:
                 if nombre not in _sitio_ya_avisado_stale:
                     log(f"  [FIREBASE STALE] {nombre} ({sitio['cidr']}): sin datos frescos hace "
                         f"{int(antiguedad_seg // 60)} min (publicado {generado_en}) -- el scanner remoto "
-                        f"de ese sitio parece detenido y tampoco hay VPN conectada para verlo directo. "
-                        f"Se marcan sus equipos como no respondidos.")
+                        f"de ese sitio parece detenido. Se marcan sus equipos como no respondidos.")
                     _sitio_ya_avisado_stale.add(nombre)
                 resultados = [dict(r, alive=False) for r in resultados]
         else:

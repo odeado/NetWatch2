@@ -33,6 +33,10 @@
       <th>Prioridad</th>
       <th>Titulo</th>
       <th>Equipo</th>
+      <th>IP</th>
+      <th>Tipo</th>
+      <th>Modelo</th>
+      <th>N. Serie</th>
       <th>Asignado a</th>
       <th>Estado</th>
       <th>Creado</th>
@@ -48,6 +52,10 @@
         {% if t.descripcion %}<div class="ticket-desc">{{ t.descripcion }}</div>{% endif %}
       </td>
       <td><a href="{{ url_for('ficha', equipo_id=t.equipo_id) }}" class="ip-link">{{ t.equipo_hostname or t.equipo_ip }}</a></td>
+      <td class="muted">{{ t.equipo_ip or '-' }}</td>
+      <td class="muted">{{ t.equipo_categoria or '-' }}</td>
+      <td class="muted">{{ t.equipo_modelo or '-' }}</td>
+      <td class="muted">{{ t.equipo_serie or '-' }}</td>
       <td>{{ t.asignado_a or '-' }}</td>
       <td><span class="tag tag-ticket-{{ t.estado }}">{{ t.estado.replace('_', ' ') }}</span></td>
       <td class="muted">{{ t.creado_en[:16] if t.creado_en else '-' }}</td>

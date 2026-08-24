@@ -591,6 +591,56 @@ def leer_escaneo_remoto(sitio):
     return data or None
 
 
+def _clave_ip(ip):
+    """Firebase RTDB no permite '.', '#', '$', '[', ']' en las claves --
+    las IPs vienen llenas de puntos, asi que se guardan como
+    172_30_100_55 en vez de 172.30.100.55."""
+    return (ip or "").replace(".", "_")
+
+
+def encolar_comando_equipo(ip, accion, aviso_segundos=60, mensaje=None):
+    """Deja una orden de apagado/reinicio pendiente en Firebase para que el
+    agente que corre en la propia PC (tarea programada via GPO, ver
+    scripts/netwatch_agente.ps1) la recoja la proxima vez que consulte --
+    nunca se conecta el servidor HACIA la PC (eso es lo que bloqueaba ESET
+    sin que Andres pudiera tocar la configuracion), sino al reves: la PC
+    pregunta hacia afuera, que es trafico saliente y casi ningun antivirus
+    lo bloquea. Devuelve (True, None) si quedo encolada o (False, motivo) si
+    fallo por config/red."""
+    if not _ip_valida(ip):
+        return False, "ip_invalida"
+    try:
+        cfg = _cargar_config()
+        id_token = _iniciar_sesion(cfg)
+        url = f"{cfg['databaseURL']}/comandos_equipo/{_clave_ip(ip)}.json?auth={id_token}"
+        _http_json(url, method="PUT", body={
+            "ip": ip,
+            "accion": accion,
+            "aviso_segundos": aviso_segundos,
+            "mensaje": mensaje or "Apagado programado desde NetWatch - Sistemas",
+            "solicitado_en": datetime.now(timezone.utc).isoformat(),
+        })
+    except FirebaseConfigError as e:
+        return False, str(e)
+    return True, None
+
+
+def cancelar_comando_equipo(ip):
+    """Borra una orden pendiente (ej. si se encolo por error). El agente
+    tambien borra el nodo solo al terminar de ejecutarla, asi que esto es
+    sobre todo para cancelar algo que todavia no se ejecuto."""
+    if not _ip_valida(ip):
+        return False, "ip_invalida"
+    try:
+        cfg = _cargar_config()
+        id_token = _iniciar_sesion(cfg)
+        url = f"{cfg['databaseURL']}/comandos_equipo/{_clave_ip(ip)}.json?auth={id_token}"
+        _http_json(url, method="DELETE")
+    except FirebaseConfigError as e:
+        return False, str(e)
+    return True, None
+
+
 def sincronizar():
     """Punto de entrada usado por la ruta Flask. Nunca lanza excepciones de
     red hacia afuera -- las devuelve envueltas en {"error": "..."}. Va

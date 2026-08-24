@@ -42,7 +42,10 @@ header .subtitle { margin: 0 0 20px; color: var(--muted); font-size: 14px; }
   display: flex; align-items: center; gap: 7px;
   background: var(--panel); border: 1px solid var(--border); border-radius: 999px;
   padding: 5px 12px 5px 10px; font-size: 12px; white-space: nowrap;
+  font-family: inherit; color: inherit;
 }
+.firebase-chip-clickeable { cursor: pointer; }
+.firebase-chip-clickeable:hover { border-color: var(--teal); }
 .firebase-chip-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .firebase-chip-ok .firebase-chip-dot { background: var(--green); box-shadow: 0 0 6px rgba(52,211,153,0.7); }
 .firebase-chip-warn .firebase-chip-dot { background: var(--amber); box-shadow: 0 0 6px rgba(251,191,36,0.7); }
@@ -64,7 +67,7 @@ header .subtitle { margin: 0 0 20px; color: var(--muted); font-size: 14px; }
 .gauge-ring-fg.gauge-alerta { stroke: var(--amber); filter: drop-shadow(0 0 4px rgba(251,191,36,0.65)); }
 .gauge-ring-fg.gauge-mal { stroke: var(--red); filter: drop-shadow(0 0 4px rgba(248,113,113,0.65)); }
 .gauge-ring-valor { position: absolute; font-size: 12px; font-weight: 700; color: var(--text); }
-.gauge-label { font-size: 11px; color: var(--text); max-width: 70px; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gauge-label { font-size: 11px; color: var(--text); max-width: 100px; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gauge-sub { font-size: 10px; color: var(--muted); }
 .gauge-card:hover .gauge-ring-wrap { filter: brightness(1.15); }
 .gauge-card.gauge-activo .gauge-ring-wrap { box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.5); border-radius: 50%; }
@@ -705,8 +708,13 @@ code { background: #2a3348; padding: 1px 6px; border-radius: 4px; }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .ficha-card-head .tag { flex-shrink: 0; margin-top: 1px; }
-.ficha-equipo-sub { color: var(--muted); font-size: 12px; display: flex; gap: 6px; align-items: baseline; }
+.ficha-equipo-sub {
+  color: var(--muted); font-size: 12px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .ficha-equipo-sub .ficha-mono { font-family: "SF Mono", Consolas, monospace; color: var(--text); }
+.ficha-equipo-ip { color: var(--muted); font-size: 12px; margin-top: 2px; }
+.ficha-equipo-ip .ficha-mono { font-family: "SF Mono", Consolas, monospace; color: var(--text); }
 
 .ficha-divider { height: 1px; background: var(--border); margin: 2px 0; }
 

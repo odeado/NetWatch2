@@ -49,7 +49,8 @@
 {% if resumen_apagado %}
 <div class="import-resumen {{ 'import-resumen-error' if resumen_apagado.ok == 0 else '' }}">
   <strong>{{ 'Reinicio remoto' if resumen_apagado.accion == 'reiniciar' else 'Apagado remoto' }}:</strong>
-  {{ resumen_apagado.ok }} equipo(s) con {{ 'reinicio' if resumen_apagado.accion == 'reiniciar' else 'apagado' }} programado{% if resumen_apagado.fuera %}, {{ resumen_apagado.fuera }} fuera de alcance (Fase 1 solo cubre la LAN local de Rendic/Rendic2){% endif %}{% if resumen_apagado.fallo %}, {{ resumen_apagado.fallo }} fallaron (revisa que la cuenta admin compartida este bien configurada y que el equipo este encendido/alcanzable){% endif %}.
+  {{ resumen_apagado.ok }} equipo(s) con {{ 'reinicio' if resumen_apagado.accion == 'reiniciar' else 'apagado' }} encolado (se ejecuta cuando el agente de esa PC consulte, hasta ~30s){% if resumen_apagado.fallo %}, {{ resumen_apagado.fallo }} fallaron al encolar (revisa la conexion con Firebase){% endif %}.
+  {% if resumen_apagado.detalle %}<br><span class="muted">Detalle del primer fallo: {{ resumen_apagado.detalle }}</span>{% endif %}
 </div>
 {% endif %}
 
@@ -132,7 +133,7 @@
           onsubmit="return netwatchConfirmarApagado(event, 'reiniciar')">
       <input type="hidden" name="accion" value="reiniciar">
       <button type="submit" class="btn btn-ghost"
-              title="Reinicia (no apaga) -- util para probar que el mecanismo funciona sin dejar un equipo apagado si algo sale mal. Fase 1: solo LAN local de Rendic/Rendic2.">
+              title="Reinicia (no apaga) -- util para probar que el agente NetWatch de esa PC esta funcionando, sin dejar un equipo apagado si algo sale mal.">
         Reiniciar seleccionados
       </button>
     </form>
@@ -140,7 +141,7 @@
           onsubmit="return netwatchConfirmarApagado(event, 'apagar')">
       <input type="hidden" name="accion" value="apagar">
       <button type="submit" class="btn btn-dark" style="background:#7a2e2e; border-color:#a13d3d;"
-              title="Fase 1: solo apaga equipos en la LAN local de Rendic/Rendic2. Los demas quedan marcados como fuera de alcance.">
+              title="Solo hace algo en las PCs que ya tengan instalado el agente NetWatch. En el resto queda encolado sin efecto.">
         Apagar seleccionados
       </button>
     </form>
@@ -569,9 +570,10 @@ function netwatchConfirmarApagado(ev, accion) {
   if (marcados.length === 0) { ev.preventDefault(); return false; }
   const verbo = accion === 'reiniciar' ? 'REINICIO' : 'APAGADO';
   const ok = confirm(
-    'Vas a programar el ' + verbo + ' de ' + marcados.length + ' equipo(s) en 60 segundos.\n\n' +
-    'Fase 1: solo tiene efecto en equipos dentro de la LAN local (Rendic/Rendic2) -- ' +
-    'los que esten en otra red simplemente no se van a tocar.\n\n' +
+    'Vas a dejar encolado el ' + verbo + ' de ' + marcados.length + ' equipo(s) (aviso de 60 segundos).\n\n' +
+    'Solo se ejecuta en las PCs que ya tengan instalado el agente NetWatch (ver ' +
+    'scripts/netwatch_agente.ps1) -- en el resto, la orden queda esperando sin hacer nada ' +
+    'hasta que se instale ahi tambien.\n\n' +
     'Cada equipo va a mostrar un aviso de Windows con cuenta regresiva antes de ' +
     (accion === 'reiniciar' ? 'reiniciarse' : 'apagarse') + '. Continuar?'
   );

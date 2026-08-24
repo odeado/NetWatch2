@@ -24,6 +24,35 @@
   <a href="{{ url_for('topologia.topologia') }}" class="{{ 'active' if active_tab == 'infraestructura' else '' }}">Infraestructura (Switches/Monitores)</a>
 </nav>
 
+<div class="catalogo-col" style="margin: 0 24px 24px;">
+  <h3>Subredes (para los gauges/pills del frente)</h3>
+  <p class="muted" style="margin: -6px 0 10px; font-size: 13px;">
+    CIDR de cada red y el nombre de ciudad que se muestra en los gauges de la pantalla principal.
+    Si cambias el nombre aca, se refleja ahi la proxima vez que se recargue la pagina.
+  </p>
+  <ul class="catalogo-list">
+    {% for s in subredes %}
+    <li>
+      <form method="post" action="{{ url_for('admin.editar_subred', subred_id=s.id) }}" style="display:flex; gap:8px; align-items:center; flex:1;">
+        <input type="text" name="cidr" value="{{ s.cidr }}" placeholder="Ej: 172.30.100.0/24" style="max-width:180px;" required>
+        <input type="text" name="ciudad" value="{{ s.ciudad }}" placeholder="Ej: Antofagasta Rendic" required>
+        <button type="submit" class="btn btn-confirm">Guardar</button>
+      </form>
+      <form method="post" action="{{ url_for('admin.eliminar_subred', subred_id=s.id) }}">
+        <button type="submit" class="btn btn-discard" onclick="return confirm('Eliminar la subred {{ s.cidr }}?')">Eliminar</button>
+      </form>
+    </li>
+    {% else %}
+    <li class="muted">Sin subredes cargadas</li>
+    {% endfor %}
+  </ul>
+  <form method="post" action="{{ url_for('admin.crear_subred') }}" class="catalogo-add-form">
+    <input type="text" name="cidr" placeholder="Ej: 172.30.113.0/24" required>
+    <input type="text" name="ciudad" placeholder="Ej: Copiapo" required>
+    <button type="submit" class="btn btn-primary">Agregar</button>
+  </form>
+</div>
+
 <div class="catalogos-grid">
   <div class="catalogo-col">
     <h3>Departamentos</h3>

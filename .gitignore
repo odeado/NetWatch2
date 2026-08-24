@@ -13,8 +13,13 @@ webapp/firebase_config.json
 scanner/firebase_config.json
 
 # Credenciales de la cuenta admin local compartida usada para el apagado
-# remoto (ver webapp/apagado_remoto.py) -- nunca a git
+# remoto viejo via SMB (ver webapp/apagado_remoto.py) -- nunca a git
 webapp/apagado_config.json
+
+# Credenciales de la cuenta Firebase dedicada al agente de apagado/reinicio
+# que corre en cada PC (ver agente_apagado/README_agente.md) -- nunca a git
+agente_apagado/agente_config.json
+agente_apagado/netwatch_agente.log
 
 # Contiene el token real de la API de WhatsApp Business y el numero de
 # destinatario -- nunca a git (ver "alertas" adentro). Si necesitas la

@@ -95,6 +95,7 @@ def admin_equipos():
             "ok": int(request.args.get("ap_ok", 0)),
             "fuera": int(request.args.get("ap_fuera", 0)),
             "fallo": int(request.args.get("ap_fallo", 0)),
+            "detalle": request.args.get("ap_detalle") or None,
         }
 
     # Si venimos de un choque de IP al editar (ver ficha()), esto le dice a la
@@ -138,26 +139,36 @@ def eliminar_equipos_masivo():
 @bp.route("/admin/equipos/apagar_masivo", methods=["POST"])
 def apagar_equipos_masivo():
     """Apaga o reinicia de una sola vez los equipos marcados con el checkbox
-    en Inventario de Equipos (ver apagado_remoto.py). Fase 1: solo alcanza
-    equipos en la LAN local de Rendic/Rendic2 -- el resto vuelve marcado
-    como "fuera de alcance" en el resumen, sin intentar nada con ellos.
-    "Reiniciar" existe sobre todo para probar que el mecanismo (cuenta admin
-    compartida + firewall) funciona sin dejar un equipo apagado de verdad si
-    algo sale mal -- el equipo vuelve solo."""
+    en Inventario de Equipos. Va por la cola de Firebase (ver
+    apagado_remoto.encolar_comandos_equipos): el servidor deja la orden
+    encolada, y el agente que corre como tarea programada en cada PC la
+    recoge y la ejecuta -- nada se conecta hacia la PC, asi que no depende
+    de que ESET (u otro antivirus centralizado que Andres no administra)
+    deje pasar una conexion entrante. "Reiniciar" existe sobre todo para
+    probar que el agente esta corriendo sin dejar un equipo apagado de
+    verdad si algo sale mal -- el equipo vuelve solo."""
     accion = request.form.get("accion") if request.form.get("accion") in ("apagar", "reiniciar") else "apagar"
     ids = [int(i) for i in request.form.getlist("equipo_ids") if i.isdigit()]
     if not ids:
         return redirect(url_for("admin.admin_equipos"))
     equipos = [db.get_equipo(i) for i in ids]
     equipos = [e for e in equipos if e]
-    resumen = apagado_remoto.ejecutar_comando_equipos(equipos, accion)
+    aviso_segundos, mensaje = apagado_remoto.leer_aviso_y_mensaje()
+    resumen = apagado_remoto.encolar_comandos_equipos(equipos, accion, aviso_segundos, mensaje)
+    # El detalle completo de cada fallo queda en la consola de Flask; aqui
+    # solo mandamos un extracto corto del PRIMER fallo para que el banner
+    # de la web ya de una pista sin tener que ir a mirar la consola.
+    ap_detalle = ""
+    if resumen["fallidos"]:
+        primero = resumen["fallidos"][0]
+        ap_detalle = f"{primero['ip']}: {primero['motivo']}"[:200]
     return redirect(url_for(
         "admin.admin_equipos",
         apagado="1",
         ap_accion=accion,
         ap_ok=len(resumen["ok"]),
-        ap_fuera=len(resumen["fuera_de_alcance"]),
         ap_fallo=len(resumen["fallidos"]),
+        ap_detalle=ap_detalle or None,
     ))
 
 
@@ -343,7 +354,7 @@ def crear_usuario():
     nombre = request.form.get("nombre", "").strip()
     if nombre:
         foto_perfil, _ = _guardar_foto_empleado(request)
-        db.create_usuario(
+        nuevo_id = db.create_usuario(
             nombre,
             request.form.get("correo", "").strip() or None,
             request.form.get("cargo", "").strip() or None,
@@ -358,6 +369,11 @@ def crear_usuario():
             vpn_activa=request.form.get("vpn_activa") == "on",
             activo=request.form.get("activo") == "on",
         )
+        # Si se eligio un equipo en el mismo modal, se vincula de una vez
+        # (no hace falta abrir la ficha del empleado despues solo para eso).
+        equipo_id = request.form.get("equipo_id")
+        if equipo_id and equipo_id.isdigit():
+            db.set_responsable_equipo(int(equipo_id), nuevo_id)
     return redirect(url_for("admin.admin"))
 
 
@@ -426,6 +442,7 @@ def desvincular_equipo_usuario(usuario_id, equipo_id):
 def admin_parametros():
     return render_template(
         "admin_parametros.html", departamentos=db.list_departamentos(), ciudades=db.list_ciudades(),
+        subredes=db.list_subredes(),
         active_tab="parametros",
     )
 
@@ -455,4 +472,28 @@ def crear_ciudad():
 @bp.route("/admin/ciudades/<int:ciudad_id>/eliminar", methods=["POST"])
 def eliminar_ciudad(ciudad_id):
     db.delete_ciudad(ciudad_id)
+    return redirect(url_for("admin.admin_parametros"))
+
+
+@bp.route("/admin/subredes", methods=["POST"])
+def crear_subred():
+    cidr = request.form.get("cidr", "").strip()
+    ciudad = request.form.get("ciudad", "").strip()
+    if cidr and ciudad:
+        db.create_subred(cidr, ciudad)
+    return redirect(url_for("admin.admin_parametros"))
+
+
+@bp.route("/admin/subredes/<int:subred_id>", methods=["POST"])
+def editar_subred(subred_id):
+    cidr = request.form.get("cidr", "").strip()
+    ciudad = request.form.get("ciudad", "").strip()
+    if cidr and ciudad:
+        db.update_subred(subred_id, cidr, ciudad)
+    return redirect(url_for("admin.admin_parametros"))
+
+
+@bp.route("/admin/subredes/<int:subred_id>/eliminar", methods=["POST"])
+def eliminar_subred(subred_id):
+    db.delete_subred(subred_id)
     return redirect(url_for("admin.admin_parametros"))

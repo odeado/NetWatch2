@@ -32,7 +32,9 @@ def list_tickets_for_equipo(equipo_id):
 def list_all_tickets(estado=None, prioridad=None):
     with conexion() as conn:
         query = (
-            "SELECT tickets.*, equipos.ip AS equipo_ip, equipos.hostname AS equipo_hostname "
+            "SELECT tickets.*, equipos.ip AS equipo_ip, equipos.hostname AS equipo_hostname, "
+            "equipos.numero_serie AS equipo_serie, equipos.modelo AS equipo_modelo, "
+            "equipos.categoria AS equipo_categoria "
             "FROM tickets JOIN equipos ON tickets.equipo_id = equipos.id WHERE 1=1"
         )
         params = []

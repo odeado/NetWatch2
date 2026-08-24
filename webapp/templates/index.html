@@ -92,14 +92,37 @@
 <script id="netwatch-equipos-data" type="application/json">{{ rows | tojson }}</script>
 <script id="netwatch-summary-data" type="application/json">{{ summary | tojson }}</script>
 <script id="netwatch-eventos-data" type="application/json">{{ eventos | tojson }}</script>
+<script id="netwatch-subredes-data" type="application/json">{{ subredes | tojson }}</script>
+<script id="netwatch-cidr-sitio-data" type="application/json">{{ cidr_por_sitio | tojson }}</script>
 <script>
 let NETWATCH_EQUIPOS = JSON.parse(document.getElementById('netwatch-equipos-data').textContent);
 let NETWATCH_SUMMARY = JSON.parse(document.getElementById('netwatch-summary-data').textContent);
 let NETWATCH_EVENTOS = JSON.parse(document.getElementById('netwatch-eventos-data').textContent);
+// Catalogo subred(CIDR) -> nombre de ciudad, editable en Administracion >
+// Parametros y Red -- es la unica fuente de verdad para el nombre que se
+// muestra en los gauges (antes se sacaba del campo "ciudad" del primer
+// equipo de cada grupo, que se llenaba inconsistente y a veces hacia
+// aparecer el mismo sitio duplicado con dos nombres distintos).
+const NETWATCH_SUBREDES = JSON.parse(document.getElementById('netwatch-subredes-data').textContent);
+const NETWATCH_CIUDAD_POR_CIDR = {};
+NETWATCH_SUBREDES.forEach(function (s) { NETWATCH_CIUDAD_POR_CIDR[s.cidr] = s.ciudad; });
+
+// nombre de sitio (tal cual lo publica el scanner remoto, ej. "iquique") ->
+// CIDR, para que al hacer clic en su pill de estado se pueda filtrar la
+// grilla por esa subred (ver netwatchFiltrarPorSubred).
+const NETWATCH_CIDR_POR_SITIO = JSON.parse(document.getElementById('netwatch-cidr-sitio-data').textContent);
 let NETWATCH_ULTIMO_EVENTO_ID = NETWATCH_EVENTOS.length ? Math.max.apply(null, NETWATCH_EVENTOS.map(function (e) { return e.id; })) : 0;
 
-let netwatchFiltroTipo = null;   // 'online' | 'estado' | 'tickets' | null (total)
-let netwatchFiltroValor = null;  // 'online'/'offline' o 'confirmado'/'descartado'/'pendiente'
+// Por defecto la pantalla arranca mostrando solo CONFIRMADOS -- los
+// pendientes/descartados no se ven hasta que el usuario clickea esa
+// tarjeta a proposito (ver tarjeta "Pendientes"/"Descartados" y el tile
+// "Total en inventario" para ver todo sin filtrar). Antes arrancaba sin
+// filtro y mezclaba detecciones nunca confirmadas con el resto, lo que
+// llenaba la pantalla de fichas de equipos que en la practica no existen
+// (ver conversacion 2026-08-21, sitios caidos que dejaron cientos de
+// detecciones "pendiente" sin revisar).
+let netwatchFiltroTipo = 'estado';   // 'online' | 'estado' | 'tickets' | null (total)
+let netwatchFiltroValor = 'confirmado';  // 'online'/'offline' o 'confirmado'/'descartado'/'pendiente'
 let netwatchBusqueda = '';
 
 // Al descartar una ficha desde una vista que no es "Descartados" (ej. mientras
@@ -201,7 +224,14 @@ function netwatchAgruparPorSubred() {
   NETWATCH_EQUIPOS.forEach(function (e) {
     if (e.origen === 'manual') return; // sin deteccion real, no aporta a la salud de la subred
     const clave = e.subred || 'Sin subred';
-    if (!grupos[clave]) grupos[clave] = { subred: clave, total: 0, offline: 0, ciudad: e.ciudad || null };
+    if (!grupos[clave]) {
+      // El nombre mostrado sale del catalogo de Parametros y Red (por CIDR
+      // exacto) -- si esta subred no esta cargada ahi, se usa el CIDR crudo
+      // en vez del campo "ciudad" suelto de un equipo cualquiera (ese campo
+      // se llena inconsistente y antes hacia aparecer el mismo sitio dos
+      // veces con nombres distintos).
+      grupos[clave] = { subred: clave, total: 0, offline: 0, ciudad: NETWATCH_CIUDAD_POR_CIDR[clave] || null };
+    }
     grupos[clave].total++;
     if (!e.en_linea) grupos[clave].offline++;
   });
@@ -328,23 +358,24 @@ function netwatchFichaHtml(e) {
   html += '<span class="ficha-nombre">' + netwatchEscapeHtml(titulo) + '</span>';
   html += '<span class="tag tag-' + e.estado_deteccion + '">' + netwatchEscapeHtml(e.estado_deteccion) + '</span>';
   html += '</div>';
-  // linea de identificacion: nombre del equipo (si tiene) + IP. Si el "ip"
-  // guardado no es una IP de red real (equipos manuales sin IP fija, como
-  // notebooks/torres en casa), se usa como nombre en vez de duplicarlo.
+  // linea de identificacion: nombre del equipo (si tiene) en su propia linea,
+  // y la IP debajo en otra -- antes iban en la misma linea separadas por "·"
+  // y un hostname largo (ej. un FQDN completo) hacia que la IP se desbordara
+  // hacia el costado, rompiendo la tarjeta (ver conversacion 2026-08-21). Si
+  // el "ip" guardado no es una IP de red real (equipos manuales sin IP fija,
+  // como notebooks/torres en casa), se usa como nombre en vez de duplicarlo.
   const esIpReal = NETWATCH_IPV4_RE.test(e.ip || '');
   const nombreEquipo = e.hostname || (esIpReal ? null : e.ip);
-  html += '<div class="ficha-equipo-sub">';
   if (nombreEquipo) {
-    html += '<span class="ficha-mono">' + netwatchEscapeHtml(nombreEquipo) + '</span>';
-    html += esIpReal
-      ? '<span>&middot; ' + netwatchEscapeHtml(e.ip) + '</span>'
-      : '<span class="muted">&middot; IP dinamica</span>';
+    html += '<div class="ficha-equipo-sub"><span class="ficha-mono">' + netwatchEscapeHtml(nombreEquipo) + '</span></div>';
+    html += '<div class="ficha-equipo-ip">' + (esIpReal
+      ? '<span class="ficha-mono">' + netwatchEscapeHtml(e.ip) + '</span>'
+      : '<span class="muted">IP dinamica</span>') + '</div>';
   } else if (esIpReal) {
-    html += '<span class="ficha-mono">' + netwatchEscapeHtml(e.ip) + '</span>';
+    html += '<div class="ficha-equipo-ip"><span class="ficha-mono">' + netwatchEscapeHtml(e.ip) + '</span></div>';
   } else {
-    html += '<span class="muted">Sin datos</span>';
+    html += '<div class="ficha-equipo-ip"><span class="muted">Sin datos</span></div>';
   }
-  html += '</div>';
 
   html += '<div class="ficha-divider"></div>';
 
@@ -868,12 +899,19 @@ function netwatchRenderFirebaseStatus(lineas) {
     const relativo = netwatchTiempoRelativo(info.publicado) || info.publicado;
     const claseEstado = esDeHoy ? 'firebase-chip-ok' : 'firebase-chip-warn';
     const texto = esDeHoy ? ('hoy, ' + relativo) : ('sin datos de hoy - ' + relativo);
-    return '<span class="firebase-chip ' + claseEstado + '" title="' +
-      netwatchEscapeHtml(nombre + ': ' + info.activos + '/' + info.total + ' activos, publicado ' + info.publicado) + '">' +
+    const cidr = NETWATCH_CIDR_POR_SITIO[nombre];
+    const tituloBase = nombre + ': ' + info.activos + '/' + info.total + ' activos, publicado ' + info.publicado;
+    const titulo = cidr ? (tituloBase + ' -- clic para ver solo estos equipos') : tituloBase;
+    // Si conocemos el CIDR de este sitio, el pill filtra la grilla igual que
+    // los gauges de arriba; si no (sitio nuevo que todavia no esta en
+    // scanner/config.json de la forma esperada), queda solo informativo.
+    return '<' + (cidr ? 'button type="button" onclick="netwatchFiltrarPorSubred(\'' + cidr.replace(/'/g, "\\'") + '\')"' : 'span') +
+      ' class="firebase-chip ' + claseEstado + (cidr ? ' firebase-chip-clickeable' : '') + '" title="' +
+      netwatchEscapeHtml(titulo) + '">' +
       '<span class="firebase-chip-dot"></span>' +
       '<span class="firebase-chip-nombre">' + netwatchEscapeHtml(nombre) + '</span>' +
       '<span class="firebase-chip-texto">' + netwatchEscapeHtml(texto) + '</span>' +
-      '</span>';
+      '</' + (cidr ? 'button' : 'span') + '>';
   }).join('');
 }
 

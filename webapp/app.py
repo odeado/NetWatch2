@@ -38,8 +38,23 @@ RESULTS_DIR = BASE_DIR.parent / "scanner" / "results"
 LEGACY_CONFIRM_FILE = BASE_DIR / "confirmations.json"
 UPLOAD_DIR = BASE_DIR / "static" / "uploads"
 MONITOR_LOG_FILE = BASE_DIR / "monitor.log"
+SCANNER_CONFIG_FILE = BASE_DIR.parent / "scanner" / "config.json"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 ALLOWED_IMAGE_EXT = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
+
+
+def _cidr_por_nombre_sitio():
+    """Lee scanner/config.json y arma {nombre_sitio: cidr} (ej. "iquique" ->
+    "172.30.112.0/24") para que los pills de estado de Firebase en index.html
+    (que muestran el nombre tal cual lo publica el sitio) se puedan usar
+    para filtrar las fichas por esa subred con un clic. Tolera que el
+    archivo no exista o este mal formado -- en ese caso los pills
+    simplemente no filtran nada."""
+    try:
+        cfg = json.loads(SCANNER_CONFIG_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return {s["nombre"]: s["cidr"] for s in cfg.get("sitios_remotos", []) if s.get("nombre") and s.get("cidr")}
 
 app = Flask(__name__)
 db.init_db()
@@ -140,6 +155,8 @@ def index():
         rows=equipos,
         summary=summary,
         eventos=eventos,
+        subredes=db.list_subredes(),
+        cidr_por_sitio=_cidr_por_nombre_sitio(),
     )
 
 

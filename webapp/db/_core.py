@@ -129,6 +129,20 @@ CREATE TABLE IF NOT EXISTS ciudades (
     nombre TEXT NOT NULL UNIQUE
 );
 
+-- Catalogo subred (CIDR) <-> nombre de ciudad, editable desde Administracion
+-- > Parametros y Red. Es la unica fuente de verdad para el nombre bonito que
+-- se muestra en los gauges/pills del frente (index.html) -- antes ese
+-- nombre salia de lo que tuviera cargado el PRIMER equipo de esa subred (el
+-- campo "ciudad" de cada equipo, que se llenaba inconsistente: "Antofagasta",
+-- "ANTOFAGASTA", "Antofagasta Matta", vacio, etc.), lo que hacia que a veces
+-- aparecieran dos gauges para el mismo sitio real (ver conversacion
+-- 2026-08-21).
+CREATE TABLE IF NOT EXISTS subredes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    cidr TEXT NOT NULL UNIQUE,
+    ciudad TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS dispositivos_red (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     nombre TEXT NOT NULL,
@@ -342,6 +356,26 @@ def init_db():
     if ciudad_count == 0:
         for nombre in ("Antofagasta", "Arica", "Iquique"):
             conn.execute("INSERT OR IGNORE INTO ciudades (nombre) VALUES (?)", (nombre,))
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS subredes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cidr TEXT NOT NULL UNIQUE,
+            ciudad TEXT NOT NULL
+        )
+    """)
+    subred_count = conn.execute("SELECT COUNT(*) AS c FROM subredes").fetchone()["c"]
+    if subred_count == 0:
+        # Semilla inicial tomada de scanner/config.json (sitios_remotos +
+        # subredes locales) -- editable despues desde Parametros y Red sin
+        # tener que tocar el archivo de config.
+        for cidr, ciudad in (
+            ("172.30.100.0/24", "Antofagasta Rendic (principal)"),
+            ("172.30.101.0/24", "Antofagasta Rendic (secundaria)"),
+            ("172.30.102.0/24", "Antofagasta Matta"),
+            ("172.30.110.0/24", "Arica"),
+            ("172.30.112.0/24", "Iquique"),
+        ):
+            conn.execute("INSERT OR IGNORE INTO subredes (cidr, ciudad) VALUES (?, ?)", (cidr, ciudad))
     conn.execute("""
         CREATE TABLE IF NOT EXISTS conexiones_dispositivos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,

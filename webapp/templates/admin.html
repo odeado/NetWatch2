@@ -349,6 +349,12 @@
         </div>
       </div>
 
+      <label class="full">Equipo asignado
+        <select name="equipo_id" id="f-equipo">
+          <option value="">-- Sin asignar (puedes vincularlo despues) --</option>
+        </select>
+      </label>
+
       <div class="modal-footer">
         <button type="button" class="btn btn-reset" onclick="netwatchCerrarModalEmpleado()">Cancelar</button>
         <button type="submit" class="btn btn-primary">Guardar Cambios</button>
@@ -425,6 +431,23 @@ function netwatchResetFotoPreview() {
 // existente se hace con el panel acordeon inline "Editar" de la tabla (no
 // se sale de Gestion de Empleados, y se puede seguir con el siguiente sin
 // perder el lugar).
+// Ordena equipos por IP numerica (octeto a octeto) en vez de orden de
+// texto -- si no, "172.30.100.20" queda despues de "172.30.100.150" porque
+// como string "2" > "1". Devuelve una copia nueva, no toca el array original.
+function netwatchOrdenarEquiposPorIp(lista) {
+  function partesIp(ip) {
+    return (ip || '').split('.').map(function (p) { return parseInt(p, 10) || 0; });
+  }
+  return lista.slice().sort(function (a, b) {
+    const pa = partesIp(a.ip);
+    const pb = partesIp(b.ip);
+    for (let i = 0; i < 4; i++) {
+      if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) - (pb[i] || 0);
+    }
+    return 0;
+  });
+}
+
 function netwatchAbrirModalEmpleado() {
   const form = document.getElementById('form-empleado');
   form.reset();
@@ -432,6 +455,18 @@ function netwatchAbrirModalEmpleado() {
   document.getElementById('modal-empleado-titulo').textContent = 'Agregar Nuevo Empleado';
   form.action = NETWATCH_URL_CREAR_USUARIO;
   document.getElementById('f-activo').checked = true;
+
+  // Selector de equipo a asignar -- solo equipos sin responsable actual,
+  // ordenados por IP para que sea facil ubicar el que buscas.
+  const selectEquipo = document.getElementById('f-equipo');
+  selectEquipo.innerHTML = '<option value="">-- Sin asignar (puedes vincularlo despues) --</option>';
+  netwatchOrdenarEquiposPorIp(NETWATCH_EQUIPOS_BASICO).forEach(function (eq) {
+    if (eq.responsable_id) return;
+    const opt = document.createElement('option');
+    opt.value = eq.id;
+    opt.textContent = eq.ip + (eq.hostname ? ' - ' + eq.hostname : '');
+    selectEquipo.appendChild(opt);
+  });
 
   document.getElementById('modal-empleado').classList.add('modal-open');
 }
@@ -542,7 +577,7 @@ function netwatchAbrirPerfil(id) {
   select.innerHTML = '';
   const nombrePorId = {};
   NETWATCH_USUARIOS.forEach(function (x) { nombrePorId[x.id] = x.nombre; });
-  NETWATCH_EQUIPOS_BASICO.forEach(function (eq) {
+  netwatchOrdenarEquiposPorIp(NETWATCH_EQUIPOS_BASICO).forEach(function (eq) {
     if (eq.responsable_id === id) return;
     const opt = document.createElement('option');
     opt.value = eq.id;

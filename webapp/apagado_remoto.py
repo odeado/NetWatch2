@@ -1,25 +1,31 @@
-"""Apagado remoto de equipos (Fase 1: solo la LAN local de Rendic/Rendic2,
-la misma red donde corre este servidor -- ver conversacion 2026-08-14).
+"""Apagado remoto de equipos.
 
-Usa los comandos nativos de Windows (net use + shutdown /m), NO requiere
-instalar nada en los equipos destino. Necesita que:
-  - El equipo destino tenga habilitado "compartir archivos e impresoras" /
-    la excepcion de firewall de apagado remoto (suele venir activada si el
-    equipo esta en un grupo de trabajo con recursos compartidos).
-  - Exista una cuenta administradora LOCAL con el MISMO usuario/contrasena
-    en todos los equipos de la red (ver webapp/apagado_config.json,
-    gitignored -- nunca se sube a git, igual que firebase_config.json).
+Mecanismo ACTUAL (recomendado, ver conversacion 2026-08-18): cola de
+comandos via Firebase. El servidor deja una orden en
+comandos_equipo/{ip} (firebase_sync.encolar_comando_equipo) y un agente
+(scripts/netwatch_agente.ps1) que corre como tarea programada EN CADA PC
+(desplegado por GPO) consulta esa cola cada ~30s y ejecuta el apagado
+localmente. Todo el trafico lo inicia la PC hacia afuera (HTTPS saliente),
+nunca el servidor hacia la PC -- asi se evita el problema real que se
+encontro en la practica: el antivirus centralizado (ESET Endpoint Security)
+bloquea las conexiones ENTRANTES (SMB/puerto 445) sin que Andres tenga
+acceso a esa consola para hacer una excepcion. Ver encolar_comandos_equipos.
 
-Fase 2 (pendiente, no implementada todavia): equipos en Arica/Iquique/Matta,
-que no tienen VPN permanente hacia este servidor -- para esos habria que
-avisar por Firebase y que el colector de esa ciudad ejecute el apagado
-localmente dentro de su propia LAN (mismo patron que ya usa el escaneo,
-ver firebase_sync.py / scanner/config.json "sitios_remotos").
+Mecanismo VIEJO (Fase 1 original, 2026-08-14, se deja el codigo por si
+alguna red especifica NO tiene ESET bloqueando y de verdad prefieren la
+via directa): net use + shutdown /m contra la LAN local de Rendic/Rendic2.
+Requiere que el equipo destino tenga el firewall (Windows Y el antivirus
+que lo administre) abierto para SMB, y una cuenta admin local compartida
+(ver webapp/apagado_config.json, gitignored). En la practica esto fallo
+por el bloqueo de ESET -- ver ejecutar_comando_equipos/_comando_equipo.
 """
 import ipaddress
 import json
+import re
 import subprocess
 from pathlib import Path
+
+import firebase_sync
 
 CONFIG_PATH = Path(__file__).resolve().parent / "apagado_config.json"
 
@@ -47,6 +53,23 @@ def _cargar_config():
     return cfg
 
 
+def leer_aviso_y_mensaje():
+    """Lee solo aviso_segundos/mensaje de apagado_config.json, sin exigir
+    usuario/password (esos ya no hacen falta para la via del agente/
+    Firebase, solo los usaba el mecanismo SMB viejo). Si el archivo no
+    existe o esta incompleto, devuelve los valores por defecto de siempre en
+    vez de fallar -- encolar la orden no deberia depender de un archivo que
+    ya es opcional para este camino."""
+    try:
+        cfg = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        cfg = {}
+    return (
+        cfg.get("aviso_segundos", 60),
+        cfg.get("mensaje", "Apagado programado desde NetWatch - Sistemas"),
+    )
+
+
 def ip_en_alcance_fase1(ip):
     """True si la IP esta dentro de las subredes que esta fase puede
     alcanzar directo (misma LAN que el servidor). Cualquier otra IP se
@@ -62,6 +85,47 @@ def ip_en_alcance_fase1(ip):
 # probar que el mecanismo funciona (el equipo vuelve solo), asi que conviene
 # probarlo primero con esto antes de usar "apagar" en serio.
 ACCIONES = {"apagar": "/s", "reiniciar": "/r"}
+
+
+def _variantes_usuario(usuario):
+    """Windows en si no distingue mayus/minus para cuentas locales, pero la
+    cuenta "sistemas" se fue creando a mano en cada PC con el tiempo y en
+    algunos quedo como "Sistemas" (con mayuscula inicial). Para no depender
+    de que todos coincidan exacto, probamos un par de variantes de
+    capitalizacion antes de darnos por vencidos. Devuelve una lista sin
+    duplicados, en el orden en que se van a probar."""
+    variantes = []
+    for candidato in (usuario, usuario.capitalize(), usuario.lower(), usuario.upper()):
+        if candidato not in variantes:
+            variantes.append(candidato)
+    return variantes
+
+
+def _diagnosticar_error_conexion(detalle_net_use):
+    """"net use" devuelve texto de error variado segun la causa. Antes esta
+    funcion asumia siempre "credenciales rechazadas", pero el error 67 (el
+    mas comun en la practica) en realidad significa que el equipo destino
+    ni siquiera dejo llegar la conexion SMB -- casi siempre porque el
+    firewall de Windows tiene bloqueado "Uso compartido de archivos e
+    impresoras" (puerto 445), no porque el usuario/clave este mal. Separar
+    los dos casos evita mandar a activar la cuenta Administrador cuando en
+    realidad el problema es el firewall."""
+    texto = (detalle_net_use or "").lower()
+    if re.search(r"\berror(es)? (de sistema )?67\b", texto) or "no se encuentra el nombre de red" in texto or "network name" in texto:
+        return (
+            "sin_ruta_de_red (el equipo no dejo llegar la conexion SMB -- revisa que en ese PC "
+            "este activado 'Uso compartido de archivos e impresoras' en el Firewall de Windows, "
+            "puerto 445; esto NO es un problema de usuario/clave)"
+        )
+    if re.search(r"\berror(es)? (de sistema )?53\b", texto):
+        return "equipo_inalcanzable (error 53 -- el equipo esta apagado, fuera de la red, o el nombre/IP no resuelve)"
+    if re.search(r"\berror(es)? (de sistema )?5\b", texto) or "acceso denegado" in texto or "access is denied" in texto:
+        return (
+            "acceso_denegado (la sesion SMB conecto pero la cuenta no tiene permiso -- "
+            "revisa la clave LocalAccountTokenFilterPolicy si 'sistemas' no es la cuenta "
+            "Administrador integrada, o que la clave este bien escrita en apagado_config.json)"
+        )
+    return "conexion_rechazada"
 
 
 def _comando_equipo(ip, accion):
@@ -87,11 +151,25 @@ def _comando_equipo(ip, accion):
         # Sesion SMB con la cuenta admin compartida -- necesaria porque la
         # cuenta con la que corre este servidor no necesariamente es admin
         # en el equipo destino (cada uno entraba con credenciales de
-        # usuario distintas antes de esto).
-        subprocess.run(
-            ["net", "use", recurso, cfg["password"], "/user:" + cfg["usuario"]],
-            capture_output=True, text=True, timeout=15,
-        )
+        # usuario distintas antes de esto). Probamos variantes de
+        # mayuscula/minuscula del usuario hasta que una autentique.
+        conectado = False
+        ultimo_detalle_conexion = ""
+        for usuario_intento in _variantes_usuario(cfg["usuario"]):
+            resultado_use = subprocess.run(
+                ["net", "use", recurso, cfg["password"], "/user:" + usuario_intento],
+                capture_output=True, text=True, timeout=15,
+            )
+            if resultado_use.returncode == 0:
+                conectado = True
+                break
+            ultimo_detalle_conexion = (resultado_use.stderr or resultado_use.stdout or "").strip()
+            subprocess.run(["net", "use", recurso, "/delete"], capture_output=True, timeout=10)
+
+        if not conectado:
+            detalle = ultimo_detalle_conexion or "sin detalle"
+            return False, f"{_diagnosticar_error_conexion(detalle)} -- {detalle}"
+
         resultado = subprocess.run(
             [
                 "shutdown", ACCIONES[accion], "/m", f"\\\\{ip}",
@@ -130,7 +208,12 @@ def reiniciar_equipo(ip):
 def ejecutar_comando_equipos(equipos, accion):
     """equipos: lista de dicts con al menos 'id' e 'ip'. accion: 'apagar' o
     'reiniciar'. Devuelve un resumen
-    {"ok": [...], "fuera_de_alcance": [...], "fallidos": [{"id","ip","motivo"}]}."""
+    {"ok": [...], "fuera_de_alcance": [...], "fallidos": [{"id","ip","motivo"}]}.
+
+    Los fallos tambien se imprimen a consola (stdout, donde corre Flask)
+    para poder diagnosticar sin tener que exponer el detalle completo en la
+    URL/pantalla -- el resumen que ve el usuario en la web solo trae un
+    extracto corto."""
     resumen = {"ok": [], "fuera_de_alcance": [], "fallidos": []}
     for e in equipos:
         ip = e.get("ip")
@@ -144,9 +227,37 @@ def ejecutar_comando_equipos(equipos, accion):
             resumen["fuera_de_alcance"].append({"id": e["id"], "ip": ip})
         else:
             resumen["fallidos"].append({"id": e["id"], "ip": ip, "motivo": detalle})
+            print(f"[apagado_remoto] fallo {accion} en {ip} (equipo id {e['id']}): {detalle}")
     return resumen
 
 
 # Alias retrocompatible (por si algo mas queda importando el nombre viejo).
 def apagar_equipos(equipos):
     return ejecutar_comando_equipos(equipos, "apagar")
+
+
+def encolar_comandos_equipos(equipos, accion, aviso_segundos=60, mensaje=None):
+    """Version nueva (via agente/Firebase, ver docstring del modulo) del
+    mismo lote que ejecutar_comando_equipos hacia arriba. No hay concepto de
+    "fuera de alcance" aca -- Firebase se puede leer desde cualquier red con
+    internet, asi que en teoria alcanza cualquier PC. En la practica solo
+    "hace algo" en las PCs donde ya este instalado y corriendo el agente
+    (netwatch_agente.ps1); si el agente no esta desplegado en un equipo, la
+    orden queda encolada sin que nadie la recoja -- no hay forma de saberlo
+    desde aca sin que el agente tambien reporte un "ultima vez visto"
+    (pendiente si hace falta mas adelante).
+
+    Devuelve {"ok": [...], "fallidos": [{"id","ip","motivo"}]}."""
+    resumen = {"ok": [], "fallidos": []}
+    for e in equipos:
+        ip = e.get("ip")
+        if not ip:
+            resumen["fallidos"].append({"id": e["id"], "ip": ip, "motivo": "sin_ip"})
+            continue
+        ok, detalle = firebase_sync.encolar_comando_equipo(ip, accion, aviso_segundos, mensaje)
+        if ok:
+            resumen["ok"].append({"id": e["id"], "ip": ip})
+        else:
+            resumen["fallidos"].append({"id": e["id"], "ip": ip, "motivo": detalle})
+            print(f"[apagado_remoto] no se pudo encolar {accion} en {ip} (equipo id {e['id']}): {detalle}")
+    return resumen

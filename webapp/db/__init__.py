@@ -60,6 +60,7 @@ from .rdp import list_rdp_history_for_equipo, log_rdp_connection  # noqa: F401
 from .catalogos import (  # noqa: F401
     create_ciudad, create_departamento, delete_ciudad, delete_departamento,
     list_ciudades, list_departamentos,
+    create_subred, delete_subred, list_subredes, update_subred,
 )
 
 from .disponibilidad import (  # noqa: F401
