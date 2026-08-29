@@ -1,0 +1,139 @@
+/* static/css/topologia.css
+   Topologia: dispositivos de red, mapa visual de puertos, modal y buscador de puertos (v9 + v10 + buscador).
+   Extraido de static/style.css (lineas originales 367-498) como parte
+   del reorden -- Fase 1. El orden en que cada template carga estos archivos
+   importa: reproduce el orden en que estaban en el archivo unico original,
+   para que la cascada de CSS se comporte exactamente igual. */
+
+/* --- v9: topologia (dispositivos de red, mapa visual de puertos) --- */
+.dispositivo-mapa {
+  margin-bottom: 28px; background: var(--panel); border: 1px solid var(--border);
+  border-radius: 12px; padding: 18px 20px;
+}
+.chasis-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; gap: 16px; flex-wrap: wrap; }
+.dispositivo-mapa h3 { font-size: 15px; margin: 0 0 4px; display: flex; align-items: center; gap: 8px; }
+.chasis-meta { color: var(--muted); font-size: 12px; margin: 0; }
+.chasis-legend { display: flex; gap: 14px; font-size: 11px; color: var(--muted); align-items: center; }
+.legend-item { display: flex; align-items: center; gap: 6px; }
+.legend-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+.legend-dot.legend-ocupado { background: var(--green); box-shadow: 0 0 5px rgba(52, 211, 153, 0.6); }
+.legend-dot.legend-libre { background: transparent; border: 1px solid var(--muted); }
+
+.chasis-bezel {
+  position: relative; background: #0b0f1a; border: 1px solid var(--border); border-radius: 10px;
+  padding: 22px 16px 16px; margin-bottom: 14px;
+}
+.chasis-sys {
+  position: absolute; top: 8px; right: 14px; font-size: 10px; letter-spacing: 0.08em;
+  color: var(--muted); display: flex; align-items: center; gap: 5px; text-transform: uppercase;
+}
+.chasis-sys .dot { width: 6px; height: 6px; }
+.puertos-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.puerto-box {
+  width: 42px; height: 42px; border-radius: 6px; display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 600; cursor: pointer; user-select: none;
+  border: 1px solid var(--border); color: var(--muted); background: #131a2b;
+  transition: transform 0.08s ease, box-shadow 0.08s ease;
+}
+.puerto-box:hover { transform: translateY(-2px); }
+.puerto-box.puerto-libre { border-style: dashed; }
+.puerto-box.puerto-ocupado {
+  border-color: var(--green); color: var(--green); background: rgba(52, 211, 153, 0.12);
+}
+.puerto-box.puerto-tipo-fibra { border-radius: 50%; }
+.puerto-box.puerto-tipo-fibra.puerto-libre { border-color: var(--blue); color: var(--blue); opacity: 0.6; }
+.puerto-box.puerto-tipo-fibra.puerto-ocupado { border-color: var(--blue); color: var(--blue); background: rgba(96, 165, 250, 0.15); }
+.puerto-box.puerto-tipo-wan { border-radius: 6px; border-width: 2px; }
+.puerto-box.puerto-tipo-wan.puerto-libre { border-color: var(--amber); color: var(--amber); opacity: 0.8; }
+.puerto-box.puerto-tipo-wan.puerto-ocupado { border-color: var(--amber); color: var(--amber); background: rgba(251, 191, 36, 0.15); }
+.puerto-box.puerto-tipo-dmz.puerto-libre { border-color: var(--red); color: var(--red); opacity: 0.7; }
+.puerto-box.puerto-tipo-dmz.puerto-ocupado { border-color: var(--red); color: var(--red); background: rgba(248, 113, 113, 0.15); }
+.puerto-box.puerto-tipo-consola { border-style: dotted; font-size: 9px; opacity: 0.75; }
+.puerto-box.puerto-selected { box-shadow: 0 0 0 2px var(--blue); }
+/* boca ocupada pero el equipo conectado esta fuera de linea: gana al color por tipo */
+.puerto-box.puerto-ocupado.puerto-offline {
+  border-color: var(--red); color: var(--red); background: rgba(248, 113, 113, 0.18);
+  animation: puertoOfflinePulse 2s ease-in-out infinite;
+}
+@keyframes puertoOfflinePulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+.legend-dot.legend-offline { background: var(--red); box-shadow: 0 0 5px rgba(248, 113, 113, 0.6); }
+
+/* --- v10: modal de mapa de puertos --- */
+.modal-overlay {
+  display: none; position: fixed; inset: 0; background: rgba(5, 8, 15, 0.75);
+  z-index: 1000; align-items: flex-start; justify-content: center; padding: 40px 20px; overflow-y: auto;
+}
+.modal-overlay.modal-open { display: flex; }
+.modal-box {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+  max-width: 980px; width: 100%; padding: 24px 28px; box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+}
+.modal-header { display: flex; justify-content: space-between; align-items: center; }
+.modal-header h3 { margin: 0; font-size: 18px; }
+.modal-close {
+  background: none; border: none; color: var(--muted); font-size: 22px; cursor: pointer; line-height: 1;
+  padding: 4px 8px; border-radius: 6px;
+}
+.modal-close:hover { color: var(--text); background: #1f2a44; }
+.modal-subtitle { color: var(--muted); font-size: 12px; margin: 6px 0 20px; }
+.modal-body { display: flex; gap: 24px; align-items: flex-start; flex-wrap: wrap; }
+.modal-mapa { flex: 1; min-width: 320px; }
+.modal-mapa .chasis-legend { justify-content: flex-end; margin-bottom: 10px; }
+.modal-body .puerto-detalle { width: 320px; flex-shrink: 0; }
+
+.puerto-detalle {
+  background: #0b0f1a; border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px;
+}
+.puerto-detalle-label { color: var(--muted); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; margin: 0 0 4px; }
+.puerto-detalle-card h4 { margin: 0 0 12px; font-size: 16px; display: flex; align-items: center; gap: 10px; }
+.puerto-equipo-card {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; margin-bottom: 14px;
+}
+.puerto-equipo-nombre { font-weight: 600; font-size: 14px; }
+.puerto-equipo-card .kv { display: flex; justify-content: space-between; margin-top: 8px; font-size: 12px; border-top: 1px solid var(--border); padding-top: 8px; }
+.puerto-equipo-card .k { color: var(--muted); }
+.puerto-equipo-card .v { color: var(--text); }
+.puerto-equipo-card .ip-link { display: inline-block; margin-top: 10px; font-size: 12px; }
+.puerto-assign-form { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.puerto-assign-form select {
+  background: #0f1420; color: var(--text); border: 1px solid var(--border);
+  border-radius: 6px; padding: 7px 9px; font-size: 12px; flex: 1; min-width: 220px;
+}
+
+/* --- buscador con resultados en vivo (combo) para asignar puerto --- */
+.puerto-combo { position: relative; flex: 1; min-width: 220px; }
+.puerto-buscador {
+  width: 100%; box-sizing: border-box; background: #0f1420; color: var(--text);
+  border: 1px solid var(--border); border-radius: 6px; padding: 7px 30px 7px 9px; font-size: 12px;
+}
+.puerto-buscador:focus { outline: none; border-color: var(--blue); }
+.btn-limpiar-puerto {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  background: none; border: none; color: var(--muted); cursor: pointer; font-size: 16px; line-height: 1; padding: 2px 4px;
+}
+.btn-limpiar-puerto:hover { color: var(--text); }
+.puerto-resultados {
+  position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 20;
+  background: #0f1420; border: 1px solid var(--border); border-radius: 8px;
+  max-height: 220px; overflow-y: auto; box-shadow: 0 8px 20px rgba(0,0,0,0.4);
+}
+.puerto-resultado-item {
+  padding: 8px 10px; font-size: 12px; cursor: pointer; border-bottom: 1px solid var(--border);
+}
+.puerto-resultado-item:last-child { border-bottom: none; }
+.puerto-resultado-item:hover { background: var(--panel); }
+.puerto-resultado-libre { color: var(--muted); font-style: italic; }
+.puerto-resultado-todas { color: var(--blue); }
+.puerto-resultado-vacio { padding: 10px; font-size: 12px; color: var(--muted); }
+.puerto-resultado-volver { color: var(--blue); font-weight: 600; }
+.puerto-resultado-subtitulo {
+  padding: 8px 10px; font-size: 11px; color: var(--muted); text-transform: uppercase;
+  letter-spacing: 0.04em; border-bottom: 1px solid var(--border);
+}
+.puerto-resultado-ocupado { color: #f87171; }
+
+.mapa-table { margin-bottom: 0; }
+

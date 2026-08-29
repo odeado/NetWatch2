@@ -1,0 +1,145 @@
+/* static/css/inventario-fichas.css
+   Inventario como fichas: grid + buscador + resumen clickeable + toasts + ficha-card (v15 + v16).
+   Extraido de static/style.css (lineas originales 643-780) como parte
+   del reorden -- Fase 1. El orden en que cada template carga estos archivos
+   importa: reproduce el orden en que estaban en el archivo unico original,
+   para que la cascada de CSS se comporte exactamente igual. */
+
+/* --- v15: inventario como fichas + buscador + resumen clickeable + toasts --- */
+.card-btn {
+  cursor: pointer; border: none; font: inherit; color: inherit; text-align: left;
+  transition: border-color 0.15s, transform 0.1s;
+}
+.card-btn:hover { border-color: var(--blue); }
+.card-btn.active { border-color: var(--blue); background: rgba(96, 165, 250, 0.1); }
+.card-btn.active .num { color: var(--blue); }
+
+.fichas-toolbar {
+  display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap;
+}
+.fichas-buscador {
+  flex: 1; min-width: 240px; background: var(--panel); color: var(--text); border: 1px solid var(--border);
+  border-radius: 8px; padding: 10px 14px; font-size: 13px;
+}
+.fichas-buscador:focus { outline: none; border-color: var(--blue); }
+.btn-sonido {
+  background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 8px;
+  padding: 9px 14px; font-size: 13px; cursor: pointer; white-space: nowrap;
+}
+.btn-sonido:hover { border-color: var(--blue); }
+.btn-sonido.muted { color: var(--muted); }
+
+.fichas-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(272px, 1fr)); gap: 16px;
+}
+
+/* --- v16: ficha-card con mas jerarquia (responsable primero, no la maquina) --- */
+.ficha-card {
+  position: relative; background: linear-gradient(180deg, #1a2133 0%, var(--panel) 55%);
+  border: 1px solid var(--border); border-radius: 14px; padding: 16px 18px 14px;
+  cursor: pointer; display: flex; flex-direction: column; gap: 10px;
+  transition: border-color 0.18s, transform 0.15s, box-shadow 0.18s;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+}
+.ficha-card::before {
+  content: ""; position: absolute; top: 0; left: 14px; right: 14px; height: 2px; border-radius: 0 0 3px 3px;
+  background: var(--muted); opacity: 0.5;
+}
+.ficha-card.ficha-online::before { background: var(--green); box-shadow: 0 0 8px rgba(52, 211, 153, 0.6); opacity: 1; }
+.ficha-card.ficha-offline::before { background: var(--red); opacity: 0.85; }
+.ficha-card:hover { border-color: var(--blue); transform: translateY(-2px); box-shadow: 0 10px 24px rgba(0,0,0,0.35); }
+.ficha-card.ficha-offline { opacity: 0.8; }
+.ficha-card.ficha-descartado { opacity: 0.5; }
+
+.ficha-card.ficha-resaltada {
+  animation: netwatchResaltarFicha 2.2s ease-out;
+}
+@keyframes netwatchResaltarFicha {
+  0% { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.55); }
+  70% { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.25); }
+  100% { border-color: var(--border); box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+}
+
+.ficha-ticket-banner {
+  position: absolute; top: -9px; right: 16px; background: linear-gradient(135deg, #fbbf24, #f59e0b);
+  color: #1a1400; font-size: 10px; font-weight: 800; letter-spacing: 0.03em;
+  padding: 4px 11px; border-radius: 7px; box-shadow: 0 3px 8px rgba(0,0,0,0.4);
+  display: inline-flex; align-items: center; gap: 4px;
+}
+
+.ficha-eyebrow {
+  display: flex; justify-content: space-between; align-items: center; gap: 8px;
+  font-size: 10px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted);
+}
+.ficha-eyebrow .ficha-eyebrow-empresa { color: var(--teal); font-weight: 700; }
+
+.ficha-card-head { display: flex; align-items: flex-start; gap: 8px; }
+.ficha-card-head .ficha-nombre {
+  font-weight: 700; font-size: 16px; line-height: 1.25; flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ficha-card-head .tag { flex-shrink: 0; margin-top: 1px; }
+.ficha-equipo-sub {
+  color: var(--muted); font-size: 12px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ficha-equipo-sub .ficha-mono { font-family: "SF Mono", Consolas, monospace; color: var(--text); }
+.ficha-equipo-ip { color: var(--muted); font-size: 12px; margin-top: 2px; }
+.ficha-equipo-ip .ficha-mono { font-family: "SF Mono", Consolas, monospace; color: var(--text); }
+
+.ficha-divider { height: 1px; background: var(--border); margin: 2px 0; }
+
+.ficha-linea { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; }
+.ficha-linea .ficha-k { color: var(--muted); }
+.ficha-linea .ficha-v { color: var(--text); text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 65%; }
+.ficha-linea .ficha-v.ficha-v-accent { color: var(--teal); font-weight: 600; }
+
+.ficha-status-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.status-pill {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 10px; font-weight: 700;
+  letter-spacing: 0.05em; text-transform: uppercase; padding: 4px 10px; border-radius: 20px;
+  border: 1px solid transparent;
+}
+.status-pill .status-dot { width: 6px; height: 6px; border-radius: 50%; }
+.status-pill-online { background: rgba(52, 211, 153, 0.12); color: var(--green); border-color: rgba(52, 211, 153, 0.35); }
+.status-pill-online .status-dot { background: var(--green); box-shadow: 0 0 5px rgba(52,211,153,0.8); }
+.status-pill-offline { background: rgba(248, 113, 113, 0.12); color: var(--red); border-color: rgba(248, 113, 113, 0.35); }
+.status-pill-offline .status-dot { background: var(--red); }
+.status-pill-manual { background: rgba(96, 165, 250, 0.12); color: var(--blue); border-color: rgba(96, 165, 250, 0.35); }
+.status-pill-manual .status-dot { background: var(--blue); }
+.status-pill-rdp { background: rgba(45, 212, 191, 0.12); color: var(--teal); border-color: rgba(45, 212, 191, 0.35); }
+.status-pill-falla {
+  background: rgba(248, 113, 113, 0.16); color: var(--red); border-color: rgba(248, 113, 113, 0.45);
+  animation: netwatchPulsoFalla 2s ease-in-out infinite;
+}
+@keyframes netwatchPulsoFalla {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+.status-pill-critico { background: rgba(251, 191, 36, 0.14); color: var(--amber); border-color: rgba(251, 191, 36, 0.4); }
+.status-pill-temporal { background: rgba(167, 139, 250, 0.14); color: #a78bfa; border-color: rgba(167, 139, 250, 0.4); }
+
+.ficha-card-foot {
+  display: flex; flex-direction: column; gap: 8px; margin-top: 2px;
+  padding-top: 10px; border-top: 1px solid var(--border);
+}
+.ficha-visto { color: var(--muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ficha-foot-acciones {
+  display: flex; align-items: center; justify-content: space-between; gap: 6px; flex-wrap: wrap;
+}
+.ficha-foot-acciones form { display: flex; gap: 6px; flex-wrap: wrap; }
+.ficha-foot-acciones .rdp-icon-btn { margin-left: auto; }
+.btn-sm { padding: 4px 9px; font-size: 11px; }
+.btn-ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+.btn-ghost:hover { color: var(--text); border-color: var(--blue); }
+.btn-critico-on { background: rgba(251, 191, 36, 0.15); color: var(--amber); border: 1px solid rgba(251, 191, 36, 0.4); }
+.btn-critico-on:hover { background: rgba(251, 191, 36, 0.28); }
+
+.rdp-icon-btn {
+  display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px;
+  border-radius: 50%; background: rgba(45, 212, 191, 0.12); color: var(--teal); border: 1px solid rgba(45, 212, 191, 0.35);
+  transition: background 0.15s, transform 0.15s;
+}
+.rdp-icon-btn:hover { background: rgba(45, 212, 191, 0.25); transform: scale(1.06); }
+.rdp-icon-btn svg { width: 15px; height: 15px; }
+

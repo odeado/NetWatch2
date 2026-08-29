@@ -1,0 +1,41 @@
+/* static/css/estado-layout.css
+   Estado en linea/fuera de linea y layout de dos columnas + panel de eventos (v3).
+   Extraido de static/style.css (lineas originales 231-264) como parte
+   del reorden -- Fase 1. El orden en que cada template carga estos archivos
+   importa: reproduce el orden en que estaban en el archivo unico original,
+   para que la cascada de CSS se comporte exactamente igual. */
+
+/* --- v3: estado en linea, layout de dos columnas, panel de eventos --- */
+.hint { color: var(--muted); font-size: 12px; }
+
+.card.en-linea .num { color: var(--green); }
+.card.fuera-linea .num { color: var(--red); }
+
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; }
+.dot-on { background: var(--green); box-shadow: 0 0 6px rgba(52, 211, 153, 0.6); }
+.dot-off { background: var(--red); }
+.dot-manual { background: var(--blue); }
+
+.layout { display: flex; gap: 20px; align-items: flex-start; }
+.main-col { flex: 1; min-width: 0; }
+.side-col {
+  width: 280px; flex-shrink: 0; background: var(--panel); border: 1px solid var(--border);
+  border-radius: 10px; padding: 16px;
+}
+.side-col h2 { margin: 0 0 12px; font-size: 14px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.eventos { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.evento { border-left: 3px solid var(--border); padding-left: 10px; font-size: 12px; display: flex; flex-direction: column; gap: 2px; }
+.evento-offline { border-left-color: var(--red); }
+.evento-online { border-left-color: var(--green); }
+.evento-nuevo { border-left-color: var(--blue); }
+.evento-tipo { font-weight: 600; }
+.evento-offline .evento-tipo { color: var(--red); }
+.evento-online .evento-tipo { color: var(--green); }
+.evento-nuevo .evento-tipo { color: var(--blue); }
+.evento-detalle { color: var(--text); }
+.evento-ts { color: var(--muted); font-size: 11px; }
+.evento-clickeable { cursor: pointer; transition: opacity 0.15s; }
+.evento-clickeable:hover { opacity: 0.7; }
+.evento-clickeable:hover .evento-detalle { text-decoration: underline; }
+.empty.small { padding: 10px; font-size: 12px; }
+

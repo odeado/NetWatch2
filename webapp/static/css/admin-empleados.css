@@ -1,0 +1,130 @@
+/* static/css/admin-empleados.css
+   Modal de empleado + tabla de empleados y su perfil, en Administracion (v12 + v13).
+   Extraido de static/style.css (lineas originales 510-632) como parte
+   del reorden -- Fase 1. El orden en que cada template carga estos archivos
+   importa: reproduce el orden en que estaban en el archivo unico original,
+   para que la cascada de CSS se comporte exactamente igual. */
+
+/* --- v12: modal de empleado (Administracion) --- */
+.avatar-thumb {
+  width: 30px; height: 30px; border-radius: 50%; object-fit: cover; display: inline-block;
+  background: #0f1420; border: 1px solid var(--border);
+}
+.avatar-placeholder {
+  display: inline-flex; align-items: center; justify-content: center; color: var(--muted); font-size: 13px;
+}
+
+.modal-form { display: flex; flex-direction: column; gap: 16px; margin-top: 16px; }
+.modal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.modal-grid label, .modal-form > label {
+  display: flex; flex-direction: column; gap: 6px; font-size: 11px; color: var(--muted);
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+.modal-form label.full { grid-column: 1 / -1; }
+.modal-grid input, .modal-grid select, .modal-form input[type="text"] {
+  background: #0f1420; color: var(--text); border: 1px solid var(--border);
+  border-radius: 6px; padding: 8px 10px; font-size: 13px; text-transform: none;
+}
+
+.foto-upload-box {
+  border: 1px dashed var(--border); border-radius: 10px; padding: 14px 16px;
+  display: flex; flex-direction: column; gap: 10px; background: #0f1420;
+}
+.foto-upload-label { margin: 0; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.foto-upload-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.avatar-circle {
+  width: 44px; height: 44px; border-radius: 50%; background: #1c2436; border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0;
+}
+.avatar-circle img { width: 100%; height: 100%; object-fit: cover; }
+.avatar-circle span { color: var(--muted); font-size: 16px; }
+
+/* Foto de equipo (PC/notebook) en la ficha -- caja rectangular en vez del
+   circulo de foto de perfil de empleado, fondo blanco para que se vea bien
+   la foto real del equipo (como en catalogos de proveedores). */
+.foto-equipo-preview {
+  width: 120px; height: 100px; border-radius: 8px; background: #fff; border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0;
+}
+.foto-equipo-preview img { width: 100%; height: 100%; object-fit: contain; }
+.foto-equipo-preview span { color: #888; font-size: 11px; text-align: center; padding: 4px; }
+.foto-upload-box input[type="text"] {
+  background: #0f1420; color: var(--text); border: 1px solid var(--border);
+  border-radius: 6px; padding: 8px 10px; font-size: 13px;
+}
+
+.vpn-flags { display: flex; flex-direction: column; justify-content: center; gap: 8px; }
+.checkbox-label { display: flex; flex-direction: row; align-items: center; gap: 8px; font-size: 13px; color: var(--text); text-transform: none; }
+.checkbox-label input { width: auto; }
+
+.modal-footer { display: flex; justify-content: flex-end; gap: 10px; margin-top: 4px; }
+
+.catalogos-grid { display: flex; gap: 24px; margin-top: 14px; flex-wrap: wrap; }
+.catalogo-col { flex: 1; min-width: 220px; }
+.catalogo-col h3 { font-size: 13px; color: var(--muted); margin: 0 0 8px; text-transform: uppercase; letter-spacing: 0.04em; }
+.catalogo-list { list-style: none; margin: 0 0 10px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.catalogo-list li {
+  display: flex; justify-content: space-between; align-items: center; background: #0f1420;
+  border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; font-size: 13px;
+}
+.catalogo-list li form { display: inline; }
+.catalogo-add-form { display: flex; gap: 8px; }
+.catalogo-add-form input {
+  flex: 1; background: #0f1420; color: var(--text); border: 1px solid var(--border);
+  border-radius: 6px; padding: 7px 9px; font-size: 13px;
+}
+
+/* --- v13: tabla de empleados + perfil de empleado --- */
+.empleado-row { cursor: pointer; }
+.empleado-row:hover { background: rgba(96, 165, 250, 0.06); }
+.empleado-cell { display: flex; align-items: center; gap: 10px; }
+.empleado-nombre { font-weight: 600; }
+.badge-lugar { background: #2a3348; color: var(--text); }
+.badge-estado-nuevo { background: rgba(52, 211, 153, 0.15); color: var(--green); }
+.badge-estado-usado { background: rgba(251, 191, 36, 0.15); color: #fbbf24; }
+.badge-estado-reparacion { background: rgba(251, 146, 60, 0.15); color: #fb923c; }
+.badge-estado-fuera { background: rgba(248, 113, 113, 0.15); color: var(--red); }
+.badge-bocas { display: inline-block; padding: 3px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+.badge-bocas-libre { background: rgba(52, 211, 153, 0.15); color: var(--green); }
+.badge-bocas-lleno { background: rgba(248, 113, 113, 0.15); color: var(--red); }
+.badge-vpn { background: rgba(52, 211, 153, 0.15); color: var(--green); }
+.tag { display: inline-flex; align-items: center; gap: 5px; }
+.btn-dark { background: #12161f; color: var(--text); border: 1px solid var(--border); }
+.btn-dark:hover { filter: brightness(1.4); }
+
+.modal-perfil-box { max-width: 640px; padding: 0; overflow: hidden; }
+.perfil-banner {
+  position: relative; background: linear-gradient(135deg, #22c58b, #17864f);
+  padding: 20px 24px 44px; display: flex; align-items: flex-start; justify-content: space-between;
+}
+.perfil-avatar {
+  width: 64px; height: 64px; border-radius: 50%; background: #d9dde3; border: 3px solid rgba(255,255,255,0.5);
+  display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0;
+}
+.perfil-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.perfil-avatar span { color: #6b7280; font-size: 24px; }
+.perfil-estado-badge { background: rgba(255,255,255,0.25); color: #fff; }
+.perfil-close { color: #fff; }
+.perfil-close:hover { background: rgba(255,255,255,0.2); color: #fff; }
+.perfil-body { padding: 0 24px 24px; margin-top: -24px; }
+.perfil-body h3 { margin: 0 0 2px; font-size: 20px; }
+.perfil-body > p.muted { margin: 0 0 18px; }
+
+.perfil-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 24px; margin-bottom: 16px; }
+.perfil-label { margin: 0; font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.perfil-valor { margin: 3px 0 0; font-size: 14px; font-weight: 600; }
+
+.perfil-vpn-row {
+  display: flex; align-items: center; justify-content: space-between; background: #0f1420;
+  border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; margin-bottom: 18px;
+}
+
+.perfil-equipos-section h4 { margin: 0 0 10px; font-size: 14px; }
+.perfil-vincular { margin-top: 10px; }
+.perfil-vincular summary { cursor: pointer; color: var(--blue); font-size: 12px; }
+.perfil-vincular-form { display: flex; gap: 8px; margin-top: 10px; }
+.perfil-vincular-form select {
+  flex: 1; background: #0f1420; color: var(--text); border: 1px solid var(--border);
+  border-radius: 6px; padding: 7px 9px; font-size: 12px;
+}
+

@@ -1,0 +1,93 @@
+/* static/css/panel-lateral-index.css
+   Panel lateral de edicion en la pantalla frontal / index (v20).
+   Extraido de static/style.css (lineas originales 889-974) como parte
+   del reorden -- Fase 1. El orden en que cada template carga estos archivos
+   importa: reproduce el orden en que estaban en el archivo unico original,
+   para que la cascada de CSS se comporte exactamente igual. */
+
+/* --- v20: panel lateral de edicion en la pantalla frontal (index) --------
+   Editar una ficha ya no navega a otra pagina -- abre este drawer a la
+   derecha, encima del inventario, para no perder el scroll/filtro/busqueda
+   de donde se estaba al guardar o cancelar. */
+.panel-overlay {
+  display: none; position: fixed; inset: 0; background: rgba(5, 8, 15, 0.55);
+  z-index: 1200; justify-content: flex-end;
+}
+.panel-overlay.panel-open { display: flex; }
+.panel-editar {
+  width: 480px; max-width: 100%; height: 100%; background: var(--panel);
+  border-left: 1px solid var(--border); box-shadow: -10px 0 30px rgba(0,0,0,0.45);
+  padding: 22px 24px 28px; overflow-y: auto;
+  transform: translateX(30px); opacity: 0; transition: transform 0.2s ease, opacity 0.2s ease;
+}
+.panel-overlay.panel-open .panel-editar { transform: translateX(0); opacity: 1; }
+.panel-editar-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px solid var(--border);
+}
+.panel-editar-header h3 { margin: 0; font-size: 17px; }
+.panel-editar .ficha-form { gap: 16px; }
+
+/* Tickets de soporte dentro del panel lateral -- version compacta de
+   .tickets-section (que en ficha.html usa una tabla ancha de 6 columnas,
+   demasiado para los 480px del drawer): lista vertical en vez de tabla. */
+.panel-tickets-section { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--border); }
+.panel-tickets-section h3 { margin: 0 0 10px; font-size: 15px; }
+.panel-tickets-lista { list-style: none; margin: 0 0 16px; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.panel-tickets-lista li {
+  background: #0f1420; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px;
+}
+.panel-ticket-linea { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.panel-ticket-linea .ticket-titulo { flex: 1; min-width: 100px; }
+.panel-ticket-acciones { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+
+@media (max-width: 640px) {
+  .panel-editar { width: 100%; }
+}
+
+/* toolbars que antes no envolvian en pantallas angostas */
+.toolbar, .import-form, .chasis-legend { flex-wrap: wrap; }
+
+/* tablas con scroll horizontal en vez de romperse/aplastarse en mobile */
+.table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; margin-bottom: 20px; }
+.table-scroll table { min-width: 640px; margin-bottom: 0; }
+.table-scroll .mapa-table { min-width: 420px; }
+
+/* Tablet (~10", ej. 1024x600 en horizontal): la grilla auto-fill ya se
+   reacomoda sola, pero los tamaños de fuente/padding quedaron pensados para
+   monitor de escritorio visto de cerca -- en una pantalla chica de tablet,
+   aunque el layout entre bien, todo se ve diminuto. Se agranda texto,
+   botones y tarjetas (y se sube el ancho minimo de las fichas para que
+   entren menos columnas pero mas legibles) sin tocar el layout de mobile
+   de aca abajo. */
+@media (min-width: 769px) and (max-width: 1450px) {
+  header h1 { font-size: 26px; }
+  header .subtitle { font-size: 16px; }
+  .tickets-nav-link { font-size: 15px; padding: 10px 18px; }
+  .pill { font-size: 12px; min-width: 20px; height: 20px; }
+
+  .firebase-chip { font-size: 14px; padding: 7px 16px 7px 12px; }
+  .firebase-chip-dot { width: 10px; height: 10px; }
+
+  .gauge-ring-wrap, .gauge-ring { width: 66px; height: 66px; }
+  .gauge-ring-valor { font-size: 14px; }
+  .gauge-label { font-size: 13px; max-width: 90px; }
+  .gauge-sub { font-size: 12px; }
+
+  .card { padding: 16px 22px; min-width: 140px; }
+  .card .num { font-size: 30px; }
+  .card .label { font-size: 14px; }
+
+  .fichas-buscador, .btn-sonido { font-size: 15px; padding: 12px 16px; }
+
+  .fichas-grid { grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 18px; }
+  .ficha-card { padding: 20px 22px 18px; }
+  .ficha-eyebrow { font-size: 12px; }
+  .ficha-card-head .ficha-nombre { font-size: 19px; }
+  .ficha-equipo-sub, .ficha-linea { font-size: 14px; }
+  .status-pill { font-size: 11px; padding: 6px 12px; }
+  .btn-sm { padding: 7px 13px; font-size: 13px; }
+  .rdp-icon-btn { width: 36px; height: 36px; }
+  .rdp-icon-btn svg { width: 18px; height: 18px; }
+}
+

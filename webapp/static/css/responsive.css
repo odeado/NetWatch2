@@ -1,0 +1,57 @@
+/* static/css/responsive.css
+   Responsive / mobile (v19) -- va al final a proposito, tiene que cargar despues que el resto.
+   Extraido de static/style.css (lineas originales 975-1024) como parte
+   del reorden -- Fase 1. El orden en que cada template carga estos archivos
+   importa: reproduce el orden en que estaban en el archivo unico original,
+   para que la cascada de CSS se comporte exactamente igual. */
+
+/* --- v19: responsive / mobile --- */
+@media (max-width: 768px) {
+  body { padding: 16px 14px 50px; }
+  header h1 { font-size: 19px; }
+  header .subtitle { font-size: 13px; }
+
+  .header-row { flex-direction: column; align-items: stretch; gap: 12px; }
+  .header-row .btn-rdp { align-self: flex-start; }
+  .header-row .btn-primary { align-self: flex-start; }
+  .nav-links { flex-wrap: wrap; }
+  .nav-links a, .header-acciones a { flex: 1 1 auto; text-align: center; }
+  .header-acciones { flex-wrap: wrap; width: 100%; }
+
+  .layout { flex-direction: column; }
+  .side-col { width: 100%; }
+
+  .deteccion-info { grid-template-columns: repeat(2, 1fr); padding: 14px 16px; }
+  .ficha-form fieldset { grid-template-columns: 1fr; padding: 16px 16px 14px; }
+  .ficha-form fieldset.fieldset-compacto { grid-template-columns: 1fr; }
+  .modal-grid { grid-template-columns: 1fr; }
+  .perfil-grid { grid-template-columns: 1fr; }
+
+  .modal-overlay { padding: 16px 10px; }
+  .modal-box { padding: 18px 16px; max-height: calc(100vh - 32px); overflow-y: auto; }
+  .modal-body { flex-direction: column; }
+  .modal-mapa { min-width: 0; width: 100%; }
+  .modal-body .puerto-detalle { width: 100%; }
+
+  .catalogos-grid { flex-direction: column; gap: 16px; }
+  .ticket-form { padding: 14px 16px; }
+  .ticket-form label { width: 100%; }
+
+  .admin-tabs { gap: 2px; }
+  .admin-tabs a { padding: 8px 10px; font-size: 12px; }
+
+  .rdp-redirect-box { margin: 40px auto; }
+}
+
+@media (max-width: 520px) {
+  .deteccion-info { grid-template-columns: 1fr; }
+  .summary { gap: 8px; }
+  .card { min-width: 0; flex: 1 1 calc(50% - 8px); padding: 10px 14px; }
+  .fichas-grid { grid-template-columns: 1fr; }
+  .fichas-buscador { min-width: 0; flex: 1 1 100%; }
+  .subredes-gauges { gap: 10px; justify-content: space-around; }
+  .gauge-ring-wrap, .gauge-ring { width: 42px; height: 42px; }
+  .tickets-nav-link { padding: 8px 10px; font-size: 12px; }
+  .toast-container { left: 12px; right: 12px; top: 12px; max-width: none; }
+  .ficha-linea .ficha-v { max-width: 55%; }
+}

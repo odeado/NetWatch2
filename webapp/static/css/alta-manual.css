@@ -1,0 +1,18 @@
+/* static/css/alta-manual.css
+   Alta manual de equipos fuera de la red escaneada (v11).
+   Extraido de static/style.css (lineas originales 499-509) como parte
+   del reorden -- Fase 1. El orden en que cada template carga estos archivos
+   importa: reproduce el orden en que estaban en el archivo unico original,
+   para que la cascada de CSS se comporte exactamente igual. */
+
+/* --- v11: alta manual de equipos (fuera de la red escaneada) --- */
+.manual-add {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+  padding: 10px 16px; margin-bottom: 16px;
+}
+.manual-add summary {
+  cursor: pointer; color: var(--blue); font-size: 13px; user-select: none;
+}
+.manual-add form { margin-top: 14px; }
+.manual-add .empty.small { margin: 10px 0 0; }
+

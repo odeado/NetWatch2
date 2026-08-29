@@ -1,0 +1,155 @@
+/* static/css/base.css
+   Variables de color, reset y layout/componentes genericos (botones, tags, formularios) usados en todas las paginas.
+   Extraido de static/style.css (lineas originales 1-148) como parte
+   del reorden -- Fase 1. El orden en que cada template carga estos archivos
+   importa: reproduce el orden en que estaban en el archivo unico original,
+   para que la cascada de CSS se comporte exactamente igual. */
+
+:root {
+  --bg: #0f1420;
+  --panel: #171e2e;
+  --border: #262f45;
+  --text: #e6e9f0;
+  --muted: #8a93a8;
+  --green: #34d399;
+  --amber: #fbbf24;
+  --red: #f87171;
+  --blue: #60a5fa;
+  --teal: #2dd4bf;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: -apple-system, Segoe UI, Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  padding: 24px 32px 60px;
+}
+header h1 { margin: 0 0 4px; font-size: 22px; }
+header .subtitle { margin: 0 0 20px; color: var(--muted); font-size: 14px; }
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.toolbar select {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+}
+.generated-at { color: var(--muted); font-size: 13px; }
+
+.firebase-status { display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+.firebase-status:empty { display: none; }
+.firebase-chip {
+  display: flex; align-items: center; gap: 7px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 999px;
+  padding: 5px 12px 5px 10px; font-size: 12px; white-space: nowrap;
+  font-family: inherit; color: inherit;
+}
+.firebase-chip-clickeable { cursor: pointer; }
+.firebase-chip-clickeable:hover { border-color: var(--teal); }
+.firebase-chip-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.firebase-chip-ok .firebase-chip-dot { background: var(--green); box-shadow: 0 0 6px rgba(52,211,153,0.7); }
+.firebase-chip-warn .firebase-chip-dot { background: var(--amber); box-shadow: 0 0 6px rgba(251,191,36,0.7); }
+.firebase-chip-nombre { font-weight: 600; text-transform: capitalize; }
+.firebase-chip-texto { color: var(--muted); }
+.firebase-chip-warn .firebase-chip-texto { color: var(--amber); }
+
+.subredes-gauges { display: flex; gap: 14px; margin-bottom: 18px; flex-wrap: wrap; }
+.subredes-gauges:empty { display: none; }
+.gauge-card {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  background: none; border: none; cursor: pointer; padding: 4px; font-family: inherit;
+}
+.gauge-ring-wrap { position: relative; width: 52px; height: 52px; display: flex; align-items: center; justify-content: center; }
+.gauge-ring { width: 52px; height: 52px; transform: rotate(-90deg); }
+.gauge-ring-bg { fill: none; stroke: var(--border); stroke-width: 4; }
+.gauge-ring-fg { fill: none; stroke-width: 4; stroke-linecap: round; transition: stroke-dashoffset 0.6s ease, stroke 0.3s ease; }
+.gauge-ring-fg.gauge-bien { stroke: var(--green); filter: drop-shadow(0 0 4px rgba(52,211,153,0.65)); }
+.gauge-ring-fg.gauge-alerta { stroke: var(--amber); filter: drop-shadow(0 0 4px rgba(251,191,36,0.65)); }
+.gauge-ring-fg.gauge-mal { stroke: var(--red); filter: drop-shadow(0 0 4px rgba(248,113,113,0.65)); }
+.gauge-ring-valor { position: absolute; font-size: 12px; font-weight: 700; color: var(--text); }
+.gauge-label { font-size: 11px; color: var(--text); max-width: 100px; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gauge-sub { font-size: 10px; color: var(--muted); }
+.gauge-card:hover .gauge-ring-wrap { filter: brightness(1.15); }
+.gauge-card.gauge-activo .gauge-ring-wrap { box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.5); border-radius: 50%; }
+.gauge-card.gauge-activo .gauge-label { color: var(--blue); }
+
+.summary { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 18px;
+  min-width: 120px;
+  display: flex;
+  flex-direction: column;
+}
+.card .num { font-size: 24px; font-weight: 600; }
+.card .label { color: var(--muted); font-size: 12px; }
+.card.confirmado .num { color: var(--green); }
+.card.descartado .num { color: var(--red); }
+.card.pendiente .num { color: var(--amber); }
+
+table { width: 100%; border-collapse: collapse; background: var(--panel); border-radius: 10px; overflow: hidden; }
+th, td { padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 13px; text-align: left; }
+th { color: var(--muted); font-weight: 500; text-transform: uppercase; font-size: 11px; letter-spacing: 0.04em; }
+tr.row-confirmado { background: rgba(52, 211, 153, 0.06); }
+tr.row-descartado { background: rgba(248, 113, 113, 0.06); opacity: 0.7; }
+
+.disp-barra-wrap { display: inline-block; width: 90px; height: 8px; border-radius: 4px; background: var(--bg); vertical-align: middle; margin-right: 8px; overflow: hidden; }
+.disp-barra { height: 100%; border-radius: 4px; }
+.disp-barra.disp-bien { background: var(--green); }
+.disp-barra.disp-alerta { background: var(--amber); }
+.disp-barra.disp-mal { background: var(--red); }
+.disp-pct { font-size: 12px; font-weight: 700; vertical-align: middle; }
+
+.port {
+  display: inline-block;
+  background: #1f2a44;
+  color: var(--blue);
+  border-radius: 4px;
+  padding: 1px 6px;
+  margin: 0 3px 3px 0;
+  font-size: 11px;
+}
+
+.badge { padding: 2px 8px; border-radius: 12px; font-size: 11px; }
+.badge-confiable { background: rgba(52, 211, 153, 0.15); color: var(--green); }
+.badge-posible_falso_positivo { background: rgba(251, 191, 36, 0.15); color: var(--amber); }
+.badge-no_confiable { background: rgba(248, 113, 113, 0.15); color: var(--red); }
+.badge-sin_respuesta { background: #2a3348; color: var(--muted); }
+
+.tag { padding: 2px 8px; border-radius: 12px; font-size: 11px; text-transform: capitalize; }
+.tag-pendiente { background: #2a3348; color: var(--muted); }
+.tag-confirmado { background: rgba(52, 211, 153, 0.15); color: var(--green); }
+.tag-descartado { background: rgba(248, 113, 113, 0.15); color: var(--red); }
+.tag-offline { background: rgba(248, 113, 113, 0.15); color: var(--red); }
+
+.tipo-badge {
+  display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 12px;
+  font-size: 11px; font-weight: 600; white-space: nowrap;
+}
+.tipo-badge-switch { background: rgba(96, 165, 250, 0.15); color: var(--blue); }
+.tipo-badge-router { background: rgba(167, 139, 250, 0.18); color: #a78bfa; }
+.tipo-badge-fortinet { background: rgba(251, 146, 60, 0.18); color: #fb923c; }
+.tipo-badge-conversor { background: rgba(45, 212, 191, 0.18); color: var(--teal); }
+.tipo-badge-modem { background: rgba(251, 191, 36, 0.18); color: var(--amber); }
+.tipo-badge-otro { background: rgba(138, 147, 168, 0.18); color: var(--muted); }
+
+.actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.actions form { display: flex; gap: 6px; }
+.btn { border: none; border-radius: 6px; padding: 5px 10px; font-size: 11px; cursor: pointer; }
+.btn-confirm { background: rgba(52, 211, 153, 0.15); color: var(--green); }
+.btn-discard { background: rgba(248, 113, 113, 0.15); color: var(--red); }
+.btn-reset { background: #2a3348; color: var(--muted); }
+.btn:hover { filter: brightness(1.2); }
+
+.empty { color: var(--muted); background: var(--panel); border: 1px dashed var(--border); padding: 20px; border-radius: 10px; }
+code { background: #2a3348; padding: 1px 6px; border-radius: 4px; }
+

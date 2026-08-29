@@ -1,0 +1,89 @@
+/* static/css/ficha-formulario.css
+   Formulario de edicion de la ficha de equipo (v2 + v17).
+   Extraido de static/style.css (lineas originales 149-230) como parte
+   del reorden -- Fase 1. El orden en que cada template carga estos archivos
+   importa: reproduce el orden en que estaban en el archivo unico original,
+   para que la cascada de CSS se comporte exactamente igual. */
+
+/* --- v2: import bar, filtros, ficha --- */
+.import-form { display: flex; align-items: center; gap: 10px; }
+.import-form select {
+  background: var(--panel); color: var(--text); border: 1px solid var(--border);
+  border-radius: 6px; padding: 6px 10px;
+}
+.btn-primary { background: rgba(96, 165, 250, 0.18); color: var(--blue); border: none; border-radius: 6px; padding: 7px 14px; cursor: pointer; font-size: 13px; }
+.btn-primary:hover { filter: brightness(1.2); }
+
+.filters { display: flex; gap: 6px; margin-bottom: 16px; }
+.filters a {
+  color: var(--muted); text-decoration: none; font-size: 13px;
+  padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border);
+}
+.filters a.active { color: var(--text); background: var(--panel); border-color: var(--blue); }
+
+.ip-link { color: var(--blue); text-decoration: none; }
+.ip-link:hover { text-decoration: underline; }
+
+.contacto-link { color: var(--teal); text-decoration: none; }
+.contacto-link:hover { text-decoration: underline; }
+.muted { color: var(--muted); }
+
+.back a { color: var(--muted); text-decoration: none; font-size: 13px; }
+.back a:hover { color: var(--text); }
+
+.deteccion-info {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px 20px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+  padding: 18px 20px; margin-bottom: 24px;
+}
+.deteccion-info .k { display: block; color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; }
+.deteccion-info .v { display: block; margin-top: 5px; font-size: 14px; }
+.estado-cambiar { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.estado-cambiar-form { display: inline-block; }
+
+/* --- v17: ficha de edicion, formulario mas prolijo --- */
+.ficha-form { display: flex; flex-direction: column; gap: 20px; margin-bottom: 8px; }
+.ficha-form fieldset {
+  position: relative; border: 1px solid var(--border); border-left: 3px solid var(--blue);
+  border-radius: 10px; padding: 20px 22px 18px;
+  background: var(--panel); display: grid; grid-template-columns: repeat(2, 1fr);
+  gap: 16px 24px; box-shadow: 0 1px 2px rgba(0,0,0,0.15);
+}
+.ficha-form legend {
+  padding: 0 10px; color: var(--text); font-size: 12px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.06em;
+}
+.ficha-form label {
+  display: flex; flex-direction: column; gap: 6px; font-size: 11px; color: var(--muted);
+  text-transform: uppercase; letter-spacing: 0.04em; min-width: 0;
+}
+.ficha-form label.full, .ficha-form .full { grid-column: 1 / -1; }
+.ficha-form label.checkbox {
+  flex-direction: row; align-items: center; gap: 8px; text-transform: none; font-size: 13px; color: var(--text);
+}
+.ficha-form fieldset legend + * { margin-top: 0; }
+.ficha-form input, .ficha-form select, .ficha-form textarea {
+  background: #0f1420; color: var(--text); border: 1px solid var(--border);
+  border-radius: 7px; padding: 8px 10px; font-size: 13px; text-transform: none;
+  transition: border-color 0.15s, box-shadow 0.15s; font-family: inherit;
+}
+.ficha-form textarea { resize: vertical; }
+.ficha-form input:focus, .ficha-form select:focus, .ficha-form textarea:focus {
+  outline: none; border-color: var(--blue); box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.15);
+}
+.ficha-form input:disabled, .ficha-form input[readonly] { color: var(--muted); }
+.ficha-form > .btn-primary { align-self: flex-start; padding: 10px 24px; font-size: 14px; font-weight: 600; }
+.ficha-form .field-hint { grid-column: 1 / -1; margin: -6px 0 2px; }
+
+/* Topologia/Gestion: campos cortos (selects chicos, checkboxes) que en 2
+   columnas dejaban un espacio en blanco enorme entre uno y otro -- en 3
+   columnas quedan mas juntos y se aprovecha el ancho del panel. */
+.ficha-form fieldset.fieldset-compacto { grid-template-columns: repeat(3, 1fr); }
+.ficha-form fieldset.fieldset-compacto label.checkbox { align-self: end; padding-bottom: 8px; }
+
+/* Los 3 checkboxes de Gestion van juntos en una sola fila (no uno por
+   columna del grid, que los deja separados con espacio de sobra entre
+   cada uno) -- este contenedor los agrupa lado a lado, ordenados. */
+.ficha-form .checkbox-row { display: flex; flex-wrap: wrap; gap: 10px 28px; }
+.ficha-form .checkbox-row label.checkbox { align-self: center; padding-bottom: 0; }
+

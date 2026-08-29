@@ -1,0 +1,17 @@
+/* static/css/topologia-acordeon.css
+   Acordeon inline para editar dispositivo/puertos en Topologia (v14).
+   Extraido de static/style.css (lineas originales 633-642) como parte
+   del reorden -- Fase 1. El orden en que cada template carga estos archivos
+   importa: reproduce el orden en que estaban en el archivo unico original,
+   para que la cascada de CSS se comporte exactamente igual. */
+
+/* --- v14: acordeon inline para editar dispositivo / puertos en Topologia --- */
+.acordeon-panel td {
+  background: #10141f; border-top: 2px solid var(--blue); border-bottom: 1px solid var(--border);
+  padding: 20px 28px 26px;
+}
+.acordeon-panel .modal-form { margin-top: 0; }
+.acordeon-panel .modal-subtitle { margin-top: 0; }
+.acordeon-form .modal-footer { margin-top: 4px; }
+.acordeon-puertos { width: 100%; }
+

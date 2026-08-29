@@ -1,0 +1,57 @@
+/* static/css/tickets.css
+   Tickets de soporte por equipo (v4).
+   Extraido de static/style.css (lineas originales 265-314) como parte
+   del reorden -- Fase 1. El orden en que cada template carga estos archivos
+   importa: reproduce el orden en que estaban en el archivo unico original,
+   para que la cascada de CSS se comporte exactamente igual. */
+
+/* --- v4: tickets de soporte --- */
+.header-row { display: flex; justify-content: space-between; align-items: flex-start; }
+.header-acciones { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.tickets-nav-link {
+  display: inline-flex; align-items: center; gap: 8px; color: var(--text); text-decoration: none;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 8px 14px; font-size: 13px;
+  white-space: nowrap; flex-shrink: 0;
+}
+.tickets-nav-link:hover { border-color: var(--blue); }
+.pill {
+  display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px;
+  padding: 0 5px; border-radius: 9px; background: var(--blue); color: #0f1420; font-size: 11px; font-weight: 700;
+}
+.pill-warn { background: var(--amber); text-decoration: none; }
+
+.card.tickets .num { color: var(--amber); }
+.card.critico .num { color: var(--red); }
+
+.prio { padding: 2px 8px; border-radius: 12px; font-size: 11px; text-transform: capitalize; }
+.prio-alta { background: rgba(248, 113, 113, 0.15); color: var(--red); }
+.prio-normal { background: rgba(96, 165, 250, 0.15); color: var(--blue); }
+.prio-baja { background: #2a3348; color: var(--muted); }
+
+.tag-ticket-abierto { background: rgba(251, 191, 36, 0.15); color: var(--amber); }
+.tag-ticket-en_progreso { background: rgba(96, 165, 250, 0.15); color: var(--blue); }
+.tag-ticket-resuelto { background: rgba(52, 211, 153, 0.15); color: var(--green); }
+
+.ticket-row-resuelto { opacity: 0.6; }
+.ticket-titulo { font-weight: 600; }
+.ticket-desc { color: var(--muted); font-size: 11px; margin-top: 2px; max-width: 320px; }
+
+.tickets-section { margin-top: 24px; }
+.tickets-section h2 { font-size: 16px; color: var(--text); margin-bottom: 12px; }
+.tickets-table { margin-bottom: 20px; }
+
+.ticket-form {
+  display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px 20px;
+}
+.ticket-form label {
+  display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); width: 220px;
+}
+.ticket-form label.full { width: 100%; }
+.ticket-form input, .ticket-form select, .ticket-form textarea {
+  background: #0f1420; color: var(--text); border: 1px solid var(--border);
+  border-radius: 6px; padding: 7px 9px; font-size: 13px;
+}
+
+.filter-sep { width: 1px; height: 20px; background: var(--border); margin: 0 4px; }
+

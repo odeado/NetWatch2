@@ -1,0 +1,15 @@
+/* static/css/ficha-identificacion.css
+   Identificacion editable (hostname/MAC manual) en la ficha (v7).
+   Extraido de static/style.css (lineas originales 342-349) como parte
+   del reorden -- Fase 1. El orden en que cada template carga estos archivos
+   importa: reproduce el orden en que estaban en el archivo unico original,
+   para que la cascada de CSS se comporte exactamente igual. */
+
+/* --- v7: identificacion editable (hostname/MAC manual) --- */
+.field-hint { width: 100%; color: var(--muted); font-size: 12px; margin: 0 0 4px; line-height: 1.5; }
+.import-resumen {
+  background: rgba(52, 211, 153, 0.1); border: 1px solid var(--green); color: var(--text);
+  border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; font-size: 13px; line-height: 1.6;
+}
+.import-resumen-error { background: rgba(248, 113, 113, 0.1); border-color: var(--red); }
+

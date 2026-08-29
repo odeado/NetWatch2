@@ -1,0 +1,24 @@
+/* static/css/admin-directorio.css
+   Administracion / directorio de responsables (v8).
+   Extraido de static/style.css (lineas originales 350-366) como parte
+   del reorden -- Fase 1. El orden en que cada template carga estos archivos
+   importa: reproduce el orden en que estaban en el archivo unico original,
+   para que la cascada de CSS se comporte exactamente igual. */
+
+/* --- v8: administracion / directorio de responsables --- */
+.nav-links { display: flex; gap: 10px; }
+.usuarios-table td { vertical-align: middle; }
+.usuarios-table td.mono { font-family: 'Courier New', monospace; font-size: 12px; color: var(--muted); }
+.usuarios-table input {
+  background: #0f1420; color: var(--text); border: 1px solid var(--border);
+  border-radius: 6px; padding: 6px 8px; font-size: 12px; width: 100%; min-width: 100px;
+}
+.usuario-toggle-form { display: inline; margin-left: 6px; }
+.usuario-row-inactivo { opacity: 0.55; }
+
+/* Fila completa resaltada al marcar el checkbox de seleccion (Inventario de
+   Equipos / Gestion de Empleados) -- antes solo se notaba en el checkbox
+   suelto, dificil de ubicar en una tabla larga con varios equipos marcados. */
+.fila-seleccionada > td { background: rgba(52, 211, 153, 0.10); }
+.fila-seleccionada:hover > td { background: rgba(52, 211, 153, 0.16); }
+

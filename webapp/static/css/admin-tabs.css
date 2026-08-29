@@ -1,0 +1,115 @@
+/* static/css/admin-tabs.css
+   Barra de tabs de Administracion (Empleados/Equipos/Parametros/Infraestructura) (v18).
+   Extraido de static/style.css (lineas originales 781-888) como parte
+   del reorden -- Fase 1. El orden en que cada template carga estos archivos
+   importa: reproduce el orden en que estaban en el archivo unico original,
+   para que la cascada de CSS se comporte exactamente igual. */
+
+/* --- v18: barra de tabs de Administracion (Empleados/Equipos/Parametros/Infraestructura) --- */
+.admin-tabs {
+  display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 22px; flex-wrap: wrap;
+}
+.admin-tabs a {
+  color: var(--muted); text-decoration: none; font-size: 13px; font-weight: 600;
+  padding: 10px 16px; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: color 0.15s, border-color 0.15s;
+}
+.admin-tabs a:hover { color: var(--text); }
+.admin-tabs a.active { color: var(--green); border-bottom-color: var(--green); }
+
+/* banners de agrupacion Ciudad/Sucursal en la tabla de Infraestructura */
+.banner-fila td { padding: 0; border: none; }
+.banner-ciudad-fila td {
+  background: linear-gradient(90deg, rgba(96,165,250,0.16), rgba(96,165,250,0.02));
+  border-top: 1px solid var(--border); border-bottom: 1px solid var(--blue);
+  padding: 10px 14px !important;
+}
+.banner-ciudad {
+  font-size: 13px; font-weight: 700; color: var(--blue); text-transform: uppercase; letter-spacing: 0.05em;
+}
+.banner-sucursal-fila td {
+  background: #171e2e; border-bottom: 1px solid var(--border); padding: 6px 14px 6px 28px !important;
+}
+.banner-sucursal { font-size: 11.5px; font-weight: 600; color: var(--muted); }
+.banner-count {
+  font-size: 10.5px; color: var(--muted); margin-left: 10px; background: rgba(255,255,255,0.06);
+  border-radius: 10px; padding: 1px 8px;
+}
+
+.admin-stats { display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+.admin-stat-chip {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 20px;
+  padding: 6px 14px; font-size: 12.5px; color: var(--muted);
+}
+.admin-stat-chip strong { color: var(--text); font-size: 14px; margin-right: 4px; }
+
+.categoria-tabs { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+.categoria-tab {
+  background: var(--panel); border: 1px solid var(--border); color: var(--muted);
+  border-radius: 20px; padding: 7px 16px; font-size: 12.5px; cursor: pointer;
+}
+.categoria-tab:hover { color: var(--text); border-color: var(--blue); }
+.categoria-tab.activa { background: var(--blue); color: #fff; border-color: var(--blue); }
+
+.admin-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
+.admin-buscador {
+  flex: 1; min-width: 240px; background: var(--panel); color: var(--text); border: 1px solid var(--border);
+  border-radius: 8px; padding: 10px 14px; font-size: 13px;
+}
+.admin-buscador:focus { outline: none; border-color: var(--blue); }
+
+.monitor-consola { margin-top: 22px; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: #05070c; }
+.consola-header {
+  display: flex; justify-content: space-between; align-items: center; padding: 8px 14px;
+  background: var(--panel); cursor: pointer; user-select: none;
+}
+.consola-titulo { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+.consola-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); display: inline-block; flex-shrink: 0; }
+.consola-dot-on { background: var(--green); box-shadow: 0 0 6px rgba(52,211,153,0.7); }
+.consola-dot-off { background: var(--red); }
+.consola-toggle { color: var(--muted); font-size: 11px; }
+.consola-body {
+  margin: 0; padding: 10px 14px; height: 160px; overflow-y: auto;
+  font-family: Consolas, "Courier New", monospace; font-size: 11.5px; line-height: 1.5;
+  color: #7ee787; white-space: pre-wrap; word-break: break-all;
+}
+
+.toast-container {
+  position: fixed; top: 18px; right: 18px; z-index: 999; display: flex; flex-direction: column; gap: 10px;
+  max-width: 320px;
+}
+.toast {
+  display: flex; align-items: flex-start; gap: 10px; background: var(--panel); border: 1px solid var(--border);
+  border-left: 4px solid var(--muted); border-radius: 8px; padding: 12px 14px; box-shadow: 0 6px 18px rgba(0,0,0,0.35);
+  opacity: 0; transform: translateX(16px); transition: opacity 0.25s, transform 0.25s; font-size: 12px;
+}
+.toast.toast-show { opacity: 1; transform: translateX(0); }
+.toast-online { border-left-color: var(--green); }
+.toast-offline { border-left-color: var(--red); }
+.toast-nuevo { border-left-color: var(--blue); }
+.toast-dot { width: 9px; height: 9px; border-radius: 50%; margin-top: 4px; flex-shrink: 0; }
+.toast-online .toast-dot { background: var(--green); }
+.toast-offline .toast-dot { background: var(--red); }
+.toast-nuevo .toast-dot { background: var(--blue); }
+.toast-clickeable { cursor: pointer; }
+.toast-clickeable:hover { border-color: var(--blue); }
+.toast-sub { color: var(--muted); }
+.toast-texto { flex: 1; min-width: 0; }
+.toast-critico {
+  border-left-color: var(--red); border-color: rgba(248, 113, 113, 0.5);
+  background: rgba(248, 113, 113, 0.08); box-shadow: 0 6px 18px rgba(248, 113, 113, 0.25);
+  animation: toast-critico-pulso 2s ease-in-out infinite;
+}
+@keyframes toast-critico-pulso {
+  0%, 100% { box-shadow: 0 6px 18px rgba(248, 113, 113, 0.25); }
+  50% { box-shadow: 0 6px 22px rgba(248, 113, 113, 0.5); }
+}
+.toast-tag-critico {
+  display: inline-block; background: var(--red); color: #1a0d0d; font-size: 10px; font-weight: 700;
+  letter-spacing: 0.04em; padding: 1px 6px; border-radius: 10px; margin-bottom: 4px;
+}
+.toast-cerrar {
+  background: none; border: none; color: var(--muted); font-size: 16px; line-height: 1; cursor: pointer;
+  padding: 0 2px; flex-shrink: 0; align-self: flex-start;
+}
+.toast-cerrar:hover { color: var(--text); }
+
