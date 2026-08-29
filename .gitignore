@@ -46,3 +46,14 @@ scanner/python-3.8.10-amd64.exe
 
 # Estado local del puente de toasts a la pantalla chica (ver tools/toast_pantalla1.py)
 tools/toast_pantalla1_estado.json
+
+# Logs en runtime -- cambian en cada ejecucion, no aportan nada al historial
+scanner/monitor_error.log
+webapp/monitor.log
+webapp/web_error.log
+webapp/web_stdout.log
+*.log
+
+# Backups puntuales de la base de datos -- mismo motivo que netwatch.db
+# (datos de empleados), se generan localmente antes de cambios grandes
+webapp/netwatch_backup_*.db
