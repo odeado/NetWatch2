@@ -57,3 +57,7 @@ webapp/web_stdout.log
 # Backups puntuales de la base de datos -- mismo motivo que netwatch.db
 # (datos de empleados), se generan localmente antes de cambios grandes
 webapp/netwatch_backup_*.db
+
+# Config local de Claude Code en esta PC (permisos, no hay nada sensible,
+# pero es config de la maquina, no del proyecto -- no tiene sentido en git)
+.claude/
