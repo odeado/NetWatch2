@@ -23,6 +23,9 @@ import ipaddress
 import json
 import re
 import subprocess
+import threading
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 import firebase_sync
@@ -236,7 +239,7 @@ def apagar_equipos(equipos):
     return ejecutar_comando_equipos(equipos, "apagar")
 
 
-def encolar_comandos_equipos(equipos, accion, aviso_segundos=60, mensaje=None):
+def encolar_comandos_equipos(equipos, accion, aviso_segundos=60, mensaje=None, on_progreso=None):
     """Version nueva (via agente/Firebase, ver docstring del modulo) del
     mismo lote que ejecutar_comando_equipos hacia arriba. No hay concepto de
     "fuera de alcance" aca -- Firebase se puede leer desde cualquier red con
@@ -260,4 +263,138 @@ def encolar_comandos_equipos(equipos, accion, aviso_segundos=60, mensaje=None):
         else:
             resumen["fallidos"].append({"id": e["id"], "ip": ip, "motivo": detalle})
             print(f"[apagado_remoto] no se pudo encolar {accion} en {ip} (equipo id {e['id']}): {detalle}")
+        if on_progreso:
+            on_progreso(e, ok, detalle if not ok else None)
     return resumen
+
+
+# --- estado compartido para la barra de progreso ---------------------------
+# Mismo patron que firebase_sync._estado/obtener_estado: cada equipo se
+# encola con UNA llamada HTTP a Firebase (ver encolar_comando_equipo), y esa
+# llamada puede demorar unos cientos de ms -- con pocos equipos no se nota,
+# pero con un lote grande el navegador se quedaba pegado varios segundos
+# sin ningun aviso de que seguia trabajando. Andres pidio ver el avance en
+# vivo (2026-08-24), asi que el encolado ahora corre en un hilo aparte y la
+# pagina hace poll a /admin/equipos/apagar_masivo/estado mientras tanto.
+#
+# Ademas hay una FASE 2 despues de encolar: "confirmando". Andres pregunto
+# el mismo dia como saber si el equipo de verdad se reinicio, y con razon --
+# hasta ahora "encolado" solo decia que la orden llego a Firebase, no que
+# alguna PC la haya ejecutado. El agente (netwatch_agente.ps1, paso 3) BORRA
+# el nodo comandos_equipo/{ip} apenas la ejecuta, exitosa o no -- asi que si
+# ese nodo desaparece, es la mejor senal disponible de "un agente la recogio
+# y corrio". Se revisa cada pocos segundos con un plazo maximo fijo (no se
+# queda esperando para siempre): pasado ese plazo, lo que no se confirmo
+# probablemente sea una PC sin el agente instalado o apagada.
+#
+# Y una FASE 3, solo para "reiniciar": "esperando_vuelta". Andres hizo notar
+# que un reinicio real dura menos que el intervalo del scanner (60-120s), asi
+# que el panel de "Ultimos cambios" casi nunca alcanza a pillar el "Paso a
+# offline" de un reinicio rapido -- el scanner directamente se lo salta. El
+# agente si sirve para esto: apenas Windows termina de bootear, la tarea
+# programada vuelve a correr (cada 1 min) y deja un heartbeat fresco en
+# agentes_estado/{ip} (ver firebase_sync.leer_agentes_estado). Si ese
+# heartbeat es MAS NUEVO que el momento en que se confirmo la ejecucion, es
+# una senal directa de "esta PC ya termino de reiniciar y esta de vuelta",
+# sin depender para nada del ciclo del scanner. Tambien tiene plazo maximo
+# (el boot + el primer ciclo del agente puede tardar unos minutos).
+_estado_lock = threading.Lock()
+_estado = {
+    "corriendo": False, "fase": "inactivo", "total": 0, "procesados": 0,
+    "total_confirmar": 0, "confirmados": 0, "total_volver": 0, "vueltos": 0,
+    "accion": None, "resumen": None,
+}
+
+CONFIRMAR_TIMEOUT_SEG = 90
+CONFIRMAR_INTERVALO_SEG = 4
+VOLVER_TIMEOUT_SEG = 8 * 60
+VOLVER_INTERVALO_SEG = 10
+
+
+def _parse_utc_agente(iso):
+    """El agente escribe visto_en como 'yyyy-MM-ddTHH:mm:ssZ' (UTC, con Z
+    literal) -- datetime.fromisoformat de Python 3.10 no acepta ese sufijo
+    directo, asi que se cambia por +00:00 antes de parsear."""
+    if not iso:
+        return None
+    try:
+        return datetime.fromisoformat(iso.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def obtener_estado_encolado():
+    with _estado_lock:
+        return dict(_estado)
+
+
+def iniciar_encolado_async(equipos, accion, aviso_segundos=60, mensaje=None):
+    """Arranca el encolado (y despues la confirmacion) en un hilo aparte.
+    Devuelve False si ya habia uno corriendo (para no mezclar dos lotes a
+    la vez)."""
+    with _estado_lock:
+        if _estado["corriendo"]:
+            return False
+        _estado.update(corriendo=True, fase="encolando", total=len(equipos), procesados=0,
+                        total_confirmar=0, confirmados=0, total_volver=0, vueltos=0,
+                        accion=accion, resumen=None)
+
+    def _avance(equipo, ok, motivo):
+        with _estado_lock:
+            _estado["procesados"] += 1
+
+    def _en_hilo():
+        resumen = encolar_comandos_equipos(equipos, accion, aviso_segundos, mensaje, on_progreso=_avance)
+
+        ips_por_confirmar = [e["ip"] for e in resumen["ok"]]
+        with _estado_lock:
+            _estado.update(fase="confirmando", total_confirmar=len(ips_por_confirmar), confirmados=0)
+
+        confirmados = set()
+        confirmado_en = {}  # ip -> momento (UTC) en que se detecto la ejecucion
+        intentos = max(1, int(CONFIRMAR_TIMEOUT_SEG // CONFIRMAR_INTERVALO_SEG))
+        for _ in range(intentos):
+            if ips_por_confirmar and len(confirmados) >= len(ips_por_confirmar):
+                break
+            time.sleep(CONFIRMAR_INTERVALO_SEG)
+            pendientes = firebase_sync.leer_comandos_pendientes()
+            claves_pendientes = set(pendientes.keys())
+            for ip in ips_por_confirmar:
+                if ip not in confirmados and ip.replace(".", "_") not in claves_pendientes:
+                    confirmados.add(ip)
+                    confirmado_en[ip] = datetime.now(timezone.utc)
+            with _estado_lock:
+                _estado["confirmados"] = len(confirmados)
+
+        resumen["confirmados"] = sorted(confirmados)
+        resumen["sin_confirmar"] = sorted(set(ips_por_confirmar) - confirmados)
+
+        # Fase 3, solo tiene sentido para "reiniciar" -- un equipo apagado
+        # no vuelve solo, asi que esperar a que "vuelva" no aplica.
+        vueltos = set()
+        if accion == "reiniciar" and confirmados:
+            with _estado_lock:
+                _estado.update(fase="esperando_vuelta", total_volver=len(confirmados), vueltos=0)
+            intentos_volver = max(1, int(VOLVER_TIMEOUT_SEG // VOLVER_INTERVALO_SEG))
+            for _ in range(intentos_volver):
+                if len(vueltos) >= len(confirmados):
+                    break
+                time.sleep(VOLVER_INTERVALO_SEG)
+                agentes = firebase_sync.leer_agentes_estado()
+                for ip in confirmados:
+                    if ip in vueltos:
+                        continue
+                    info = agentes.get(ip)
+                    visto = _parse_utc_agente(info.get("visto_en")) if info else None
+                    if visto and visto > confirmado_en[ip]:
+                        vueltos.add(ip)
+                with _estado_lock:
+                    _estado["vueltos"] = len(vueltos)
+            resumen["vueltos"] = sorted(vueltos)
+            resumen["sin_volver"] = sorted(confirmados - vueltos)
+
+        with _estado_lock:
+            _estado.update(corriendo=False, fase="listo", resumen=resumen)
+
+    threading.Thread(target=_en_hilo, daemon=True).start()
+    return True

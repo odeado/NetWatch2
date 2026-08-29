@@ -493,6 +493,19 @@ def list_equipos_basico():
         return [dict(r) for r in rows]
 
 
+def list_equipos_estado_vivo():
+    """Version liviana de list_equipos(), solo con lo que necesita el poll
+    en vivo de Inventario de Equipos (columnas Estado Red + Agente): sin
+    puertos abiertos, tickets, ni el resto de los campos de la ficha. Se usa
+    para actualizar esas dos columnas cada pocos segundos sin recargar la
+    pagina -- Andres lo pidio despues de notar que, al reiniciar un equipo,
+    quedaba "en duda" varios minutos sin saber si de verdad ya volvio hasta
+    que refrescaba la pagina a mano."""
+    with conexion() as conn:
+        rows = conn.execute("SELECT id, ip, en_linea, origen FROM equipos").fetchall()
+        return [dict(r) for r in rows]
+
+
 def set_responsable_equipo(equipo_id, usuario_id):
     """Asigna (o quita, si usuario_id es None) el responsable de un equipo,
     copiando tambien nombre/correo para mostrarlos sin necesitar join."""

@@ -324,10 +324,14 @@ def _render_panel_editar_equipo(equipo_id, error=None, ip_conflicto_id=None, ip_
     usuarios = db.list_usuarios(solo_activos=True)
     dispositivos = db.list_dispositivos()
     ip_conflicto = db.get_equipo(ip_conflicto_id) if ip_conflicto_id else None
+    # Tickets de soporte: Andres pidio (2026-08-25) poder crear un ticket sin
+    # salir de la pantalla frontal, igual que ya se podia desde Ficha completa
+    # -- por eso el panel necesita la lista igual que ficha().
+    tickets = db.list_tickets_for_equipo(equipo_id)
     return render_template(
         "_panel_editar_equipo.html", e=equipo, usuarios=usuarios, dispositivos=dispositivos,
         categorias_equipo=db.CATEGORIAS_EQUIPO, error=error,
-        ip_conflicto=ip_conflicto, ip_nueva=ip_nueva,
+        ip_conflicto=ip_conflicto, ip_nueva=ip_nueva, tickets=tickets,
     )
 
 
@@ -422,13 +426,22 @@ def ficha(equipo_id):
         # inline de Gestion de Equipos, vuelve ahi en vez de mandar a la ficha
         # completa (asi no se sale de Inventario de Equipos y puede seguir
         # editando el siguiente equipo de la lista sin perder el lugar).
+        # OJO -- 2026-08-27: el caso sin error mandaba a admin.admin_equipos
+        # SIN equipo_id, o sea que al guardar se perdia la fila (volvia
+        # cerrada y la pagina aterrizaba arriba de todo) -- justo lo
+        # contrario de "seguir editando el siguiente sin perder el lugar".
+        # Ahora se manda igual el equipo_id: error_equipo_id lo reabre solo
+        # (mismo mecanismo que ya existia para el choque de IP) y el JS de
+        # abajo hace scroll hasta ahi. Tambien se corrigio el endpoint del
+        # caso con error, que apuntaba a "admin_equipos" sin el prefijo del
+        # blueprint ("admin.admin_equipos") y tiraba BuildError.
         if request.form.get("origen") == "inventario":
             if ip_error:
                 return redirect(url_for(
-                    "admin_equipos", error=ip_error, equipo_id=equipo_id,
+                    "admin.admin_equipos", error=ip_error, equipo_id=equipo_id,
                     ip_nueva=nueva_ip, ip_conflicto_id=ip_conflicto_id,
                 ))
-            return redirect(url_for("admin.admin_equipos"))
+            return redirect(url_for("admin.admin_equipos", equipo_id=equipo_id))
         if ip_error:
             return redirect(url_for(
                 "ficha", equipo_id=equipo_id, error=ip_error,

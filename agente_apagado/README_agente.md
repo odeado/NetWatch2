@@ -88,3 +88,60 @@ o avisame y te dejo una version que lea directo desde la red.
    Programador de tareas -> pestana Historial de esa tarea, para ver el
    error exacto (config faltante, error de autenticacion contra Firebase,
    etc).
+
+## Checklist de diagnostico (comandos, por PC, en orden)
+
+Corre esto por RDP en la PC de prueba, desde una consola (CMD o
+PowerShell) **como administrador**, parado en la carpeta del agente
+(ej. `cd C:\NetWatchAgente`):
+
+1. **La tarea existe y como le fue la ultima vez:**
+   ```
+   schtasks /query /tn "NetWatch Agente Apagado" /v /fo list
+   ```
+   Mira "Last Run Time" y "Last Result" (0 = OK, cualquier otro numero =
+   fallo esa corrida).
+
+2. **Forzarla a correr ahora** (no esperar el minuto):
+   ```
+   schtasks /run /tn "NetWatch Agente Apagado"
+   ```
+
+3. **Ver el log** (aca queda el detalle real de cada corrida):
+   ```
+   type netwatch_agente.log
+   ```
+
+4. **Correr el script a mano** (el mas util si el log no dice nada o si
+   `schtasks`/`shutdown` no se reconocen al tipearlos sueltos -- pasa en
+   PCs donde el PATH del sistema no incluye `System32`, ver mas abajo):
+   ```
+   powershell -ExecutionPolicy Bypass -File "netwatch_agente.ps1"
+   ```
+
+### Errores conocidos y que significan
+
+- **`no se pudo activar TLS 1.2` / `"3072" al tipo "SecurityProtocolType"`**
+  -- la PC no tiene .NET Framework 4.5+ instalado (Windows 7 "de fabrica"
+  solo trae 3.5). Instala `ndp472-kb4054531-web.exe` (incluido en esta
+  carpeta) y reinicia la PC. Si tambien falla `Add-Type -AssemblyName
+  System.Web.Extensions`, instala antes el parche `Win7...KB3191566...`
+  (tambien incluido) -- ese es el que trae TLS 1.2 a nivel de sistema
+  operativo, no solo a nivel de .NET.
+
+- **`'schtasks' / 'shutdown.exe' is not recognized...`** al escribirlos
+  sueltos en una consola -- el PATH de esa PC no incluye `System32`
+  (raro, pero pasa en imagenes de Windows modificadas). No afecta al
+  agente en si (desde 2026-08-25 llama a `shutdown.exe` por su ruta
+  completa), pero si te pasa a ti al probar algo a mano, usa la ruta
+  completa: `C:\Windows\System32\schtasks.exe`.
+
+- **`QUOTA_EXCEEDED : Exceeded quota for verifying passwords`** -- bug
+  real encontrado el 2026-08-25: versiones viejas del agente pedian
+  clave a Firebase EN CADA CORRIDA (cada 1 min), y eso agota la cuota de
+  login de Firebase con pocas PCs. Arreglado desde esa fecha: el agente
+  ahora guarda un `agente_token_cache.json` junto al script y solo pide
+  clave de nuevo si ese cache no existe o vencio. Si ves este error,
+  asegurate de tener la version mas nueva de `netwatch_agente.ps1`
+  (busca la funcion `Guardar-Cache` en el archivo -- si no esta, es una
+  version vieja, reemplazala).

@@ -598,6 +598,47 @@ def _clave_ip(ip):
     return (ip or "").replace(".", "_")
 
 
+def leer_agentes_estado():
+    """Lee el nodo 'agentes_estado' completo -- cada PC con el agente de
+    apagado/reinicio instalado (netwatch_agente.ps1) escribe ahi su propio
+    heartbeat cada vez que corre la tarea programada (cada 1 min), con su
+    IP, hostname y hora UTC de la ultima pasada. Se usa para mostrar en
+    Gestion de Empleados quien ya tiene el agente puesto. Devuelve un dict
+    {ip: {"ip", "hostname", "visto_en"}} o {} si no hay config/internet/
+    nadie ha reportado todavia -- nunca lanza excepcion (se llama en cada
+    carga de la pagina de Administracion)."""
+    try:
+        cfg = _cargar_config()
+        id_token = _iniciar_sesion(cfg)
+        data = _leer_nodo(cfg, "agentes_estado", id_token)
+    except FirebaseConfigError:
+        return {}
+    if not data:
+        return {}
+    # las claves vienen saneadas (172_30_100_55) -- se reindexa por la IP
+    # real (que cada registro ya trae adentro) para que el caller pueda
+    # buscar directo por equipo["ip"] sin tener que sanear de vuelta.
+    return {v["ip"]: v for v in data.values() if isinstance(v, dict) and v.get("ip")}
+
+
+def leer_comandos_pendientes():
+    """Lee el nodo 'comandos_equipo' completo (claves ya saneadas, ej.
+    172_30_100_55). El agente BORRA su propia orden justo despues de
+    ejecutarla, exitosa o no (ver netwatch_agente.ps1, paso 3) -- asi que si
+    una clave sigue presente aca, todavia nadie la ha recogido. Se usa desde
+    apagado_remoto.iniciar_encolado_async para confirmar que el apagado/
+    reinicio encolado de verdad se ejecuto en algun agente, en vez de
+    quedarse solo con "se dejo encolado" sin saber si paso algo. Nunca
+    lanza excepcion; devuelve {} si no hay config/internet/nada pendiente."""
+    try:
+        cfg = _cargar_config()
+        id_token = _iniciar_sesion(cfg)
+        data = _leer_nodo(cfg, "comandos_equipo", id_token)
+    except FirebaseConfigError:
+        return {}
+    return data or {}
+
+
 def encolar_comando_equipo(ip, accion, aviso_segundos=60, mensaje=None):
     """Deja una orden de apagado/reinicio pendiente en Firebase para que el
     agente que corre en la propia PC (tarea programada via GPO, ver

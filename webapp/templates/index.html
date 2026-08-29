@@ -467,6 +467,38 @@ function netwatchInicializarPanelForm(id) {
   if (form) form.addEventListener('submit', function (ev) { netwatchGuardarPanelEdicion(ev, id); });
   const formFusion = form ? form.parentElement.querySelector('[id^="form-fusion-"]') : null;
   if (formFusion) formFusion.addEventListener('submit', function (ev) { netwatchGuardarFusionPanel(ev, id); });
+
+  // Tickets de soporte dentro del panel: crear ticket nuevo y cambiar el
+  // estado de uno existente tampoco deben navegar a Ficha completa -- se
+  // intercepta igual que el formulario principal de arriba.
+  const formTicket = document.getElementById('form-panel-crear-ticket');
+  if (formTicket) formTicket.addEventListener('submit', function (ev) { netwatchGuardarPanelAjax(ev, id); });
+  document.querySelectorAll('.panel-ticket-acciones').forEach(function (formEstado) {
+    formEstado.addEventListener('submit', function (ev) { netwatchGuardarPanelAjax(ev, id); });
+  });
+}
+
+// Generico para cualquier formulario secundario del panel (crear ticket,
+// cambiar estado de un ticket) que solo necesita refrescar el fragmento del
+// panel con el resultado, sin cerrar el drawer como si fuera "Guardar
+// cambios" del equipo.
+async function netwatchGuardarPanelAjax(ev, id) {
+  ev.preventDefault();
+  const form = ev.target;
+  const contenido = document.getElementById('panel-editar-contenido');
+  try {
+    const res = await fetch(form.action, {
+      method: 'POST',
+      headers: { 'X-Requested-With': 'XMLHttpRequest' },
+      body: new FormData(form),
+    });
+    contenido.innerHTML = await res.text();
+    netwatchInicializarPanelForm(id);
+    netwatchPoll(); // refresca el badge de tickets abiertos en la tarjeta
+  } catch (err) {
+    // red caida momentaneamente: se deja el panel tal cual para reintentar
+  }
+  return false;
 }
 
 async function netwatchGuardarPanelEdicion(ev, id) {

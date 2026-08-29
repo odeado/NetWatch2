@@ -49,7 +49,20 @@
 {% if resumen_apagado %}
 <div class="import-resumen {{ 'import-resumen-error' if resumen_apagado.ok == 0 else '' }}">
   <strong>{{ 'Reinicio remoto' if resumen_apagado.accion == 'reiniciar' else 'Apagado remoto' }}:</strong>
-  {{ resumen_apagado.ok }} equipo(s) con {{ 'reinicio' if resumen_apagado.accion == 'reiniciar' else 'apagado' }} encolado (se ejecuta cuando el agente de esa PC consulte, hasta ~30s){% if resumen_apagado.fallo %}, {{ resumen_apagado.fallo }} fallaron al encolar (revisa la conexion con Firebase){% endif %}.
+  {{ resumen_apagado.ok }} equipo(s) con {{ 'reinicio' if resumen_apagado.accion == 'reiniciar' else 'apagado' }} encolado{% if resumen_apagado.fallo %}, {{ resumen_apagado.fallo }} fallaron al encolar (revisa la conexion con Firebase){% endif %}.
+  {% if resumen_apagado.ok > 0 %}
+  <br>
+  {% if resumen_apagado.confirmados > 0 %}<span style="color: var(--green)">{{ resumen_apagado.confirmados }} confirmado(s): un agente recogio la orden y la ejecuto.</span>{% endif %}
+  {% if resumen_apagado.sin_confirmar > 0 %}
+  <span class="muted">{{ resumen_apagado.sin_confirmar }} sin confirmar despues de 90s de espera -- probablemente esa PC no tiene el agente instalado (ver columna "Agente" mas abajo) o esta apagada. La orden queda encolada igual por si acaso.</span>
+  {% endif %}
+  {% if resumen_apagado.accion == 'reiniciar' %}
+  {% if resumen_apagado.vueltos > 0 %}<br><span style="color: var(--teal, #2dd4bf)">{{ resumen_apagado.vueltos }} ya volvieron a conectarse despues de reiniciar.</span>{% endif %}
+  {% if resumen_apagado.sin_volver > 0 %}
+  <br><span class="muted">{{ resumen_apagado.sin_volver }} no avisaron de vuelta despues de 8 min -- puede que todavia esten booteando (Windows a veces demora mas por actualizaciones) o algo se trabo. Revisa esa PC si sigue sin aparecer online en un rato mas.</span>
+  {% endif %}
+  {% endif %}
+  {% endif %}
   {% if resumen_apagado.detalle %}<br><span class="muted">Detalle del primer fallo: {{ resumen_apagado.detalle }}</span>{% endif %}
 </div>
 {% endif %}
@@ -129,26 +142,51 @@
 <div class="import-resumen" id="barra-seleccion" style="display:none; align-items:center; justify-content:space-between; gap:12px;">
   <span id="contador-seleccion">0 seleccionados</span>
   <div style="display:flex; gap:8px;">
-    <form id="form-reiniciar-masivo" method="post" action="{{ url_for('admin.apagar_equipos_masivo') }}"
-          onsubmit="return netwatchConfirmarApagado(event, 'reiniciar')">
-      <input type="hidden" name="accion" value="reiniciar">
-      <button type="submit" class="btn btn-ghost"
-              title="Reinicia (no apaga) -- util para probar que el agente NetWatch de esa PC esta funcionando, sin dejar un equipo apagado si algo sale mal.">
-        Reiniciar seleccionados
-      </button>
-    </form>
-    <form id="form-apagar-masivo" method="post" action="{{ url_for('admin.apagar_equipos_masivo') }}"
-          onsubmit="return netwatchConfirmarApagado(event, 'apagar')">
-      <input type="hidden" name="accion" value="apagar">
-      <button type="submit" class="btn btn-dark" style="background:#7a2e2e; border-color:#a13d3d;"
-              title="Solo hace algo en las PCs que ya tengan instalado el agente NetWatch. En el resto queda encolado sin efecto.">
-        Apagar seleccionados
-      </button>
-    </form>
+    <button type="button" class="btn btn-ghost" onclick="netwatchAbrirConfirmarApagado('reiniciar')"
+            title="Reinicia (no apaga) -- util para probar que el agente NetWatch de esa PC esta funcionando, sin dejar un equipo apagado si algo sale mal.">
+      Reiniciar seleccionados
+    </button>
+    <button type="button" class="btn btn-dark" style="background:#7a2e2e; border-color:#a13d3d;" onclick="netwatchAbrirConfirmarApagado('apagar')"
+            title="Solo hace algo en las PCs que ya tengan instalado el agente NetWatch. En el resto queda encolado sin efecto.">
+      Apagar seleccionados
+    </button>
     <form id="form-eliminar-masivo" method="post" action="{{ url_for('admin.eliminar_equipos_masivo') }}"
           onsubmit="return confirm('Eliminar ' + document.querySelectorAll('.equipo-check:checked').length + ' equipo(s) del inventario? Esta accion no se puede deshacer.')">
       <button type="submit" class="btn btn-dark">Eliminar seleccionados</button>
     </form>
+  </div>
+</div>
+
+<div class="import-resumen" id="barra-apagado-progreso" style="display:none;">
+  <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
+    <span id="apagado-progreso-texto">Encolando...</span>
+  </div>
+  <div style="background:#0f1420; border-radius:6px; height:8px; overflow:hidden;">
+    <div id="apagado-progreso-fill" style="background:var(--blue); height:100%; width:0%; transition: width 0.25s;"></div>
+  </div>
+</div>
+
+<!-- Modal: confirmar apagado/reinicio masivo, con la lista scrolleable de
+     equipos afectados -- antes era un confirm() nativo de una sola linea,
+     que con lotes grandes de equipos se volvia un bloque de texto ilegible
+     sin poder revisar cuales quedaron marcados. -->
+<div class="modal-overlay" id="modal-confirmar-apagado" onclick="if(event.target===this) netwatchCerrarConfirmarApagado()">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3 id="confirmar-apagado-titulo">Confirmar accion</h3>
+      <button type="button" class="modal-close" onclick="netwatchCerrarConfirmarApagado()">&times;</button>
+    </div>
+    <div style="padding: 4px 24px 20px;">
+      <p id="confirmar-apagado-texto" class="muted"></p>
+      <div class="table-scroll" style="max-height: 280px; overflow-y: auto; border: 1px solid #2a3348; border-radius: 8px; margin: 12px 0;">
+        <ul id="confirmar-apagado-lista" style="list-style:none; margin:0; padding:6px 4px;"></ul>
+      </div>
+      <p class="muted" id="confirmar-apagado-nota" style="font-size:12px;"></p>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-reset" onclick="netwatchCerrarConfirmarApagado()">Cancelar</button>
+        <button type="button" class="btn btn-primary" id="confirmar-apagado-btn">Continuar</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -168,7 +206,9 @@
       <th id="th-ram" style="cursor:pointer; user-select:none;" onclick="netwatchOrdenarPorRam()" title="Click para ordenar por memoria RAM">RAM &#8597;</th>
       <th>Responsable</th>
       <th>Ubicacion</th>
+      <th>Departamento</th>
       <th>Estado Red</th>
+      <th>Agente</th>
       <th>Deteccion</th>
       <th>Agregado</th>
       <th>Acciones</th>
@@ -176,7 +216,7 @@
   </thead>
   <tbody>
     {% for e in equipos %}
-    <tr data-buscar="{{ ((e.hostname or '') ~ ' ' ~ e.ip ~ ' ' ~ (e.marca or '') ~ ' ' ~ (e.modelo or '') ~ ' ' ~ (e.numero_serie or '') ~ ' ' ~ (e.responsable or '') ~ ' ' ~ (e.ubicacion or '') ~ ' ' ~ (e.categoria or '') ~ ' ' ~ (e.estado_deteccion or '') ~ ' ' ~ (e.ram or '') ~ ' ' ~ ('online' if e.en_linea else 'offline')) | lower }}"
+    <tr data-id="{{ e.id }}" data-buscar="{{ ((e.hostname or '') ~ ' ' ~ e.ip ~ ' ' ~ (e.marca or '') ~ ' ' ~ (e.modelo or '') ~ ' ' ~ (e.numero_serie or '') ~ ' ' ~ (e.responsable or '') ~ ' ' ~ (e.ubicacion or '') ~ ' ' ~ (e.departamento or '') ~ ' ' ~ (e.categoria or '') ~ ' ' ~ (e.estado_deteccion or '') ~ ' ' ~ (e.ram or '') ~ ' ' ~ ('online' if e.en_linea else 'offline')) | lower }}"
         data-categoria="{{ e.categoria or '' }}" data-ram="{{ e.ram or '' }}">
       <td>
         <input type="checkbox" class="equipo-check" name="equipo_ids" value="{{ e.id }}"
@@ -196,13 +236,15 @@
         {% endif %}
       </td>
       <td>{{ e.ubicacion or '-' }}</td>
-      <td>
+      <td>{{ e.departamento or '-' }}</td>
+      <td class="estado-red-cell" data-origen="{{ e.origen or '' }}">
         {% if e.origen == 'manual' %}
         <span class="tag" style="background:#2a3348;color:var(--blue)">Sin monitoreo</span>
         {% else %}
         <span class="tag {{ 'tag-confirmado' if e.en_linea else 'tag-descartado' }}"><span class="dot {{ 'dot-on' if e.en_linea else 'dot-off' }}"></span> {{ 'Online' if e.en_linea else 'Offline' }}</span>
         {% endif %}
       </td>
+      <td class="agente-cell" data-visto="{{ e.agente_visto_en or '' }}" title="Agente de apagado/reinicio remoto (ver Editar equipo &gt; Apagar/Reiniciar)"><span class="muted">-</span></td>
       <td><span class="tag tag-{{ e.estado_deteccion }}">{{ e.estado_deteccion }}</span></td>
       <td>
         {% if e.primera_deteccion %}
@@ -217,13 +259,13 @@
       </td>
     </tr>
     <tr class="acordeon-panel" id="panel-equipo-{{ e.id }}" style="display:{{ 'table-row' if error_equipo_id == e.id else 'none' }}">
-      <td colspan="13">
+      <td colspan="15">
         <form method="post" action="{{ url_for('ficha', equipo_id=e.id) }}" class="modal-form acordeon-form ficha-form" enctype="multipart/form-data">
           <input type="hidden" name="origen" value="inventario">
           {% if error_equipo_id == e.id %}
-          {{ m.campos_equipo(e, usuarios, dispositivos, categorias_equipo, error, ip_conflicto, ip_nueva, 'inventario') }}
+          {{ m.campos_equipo(e, usuarios, dispositivos, categorias_equipo, error, ip_conflicto, ip_nueva, 'inventario', mostrar_estado_ciclo_vida=False) }}
           {% else %}
-          {{ m.campos_equipo(e, usuarios, dispositivos, categorias_equipo) }}
+          {{ m.campos_equipo(e, usuarios, dispositivos, categorias_equipo, mostrar_estado_ciclo_vida=False) }}
           {% endif %}
           <div class="modal-footer">
             <button type="button" class="btn btn-reset" onclick="netwatchToggleAcordeon('equipo-{{ e.id }}')">Cancelar</button>
@@ -235,6 +277,71 @@
              _macros_equipo.html sobre por que no puede ir anidado. #}
           {{ m.fusion_equipo(e, ip_nueva, 'inventario') }}
         {% endif %}
+
+        {# Tickets de soporte -- antes solo se podian crear desde Ficha
+           completa, Andres pidio (2026-08-27) tenerlo tambien aca para no
+           tener que salir de Inventario de Equipos. Igual que fusion_equipo,
+           van FUERA del <form> grande de arriba (forms anidados rompen el
+           envio del de afuera). #}
+        {% set tickets_equipo = tickets_por_equipo.get(e.id, []) %}
+        <section class="tickets-section">
+          <h3>Tickets de soporte</h3>
+          {% if not tickets_equipo %}
+            <p class="empty small">Todavia no hay tickets para este equipo.</p>
+          {% else %}
+          <div class="table-scroll">
+          <table class="tickets-table">
+            <thead>
+              <tr>
+                <th>Prioridad</th>
+                <th>Titulo</th>
+                <th>Asignado a</th>
+                <th>Estado</th>
+                <th>Creado</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for t in tickets_equipo %}
+              <tr class="ticket-row-{{ t.estado }}">
+                <td><span class="prio prio-{{ t.prioridad }}">{{ t.prioridad }}</span></td>
+                <td>
+                  <div class="ticket-titulo">{{ t.titulo }}</div>
+                  {% if t.descripcion %}<div class="ticket-desc">{{ t.descripcion }}</div>{% endif %}
+                </td>
+                <td>{{ t.asignado_a or '-' }}</td>
+                <td><span class="tag tag-ticket-{{ t.estado }}">{{ t.estado.replace('_', ' ') }}</span></td>
+                <td class="muted">{{ t.creado_en[:16] if t.creado_en else '-' }}</td>
+                <td class="actions">
+                  <form method="post" action="{{ url_for('tickets.ticket_estado', ticket_id=t.id) }}">
+                    <input type="hidden" name="equipo_id" value="{{ e.id }}">
+                    <input type="hidden" name="origen" value="inventario">
+                    {% if t.estado != 'abierto' %}<button name="estado" value="abierto" class="btn btn-reset">Abierto</button>{% endif %}
+                    {% if t.estado != 'en_progreso' %}<button name="estado" value="en_progreso" class="btn btn-confirm">En progreso</button>{% endif %}
+                    {% if t.estado != 'resuelto' %}<button name="estado" value="resuelto" class="btn btn-discard">Resolver</button>{% endif %}
+                  </form>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          </div>
+          {% endif %}
+          <form method="post" action="{{ url_for('tickets.create_ticket', equipo_id=e.id) }}" class="ticket-form">
+            <input type="hidden" name="origen" value="inventario">
+            <label class="full">Titulo <input type="text" name="titulo" required placeholder="Ej: Pantalla azul recurrente"></label>
+            <label class="full">Descripcion <textarea name="descripcion" rows="2"></textarea></label>
+            <label>Prioridad
+              <select name="prioridad">
+                <option value="baja">Baja</option>
+                <option value="normal" selected>Normal</option>
+                <option value="alta">Alta</option>
+              </select>
+            </label>
+            <label>Asignado a <input type="text" name="asignado_a" placeholder="Nombre del tecnico"></label>
+            <button type="submit" class="btn btn-primary">Crear ticket</button>
+          </form>
+        </section>
       </td>
     </tr>
     {% endfor %}
@@ -412,6 +519,45 @@ document.addEventListener('keydown', function (e) {
 </script>
 
 <script>
+// Columna "Agente" -- de si ESTE equipo tiene puesto el agente de apagado/
+// reinicio remoto (ver agente_apagado/netwatch_agente.ps1). El backend ya
+// matcheo por IP el ultimo heartbeat en Firebase (o vacio si nunca ha
+// reportado); aca solo se calcula "hace cuanto" y se pinta el badge.
+function netwatchTiempoRelativoAgente(iso) {
+  const entonces = new Date(iso);
+  if (isNaN(entonces.getTime())) return null;
+  const segundos = Math.max(0, Math.round((Date.now() - entonces.getTime()) / 1000));
+  if (segundos < 60) return 'hace segundos';
+  const minutos = Math.round(segundos / 60);
+  if (minutos < 60) return 'hace ' + minutos + ' min';
+  const horas = Math.round(minutos / 60);
+  if (horas < 24) return 'hace ' + horas + (horas === 1 ? ' hora' : ' horas');
+  const dias = Math.round(horas / 24);
+  return 'hace ' + dias + (dias === 1 ? ' dia' : ' dias');
+}
+
+// Si no ha vuelto a avisar en mas de 10 minutos (el agente pasa cada 1 min
+// via tarea programada) probablemente la PC esta apagada o el agente dejo
+// de correr -- se pinta distinto al verde "activo ahora" sin decir
+// directamente "no instalado" (si lo estuvo, solo que no ha avisado hace rato).
+const NETWATCH_AGENTE_UMBRAL_RECIENTE_SEG = 10 * 60;
+
+function netwatchPintarAgentes() {
+  document.querySelectorAll('.agente-cell').forEach(function (td) {
+    const visto = td.dataset.visto;
+    if (!visto) {
+      td.innerHTML = '<span class="tag tag-descartado"><span class="dot dot-off"></span> No instalado</span>';
+      return;
+    }
+    const relativo = netwatchTiempoRelativoAgente(visto);
+    const segundos = (Date.now() - new Date(visto).getTime()) / 1000;
+    const reciente = segundos >= 0 && segundos < NETWATCH_AGENTE_UMBRAL_RECIENTE_SEG;
+    td.innerHTML = '<span class="tag ' + (reciente ? 'tag-confirmado' : 'tag-pendiente') + '" title="Ultimo aviso: ' + visto + '">'
+      + '<span class="dot ' + (reciente ? 'dot-on' : 'dot-off') + '"></span> Si' + (relativo ? ' (' + relativo + ')' : '') + '</span>';
+  });
+}
+netwatchPintarAgentes();
+
 function netwatchAplicarCategoriaEquipo(sel) {
   const red = (sel.dataset.categoriasRed || '').split(',').filter(Boolean);
   const esRed = red.indexOf(sel.value) !== -1;
@@ -455,8 +601,16 @@ function netwatchOrdenarPorRam() {
   const tabla = document.getElementById('tabla-equipos');
   if (!tabla) return;
   const tbody = tabla.querySelector('tbody');
-  const filas = Array.from(tbody.querySelectorAll('tr')).filter(function (tr) {
-    return !tr.classList.contains('acordeon-panel');
+  // OJO -- 2026-08-27: querySelectorAll('tr') busca en TODOS los
+  // descendientes, no solo los hijos directos -- desde que el acordeon
+  // "Editar" tiene adentro su propia tabla de Tickets de soporte (con su
+  // propio <tbody><tr>...), esto tambien traia esas filas de tickets
+  // mezcladas con las de equipos. Ademas de romper el orden, tbody.appendChild
+  // las SACABA de la tabla de tickets y las tiraba sueltas en la tabla
+  // principal. tbody.children solo trae los hijos directos (las filas de
+  // equipo y sus paneles), nunca las anidadas dentro de un acordeon.
+  const filas = Array.from(tbody.children).filter(function (tr) {
+    return tr.tagName === 'TR' && !tr.classList.contains('acordeon-panel');
   });
   const pares = filas.map(function (fila) {
     const panel = (fila.nextElementSibling && fila.nextElementSibling.classList.contains('acordeon-panel'))
@@ -487,9 +641,20 @@ let netwatchCategoriaActiva = '';
 // ambos filtros conviven (ej. buscar "matta" dentro de solo los Servidores).
 function netwatchAplicarFiltrosEquipos() {
   const q = document.getElementById('buscador-equipos').value.trim().toLowerCase();
-  // :not(.acordeon-panel) para no tocar las filas del panel "Editar" inline
-  // (esas no tienen data-buscar/data-categoria, son el formulario de edicion).
-  const filas = document.querySelectorAll('#tabla-equipos tbody tr:not(.acordeon-panel)');
+  // OJO -- 2026-08-27: '#tabla-equipos tbody tr' es un selector descendiente,
+  // asi que tambien encontraba las filas de la tabla de Tickets de soporte
+  // anidada dentro de cada acordeon "Editar" (esas <tr> no tienen
+  // data-buscar/data-categoria). Como esto corre dentro de un forEach, la
+  // primera fila de ticket que aparecia (de CUALQUIER equipo con tickets)
+  // tiraba un TypeError al leer tr.dataset.buscar y cortaba el forEach ahi
+  // mismo -- todos los equipos que venian despues en la lista se quedaban
+  // sin filtrar (por eso "112" no encontraba nada: el buscador se rompia
+  // silenciosamente a mitad de tabla). tbody.children son solo los hijos
+  // DIRECTOS (las filas de equipo y sus paneles), nunca las anidadas.
+  const tbody = document.querySelector('#tabla-equipos tbody');
+  const filas = tbody ? Array.from(tbody.children).filter(function (tr) {
+    return tr.tagName === 'TR' && !tr.classList.contains('acordeon-panel');
+  }) : [];
   let visibles = 0;
   filas.forEach(function (tr) {
     const coincideTexto = !q || tr.dataset.buscar.indexOf(q) !== -1;
@@ -559,42 +724,239 @@ document.querySelectorAll('.acordeon-form').forEach(function (form) {
   }
 })();
 
-// --- apagado remoto en bloque (Fase 1: solo LAN local) --------------------
-// Los checkboxes solo estan atados via form="..." al form de eliminar, asi
-// que para el form de apagar hay que copiar los ids marcados como inputs
-// ocultos justo antes de enviarlo.
-function netwatchConfirmarApagado(ev, accion) {
-  const marcados = Array.prototype.map.call(
+// --- Estado Red / Agente en vivo, sin recargar la pagina -------------------
+// Antes solo se actualizaba al recargar. Andres lo noto justo despues de
+// reiniciar un equipo: se queda mirando la tabla varios minutos sin saber
+// si ya volvio, hasta que se le ocurre refrescar la pagina a mano. Ahora se
+// consulta un endpoint liviano (solo Estado Red + Agente, sin el resto de
+// la ficha) cada 12s y se pintan solo esas dos celdas de cada fila -- el
+// resto de la tabla (busqueda, acordeon abierto, seleccion de checkboxes,
+// etc.) queda intacto.
+const NETWATCH_ESTADO_VIVO_INTERVALO_MS = 12000;
+
+function netwatchActualizarEstadoVivo() {
+  fetch(NETWATCH_URL_ESTADO_VIVO)
+    .then(function (r) { return r.json(); })
+    .then(function (datos) {
+      Object.keys(datos).forEach(function (id) {
+        const fila = document.querySelector('tr[data-id="' + id + '"]');
+        if (!fila) return;
+        const info = datos[id];
+
+        const celdaRed = fila.querySelector('.estado-red-cell');
+        if (celdaRed && info.origen !== 'manual') {
+          celdaRed.innerHTML = '<span class="tag ' + (info.en_linea ? 'tag-confirmado' : 'tag-descartado') + '">'
+            + '<span class="dot ' + (info.en_linea ? 'dot-on' : 'dot-off') + '"></span> '
+            + (info.en_linea ? 'Online' : 'Offline') + '</span>';
+        }
+
+        const celdaAgente = fila.querySelector('.agente-cell');
+        if (celdaAgente) celdaAgente.dataset.visto = info.agente_visto_en || '';
+      });
+      netwatchPintarAgentes();
+    })
+    .catch(function () {
+      // Fallo transitorio (Wi-Fi, VPN, el server local reiniciando) -- no es
+      // grave, se reintenta solo en el proximo ciclo sin avisarle nada al
+      // usuario; las columnas se quedan con el ultimo valor conocido.
+    });
+}
+setInterval(netwatchActualizarEstadoVivo, NETWATCH_ESTADO_VIVO_INTERVALO_MS);
+
+// --- apagado remoto en bloque, via cola de Firebase ------------------------
+// Reemplaza el confirm() nativo de una sola linea (ilegible con lotes
+// grandes) por un modal con la lista scrolleable de equipos afectados, y
+// el envio pasa a ser async con barra de progreso -- encolar cada equipo es
+// UNA llamada HTTP a Firebase (ver apagado_remoto.encolar_comando_equipo),
+// asi que con muchos equipos marcados el navegador se quedaba pegado varios
+// segundos sin ningun aviso de que seguia trabajando (Andres lo pidio el
+// 2026-08-24 despues de notar la demora real Firebase-al-agente).
+const NETWATCH_URL_APAGAR_MASIVO = "{{ url_for('admin.apagar_equipos_masivo') }}";
+const NETWATCH_URL_APAGAR_MASIVO_ESTADO = "{{ url_for('admin.apagar_equipos_masivo_estado') }}";
+const NETWATCH_URL_ADMIN_EQUIPOS = "{{ url_for('admin.admin_equipos') }}";
+const NETWATCH_URL_ESTADO_VIVO = "{{ url_for('admin.admin_equipos_estado_vivo') }}";
+let netwatchApagadoAccionPendiente = null;
+
+function netwatchAbrirConfirmarApagado(accion) {
+  const filas = Array.prototype.map.call(
+    document.querySelectorAll('.equipo-check:checked'), function (cb) { return cb.closest('tr'); }
+  );
+  if (filas.length === 0) return;
+
+  netwatchApagadoAccionPendiente = accion;
+  const verbo = accion === 'reiniciar' ? 'REINICIO' : 'APAGADO';
+  document.getElementById('confirmar-apagado-titulo').textContent = 'Confirmar ' + verbo.toLowerCase();
+  document.getElementById('confirmar-apagado-texto').textContent =
+    'Vas a dejar encolado el ' + verbo + ' de ' + filas.length + ' equipo(s) (aviso de 60 segundos):';
+
+  const lista = document.getElementById('confirmar-apagado-lista');
+  lista.innerHTML = '';
+  filas.forEach(function (tr) {
+    const celdas = tr.querySelectorAll('td');
+    // celda 1 = nombre de equipo, celda 3 = IP (ver <thead> de la tabla)
+    const nombre = celdas[1] ? celdas[1].textContent.trim() : '';
+    const ip = celdas[3] ? celdas[3].textContent.trim() : '';
+    const li = document.createElement('li');
+    li.style.padding = '5px 10px';
+    li.style.borderBottom = '1px solid #1c2333';
+    li.textContent = (nombre || '(sin nombre)') + (ip ? ' -- ' + ip : '');
+    lista.appendChild(li);
+  });
+
+  document.getElementById('confirmar-apagado-nota').textContent =
+    'Solo se ejecuta en las PCs que ya tengan instalado el agente NetWatch (ver agente_apagado/) -- ' +
+    'en el resto, la orden queda esperando sin hacer nada hasta que se instale ahi tambien. Cada equipo ' +
+    'va a mostrar un aviso de Windows con cuenta regresiva antes de ' +
+    (accion === 'reiniciar' ? 'reiniciarse.' : 'apagarse.');
+
+  document.getElementById('confirmar-apagado-btn').onclick = netwatchIniciarApagadoMasivo;
+  document.getElementById('modal-confirmar-apagado').classList.add('modal-open');
+}
+
+function netwatchCerrarConfirmarApagado() {
+  document.getElementById('modal-confirmar-apagado').classList.remove('modal-open');
+}
+
+function netwatchIniciarApagadoMasivo() {
+  const ids = Array.prototype.map.call(
     document.querySelectorAll('.equipo-check:checked'), function (cb) { return cb.value; }
   );
-  if (marcados.length === 0) { ev.preventDefault(); return false; }
-  const verbo = accion === 'reiniciar' ? 'REINICIO' : 'APAGADO';
-  const ok = confirm(
-    'Vas a dejar encolado el ' + verbo + ' de ' + marcados.length + ' equipo(s) (aviso de 60 segundos).\n\n' +
-    'Solo se ejecuta en las PCs que ya tengan instalado el agente NetWatch (ver ' +
-    'scripts/netwatch_agente.ps1) -- en el resto, la orden queda esperando sin hacer nada ' +
-    'hasta que se instale ahi tambien.\n\n' +
-    'Cada equipo va a mostrar un aviso de Windows con cuenta regresiva antes de ' +
-    (accion === 'reiniciar' ? 'reiniciarse' : 'apagarse') + '. Continuar?'
-  );
-  if (!ok) { ev.preventDefault(); return false; }
-  const form = ev.target;
-  form.querySelectorAll('input[name="equipo_ids"]').forEach(function (i) { i.remove(); });
-  marcados.forEach(function (id) {
-    const input = document.createElement('input');
-    input.type = 'hidden';
-    input.name = 'equipo_ids';
-    input.value = id;
-    form.appendChild(input);
-  });
-  return true;
+  const accion = netwatchApagadoAccionPendiente;
+  netwatchCerrarConfirmarApagado();
+  if (ids.length === 0 || !accion) return;
+
+  const body = new URLSearchParams();
+  body.append('accion', accion);
+  ids.forEach(function (id) { body.append('equipo_ids', id); });
+
+  const barra = document.getElementById('barra-apagado-progreso');
+  const texto = document.getElementById('apagado-progreso-texto');
+  const fill = document.getElementById('apagado-progreso-fill');
+  barra.style.display = 'block';
+  fill.style.width = '0%';
+  texto.textContent = 'Encolando 0 / ' + ids.length + '...';
+
+  fetch(NETWATCH_URL_APAGAR_MASIVO, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: body.toString(),
+  })
+    .then(function (r) { return r.json(); })
+    .then(function (r) {
+      if (!r.iniciado) {
+        texto.textContent = 'Ya hay un lote de apagado/reinicio corriendo -- espera a que termine y vuelve a intentar.';
+        return;
+      }
+      netwatchPollApagado(accion);
+    })
+    .catch(function () {
+      texto.textContent = 'No se pudo conectar con el servidor local. Revisa que NetWatch siga corriendo.';
+    });
+}
+
+// El encolado/confirmacion corre en un HILO DEL SERVIDOR (ver
+// apagado_remoto.iniciar_encolado_async) -- sigue trabajando aunque el
+// navegador pierda un fetch puntual (Wi-Fi, VPN, un timeout suelto). Antes,
+// UN solo fetch fallido mostraba "se perdio la conexion" de una y dejaba de
+// consultar, aunque el equipo se hubiera reiniciado bien igual -- Andres lo
+// vio pasar justo despues de que un reinicio SI funciono. Ahora se
+// reintenta varias veces con espera creciente antes de rendirse de verdad.
+let netwatchApagadoReintentos = 0;
+const NETWATCH_APAGADO_MAX_REINTENTOS = 8;
+
+function netwatchPollApagado(accion) {
+  fetch(NETWATCH_URL_APAGAR_MASIVO_ESTADO)
+    .then(function (r) { return r.json(); })
+    .then(function (estado) {
+      netwatchApagadoReintentos = 0;
+      const texto = document.getElementById('apagado-progreso-texto');
+      const fill = document.getElementById('apagado-progreso-fill');
+
+      if (estado.fase === 'esperando_vuelta') {
+        // Fase 3 (solo reiniciar): ya se confirmo que el agente ejecuto la
+        // orden -- ahora se espera a que la PC vuelva a bootear y su tarea
+        // programada avise de nuevo a Firebase. El scanner normal casi
+        // nunca alcanza a pillar un reinicio rapido (dura menos que su
+        // intervalo de 60-120s), asi que esta es la unica senal confiable
+        // de "ya volvio". Plazo maximo 8 min.
+        const pct = estado.total_volver > 0
+          ? Math.min(100, Math.round((estado.vueltos / estado.total_volver) * 100)) : 100;
+        fill.style.width = pct + '%';
+        fill.style.background = 'var(--teal, #2dd4bf)';
+        texto.textContent = 'Esperando que vuelvan a conectarse... ' + estado.vueltos + ' / ' + estado.total_volver
+          + ' (puede tardar unos minutos, hasta 8)';
+      } else if (estado.fase === 'confirmando') {
+        // Fase 2: ya se encolaron todas las ordenes -- ahora se espera a
+        // que cada agente las recoja y las borre de Firebase (esa es la
+        // senal de "se ejecuto de verdad"), con un plazo maximo de 90s para
+        // que esto nunca se quede esperando para siempre.
+        const pct = estado.total_confirmar > 0
+          ? Math.min(100, Math.round((estado.confirmados / estado.total_confirmar) * 100)) : 100;
+        fill.style.width = pct + '%';
+        fill.style.background = 'var(--green)';
+        texto.textContent = 'Confirmando ejecucion... ' + estado.confirmados + ' / ' + estado.total_confirmar
+          + ' (esperando hasta 90s a que cada PC avise)';
+      } else {
+        const pct = estado.total > 0 ? Math.min(100, Math.round((estado.procesados / estado.total) * 100)) : 0;
+        fill.style.width = pct + '%';
+        texto.textContent = 'Encolando ' + estado.procesados + ' / ' + estado.total + '...';
+      }
+
+      if (estado.corriendo) {
+        setTimeout(function () { netwatchPollApagado(accion); }, 400);
+        return;
+      }
+      const resumen = estado.resumen || { ok: [], fallidos: [], confirmados: [], sin_confirmar: [] };
+      let apDetalle = '';
+      if (resumen.fallidos.length > 0) {
+        const primero = resumen.fallidos[0];
+        apDetalle = (primero.ip + ': ' + primero.motivo).slice(0, 200);
+      }
+      const params = new URLSearchParams();
+      params.set('apagado', '1');
+      params.set('ap_accion', estado.accion || accion);
+      params.set('ap_ok', resumen.ok.length);
+      params.set('ap_fallo', resumen.fallidos.length);
+      params.set('ap_confirmados', (resumen.confirmados || []).length);
+      params.set('ap_sin_confirmar', (resumen.sin_confirmar || []).length);
+      if (resumen.vueltos) params.set('ap_vueltos', resumen.vueltos.length);
+      if (resumen.sin_volver) params.set('ap_sin_volver', resumen.sin_volver.length);
+      if (apDetalle) params.set('ap_detalle', apDetalle);
+      window.location.href = NETWATCH_URL_ADMIN_EQUIPOS + '?' + params.toString();
+    })
+    .catch(function () {
+      const texto = document.getElementById('apagado-progreso-texto');
+      netwatchApagadoReintentos++;
+      if (netwatchApagadoReintentos <= NETWATCH_APAGADO_MAX_REINTENTOS) {
+        // El trabajo real sigue corriendo en el servidor aunque esta
+        // consulta puntual haya fallado -- se avisa sin alarmar y se
+        // reintenta con espera creciente (1s, 2s, 3s...) en vez de dejarlo
+        // colgado o rendirse de una.
+        texto.textContent = 'Conexion inestable, reintentando... (' + netwatchApagadoReintentos + '/' + NETWATCH_APAGADO_MAX_REINTENTOS + ')';
+        setTimeout(function () { netwatchPollApagado(accion); }, 1000 * netwatchApagadoReintentos);
+        return;
+      }
+      texto.textContent = 'Se perdio la conexion con el servidor local varias veces seguidas. El proceso puede seguir '
+        + 'corriendo igual en el servidor -- revisa la columna "Agente" y "Estado Red" de la tabla (se actualizan solas) '
+        + 'o recarga la pagina en unos minutos para ver el resultado final.';
+    });
 }
 
 // --- seleccion multiple + eliminar en bloque ------------------------------
+// Antes solo se notaba que un equipo estaba marcado mirando el checkbox
+// suelto (facil de perder de vista en una tabla larga) -- ahora la FILA
+// completa se tine de verde transparente (ver .fila-seleccionada en
+// style.css) para que se note de un vistazo cual esta seleccionado.
+function netwatchMarcarFilaSeleccionada(cb) {
+  const fila = cb.closest('tr');
+  if (fila) fila.classList.toggle('fila-seleccionada', cb.checked);
+}
+
 function netwatchActualizarSeleccion() {
   const marcados = document.querySelectorAll('.equipo-check:checked');
   const barra = document.getElementById('barra-seleccion');
   const contador = document.getElementById('contador-seleccion');
+  document.querySelectorAll('.equipo-check').forEach(netwatchMarcarFilaSeleccionada);
   if (!barra || !contador) return;
   if (marcados.length > 0) {
     barra.style.display = 'flex';

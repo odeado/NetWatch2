@@ -18,3 +18,48 @@
 {% if error == 'ip_duplicada' and ip_conflicto %}
   {{ m.fusion_equipo(e, ip_nueva, 'index') }}
 {% endif %}
+
+{# Tickets de soporte -- antes solo se podian crear desde Ficha completa,
+   Andres pidio (2026-08-25) tenerlo tambien aca para no tener que salir de
+   la pantalla frontal. Va FUERA del <form> grande de arriba (mismo motivo
+   que fusion_equipo: un <form> anidado rompe el envio del de afuera). #}
+<section class="tickets-section panel-tickets-section">
+  <h3>Tickets de soporte</h3>
+  {% if not tickets %}
+    <p class="empty small">Todavia no hay tickets para este equipo.</p>
+  {% else %}
+    <ul class="panel-tickets-lista">
+      {% for t in tickets %}
+      <li class="ticket-row-{{ t.estado }}">
+        <div class="panel-ticket-linea">
+          <span class="prio prio-{{ t.prioridad }}">{{ t.prioridad }}</span>
+          <span class="ticket-titulo">{{ t.titulo }}</span>
+          <span class="tag tag-ticket-{{ t.estado }}">{{ t.estado.replace('_', ' ') }}</span>
+        </div>
+        {% if t.descripcion %}<div class="ticket-desc">{{ t.descripcion }}</div>{% endif %}
+        <form method="post" action="{{ url_for('tickets.ticket_estado', ticket_id=t.id) }}" class="panel-ticket-acciones">
+          <input type="hidden" name="equipo_id" value="{{ e.id }}">
+          <input type="hidden" name="origen" value="index">
+          {% if t.estado != 'abierto' %}<button name="estado" value="abierto" class="btn btn-reset">Abierto</button>{% endif %}
+          {% if t.estado != 'en_progreso' %}<button name="estado" value="en_progreso" class="btn btn-confirm">En progreso</button>{% endif %}
+          {% if t.estado != 'resuelto' %}<button name="estado" value="resuelto" class="btn btn-discard">Resolver</button>{% endif %}
+        </form>
+      </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('tickets.create_ticket', equipo_id=e.id) }}" class="ticket-form" id="form-panel-crear-ticket">
+    <label class="full">Titulo <input type="text" name="titulo" required placeholder="Ej: Pantalla azul recurrente"></label>
+    <label class="full">Descripcion <textarea name="descripcion" rows="2"></textarea></label>
+    <label>Prioridad
+      <select name="prioridad">
+        <option value="baja">Baja</option>
+        <option value="normal" selected>Normal</option>
+        <option value="alta">Alta</option>
+      </select>
+    </label>
+    <label>Asignado a <input type="text" name="asignado_a" placeholder="Nombre del tecnico"></label>
+    <button type="submit" class="btn btn-primary">Crear ticket</button>
+  </form>
+</section>

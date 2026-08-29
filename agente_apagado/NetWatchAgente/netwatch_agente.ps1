@@ -37,6 +37,7 @@
 $CarpetaScript = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RutaConfig = Join-Path $CarpetaScript "agente_config.json"
 $RutaLog = Join-Path $CarpetaScript "netwatch_agente.log"
+$RutaCache = Join-Path $CarpetaScript "agente_token_cache.json"
 
 function Escribir-Log {
     param([string]$Mensaje)
@@ -157,16 +158,92 @@ function Llamar-Http {
     }
 }
 
-# --- 1. Autenticarse contra Firebase (mismo mecanismo que usa el servidor
-# en webapp/firebase_sync.py) para obtener un idToken valido por 1 hora. ---
-try {
+# --- 1. Conseguir un idToken valido, gastando la cuota de Firebase lo menos
+# posible. ---
+# OJO -- bug real encontrado el 2026-08-25 en 172.30.100.64: esta version
+# hacia signInWithPassword (verificar la contrasena) EN CADA CORRIDA, y la
+# tarea programada corre cada 1 minuto. Con esa sola PC ya se agoto la
+# cuota de "verifyPassword" de Firebase a los pocos dias (log real: "ERROR
+# al autenticar contra Firebase ... QUOTA_EXCEEDED : Exceeded quota for
+# verifying passwords") -- con mas PCs instaladas esto iba a dejar a TODOS
+# los agentes sin poder autenticarse, no solo a uno. Arreglo (mismo patron
+# que usan los SDK oficiales de Firebase): loguearse con password UNA sola
+# vez, guardar idToken + refreshToken en un archivo local
+# (agente_token_cache.json, junto al script), y en las corridas siguientes
+# reusar el idToken mientras no haya vencido, o renovarlo con el
+# refresh_token (endpoint distinto, con cuota mucho mas generosa, pensado
+# justo para esto) -- solo se vuelve a pedir password si no hay cache o el
+# refresh token dejo de servir.
+function Guardar-Cache {
+    param([string]$IdToken, [string]$RefreshToken, [int]$ExpiraEnSeg)
+    $vence = (Get-Date).ToUniversalTime().AddSeconds($ExpiraEnSeg - 300)  # 5 min de margen
+    $datos = (@{ idToken = $IdToken; refreshToken = $RefreshToken; vence = $vence.ToString("o") } | ConvertTo-Json2)
+    try { Set-Content -Path $RutaCache -Value $datos -ErrorAction SilentlyContinue } catch {}
+}
+
+function Refrescar-Token {
+    param([string]$RefreshTokenActual)
+    $urlRefresh = "https://securetoken.googleapis.com/v1/token?key=$($cfg.apiKey)"
+    $cuerpo = "grant_type=refresh_token&refresh_token=$RefreshTokenActual"
+    $wc = New-Object System.Net.WebClient
+    $wc.Headers["Content-Type"] = "application/x-www-form-urlencoded"
+    try {
+        $resp = ($wc.UploadString($urlRefresh, "POST", $cuerpo)) | ConvertFrom-Json2
+        return @{ idToken = $resp.id_token; refreshToken = $resp.refresh_token; expiraEnSeg = [int]$resp.expires_in }
+    } finally {
+        $wc.Dispose()
+    }
+}
+
+function Login-ConPassword {
     $urlLogin = "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=$($cfg.apiKey)"
     $cuerpoLogin = (@{ email = $cfg.email; password = $cfg.password; returnSecureToken = $true } | ConvertTo-Json2)
-    $respLogin = Llamar-Http -Url $urlLogin -Metodo "POST" -Cuerpo $cuerpoLogin
-    $idToken = ($respLogin | ConvertFrom-Json2).idToken
-    if (-not $idToken) { throw "respuesta sin idToken" }
-} catch {
-    Escribir-Log "ERROR al autenticar contra Firebase: $($_.Exception.Message)"
+    $resp = (Llamar-Http -Url $urlLogin -Metodo "POST" -Cuerpo $cuerpoLogin) | ConvertFrom-Json2
+    if (-not $resp.idToken) { throw "respuesta sin idToken" }
+    return @{ idToken = $resp.idToken; refreshToken = $resp.refreshToken; expiraEnSeg = [int]$resp.expiresIn }
+}
+
+$idToken = $null
+$cacheValido = $false
+$cache = $null
+if (Test-Path $RutaCache) {
+    try {
+        $cache = Get-Content $RutaCache -Raw | ConvertFrom-Json2
+        if ($cache.vence) {
+            $venceFecha = [datetime]::Parse($cache.vence, [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::RoundtripKind)
+            if ((Get-Date).ToUniversalTime() -lt $venceFecha) {
+                $idToken = $cache.idToken
+                $cacheValido = $true
+            }
+        }
+    } catch {
+        $cache = $null
+    }
+}
+
+if (-not $cacheValido) {
+    $resultado = $null
+    if ($cache -and $cache.refreshToken) {
+        try {
+            $resultado = Refrescar-Token -RefreshTokenActual $cache.refreshToken
+        } catch {
+            Escribir-Log "AVISO: fallo el refresh de token ($($_.Exception.Message)), se reautentica con password."
+        }
+    }
+    if (-not $resultado) {
+        try {
+            $resultado = Login-ConPassword
+        } catch {
+            Escribir-Log "ERROR al autenticar contra Firebase: $($_.Exception.Message)"
+            exit 1
+        }
+    }
+    $idToken = $resultado.idToken
+    Guardar-Cache -IdToken $resultado.idToken -RefreshToken $resultado.refreshToken -ExpiraEnSeg $resultado.expiraEnSeg
+}
+
+if (-not $idToken) {
+    Escribir-Log "ERROR: no se pudo obtener un idToken por ningun metodo."
     exit 1
 }
 
@@ -226,7 +303,14 @@ foreach ($ip in $ipsLocales) {
 
     Escribir-Log "Orden encontrada para $ip : $accion en $avisoSegundos s. Ejecutando shutdown.exe..."
     try {
-        & shutdown.exe $bandera /t $avisoSegundos /c $mensaje
+        # OJO -- 2026-08-25: en al menos una PC (172.30.100.64) el PATH del
+        # sistema no incluye System32 (tambien fallaba "schtasks" a mano por
+        # lo mismo), asi que invocar "shutdown.exe" por nombre corto fallaba
+        # con "term not recognized" aunque el archivo si existe. Se llama por
+        # ruta completa via $env:WINDIR para que funcione sin importar el
+        # PATH de esa PC en particular.
+        $shutdownExe = Join-Path $env:WINDIR "System32\shutdown.exe"
+        & $shutdownExe $bandera /t $avisoSegundos /c $mensaje
         Escribir-Log "shutdown.exe ejecutado OK para $ip ($accion)."
     } catch {
         Escribir-Log "ERROR ejecutando shutdown.exe: $($_.Exception.Message)"
@@ -242,10 +326,17 @@ foreach ($ip in $ipsLocales) {
     }
 }
 
-# --- 4. "Heartbeat" opcional: avisa que este agente esta vivo y a que hora
-# paso por ultima vez, por IP. No hace nada por si solo hoy, pero deja la
-# base para que mas adelante NetWatch pueda mostrar "agente instalado / no
-# instalado" por equipo en vez de tener que asumirlo. ---
+# --- 4. Heartbeat: avisa que este agente esta vivo y a que hora paso por
+# ultima vez, por IP -- esto es lo que NetWatch usa para la columna "Agente"
+# en Inventario de Equipos.
+# OJO -- 2026-08-27: antes esto tenia "catch {}" vacio, o sea que si el PUT
+# fallaba (permiso denegado, IP que ya no coincide con la registrada en
+# NetWatch, red caida, etc.) quedaba en silencio total -- y si no fallaba,
+# tampoco se logueaba nada. Resultado: un agente sano y corriendo cada
+# minuto podia dejar el log VACIO para siempre, indistinguible de un agente
+# que nunca corrio. Andres pidio poder confirmar "esta corriendo" mirando el
+# log -- ahora cada corrida deja SIEMPRE una linea (OK o ERROR real) por
+# cada IP local, sin importar si hubo o no una orden de apagado pendiente. ---
 foreach ($ip in $ipsLocales) {
     $claveIp = $ip -replace '\.', '_'
     $urlEstado = "$databaseURL/agentes_estado/$claveIp.json?auth=$idToken"
@@ -254,7 +345,12 @@ foreach ($ip in $ipsLocales) {
         hostname = $env:COMPUTERNAME
         visto_en = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
     } | ConvertTo-Json2)
-    try { Llamar-Http -Url $urlEstado -Metodo "PUT" -Cuerpo $cuerpoEstado | Out-Null } catch {}
+    try {
+        Llamar-Http -Url $urlEstado -Metodo "PUT" -Cuerpo $cuerpoEstado | Out-Null
+        Escribir-Log "Heartbeat OK para $ip ($env:COMPUTERNAME)."
+    } catch {
+        Escribir-Log "ERROR enviando heartbeat para $ip : $($_.Exception.Message)"
+    }
 }
 
 exit 0

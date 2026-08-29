@@ -61,10 +61,27 @@ def _row_with_ports(row):
 def admin_equipos():
     equipos = [_row_with_ports(e) for e in db.list_equipos()]
     ticket_counts = db.get_open_ticket_counts()
+    # Tickets de soporte inline en el acordeon de cada equipo (Andres lo pidio
+    # 2026-08-27, para no tener que abrir Ficha completa solo para crear un
+    # ticket rapido). Una sola consulta para TODOS los tickets y se agrupan
+    # aca en memoria -- evita N consultas (una por equipo) en un inventario
+    # que puede tener cientos de filas; la cantidad total de tickets del
+    # sistema es chica en comparacion, asi que esto sale barato.
+    tickets_por_equipo = {}
+    for t in db.list_all_tickets():
+        tickets_por_equipo.setdefault(t["equipo_id"], []).append(t)
+    # Agente de apagado/reinicio remoto (ver agente_apagado/): cada PC con el
+    # agente instalado deja su propio heartbeat en Firebase por IP (ver
+    # firebase_sync.leer_agentes_estado). Se matchea directo por IP del
+    # equipo -- esto va por maquina, no por empleado (antes se puso por
+    # error en Gestion de Empleados).
+    agentes_estado = firebase_sync.leer_agentes_estado()
     for e in equipos:
         e["tickets_abiertos"] = ticket_counts.get(e["id"], 0)
         ubicacion_partes = [p for p in (e.get("sucursal"), e.get("ciudad")) if p]
         e["ubicacion"] = " / ".join(ubicacion_partes) if ubicacion_partes else None
+        info = agentes_estado.get(e.get("ip"))
+        e["agente_visto_en"] = info.get("visto_en") if info else None
     equipos.sort(key=_ip_orden_key)
 
     scan_files = [f.name for f in db.list_scan_files(RESULTS_DIR)]
@@ -96,6 +113,14 @@ def admin_equipos():
             "fuera": int(request.args.get("ap_fuera", 0)),
             "fallo": int(request.args.get("ap_fallo", 0)),
             "detalle": request.args.get("ap_detalle") or None,
+            # Confirmacion real de ejecucion (no solo "quedo encolado"): ver
+            # apagado_remoto.iniciar_encolado_async, fase "confirmando".
+            "confirmados": int(request.args.get("ap_confirmados", 0)),
+            "sin_confirmar": int(request.args.get("ap_sin_confirmar", 0)),
+            # Solo viene poblado para "reiniciar" (fase "esperando_vuelta"):
+            # cuantos ya avisaron de vuelta despues de bootear.
+            "vueltos": int(request.args.get("ap_vueltos", 0)),
+            "sin_volver": int(request.args.get("ap_sin_volver", 0)),
         }
 
     # Si venimos de un choque de IP al editar (ver ficha()), esto le dice a la
@@ -117,12 +142,34 @@ def admin_equipos():
         error_equipo_id=error_equipo_id,
         ip_conflicto=ip_conflicto,
         ip_nueva=request.args.get("ip_nueva"),
+        tickets_por_equipo=tickets_por_equipo,
         resumen_importacion=resumen_importacion,
         resumen_apagado=resumen_apagado,
         active_tab="equipos",
         hoy=datetime.now().strftime("%Y-%m-%d"),
         categorias_equipo=db.CATEGORIAS_EQUIPO,
     )
+
+
+@bp.route("/admin/equipos/estado_vivo")
+def admin_equipos_estado_vivo():
+    """Version liviana de admin_equipos(), solo con Estado Red + Agente por
+    equipo (ver db.list_equipos_estado_vivo). La pagina la consulta sola
+    cada pocos segundos para refrescar esas dos columnas SIN recargar toda
+    la tabla -- Andres lo pidio (2026-08-24) despues de reiniciar un equipo
+    y quedar "en duda" mirando la pantalla sin saber si ya habia vuelto,
+    hasta que se le ocurrio refrescar la pagina a mano."""
+    equipos = db.list_equipos_estado_vivo()
+    agentes_estado = firebase_sync.leer_agentes_estado()
+    resultado = {}
+    for e in equipos:
+        info = agentes_estado.get(e.get("ip"))
+        resultado[e["id"]] = {
+            "en_linea": bool(e["en_linea"]),
+            "origen": e["origen"],
+            "agente_visto_en": info.get("visto_en") if info else None,
+        }
+    return jsonify(resultado)
 
 
 @bp.route("/admin/equipos/eliminar_masivo", methods=["POST"])
@@ -138,8 +185,11 @@ def eliminar_equipos_masivo():
 
 @bp.route("/admin/equipos/apagar_masivo", methods=["POST"])
 def apagar_equipos_masivo():
-    """Apaga o reinicia de una sola vez los equipos marcados con el checkbox
-    en Inventario de Equipos. Va por la cola de Firebase (ver
+    """Arranca en segundo plano el apagado/reinicio encolado de los equipos
+    marcados con el checkbox en Inventario de Equipos (no bloquea la
+    request, para que el navegador pueda mostrar una barra de progreso
+    haciendo poll a /admin/equipos/apagar_masivo/estado -- ver
+    apagado_remoto.iniciar_encolado_async). Va por la cola de Firebase (ver
     apagado_remoto.encolar_comandos_equipos): el servidor deja la orden
     encolada, y el agente que corre como tarea programada en cada PC la
     recoge y la ejecuta -- nada se conecta hacia la PC, asi que no depende
@@ -150,26 +200,17 @@ def apagar_equipos_masivo():
     accion = request.form.get("accion") if request.form.get("accion") in ("apagar", "reiniciar") else "apagar"
     ids = [int(i) for i in request.form.getlist("equipo_ids") if i.isdigit()]
     if not ids:
-        return redirect(url_for("admin.admin_equipos"))
+        return jsonify({"iniciado": False, "motivo": "sin_equipos"})
     equipos = [db.get_equipo(i) for i in ids]
     equipos = [e for e in equipos if e]
     aviso_segundos, mensaje = apagado_remoto.leer_aviso_y_mensaje()
-    resumen = apagado_remoto.encolar_comandos_equipos(equipos, accion, aviso_segundos, mensaje)
-    # El detalle completo de cada fallo queda en la consola de Flask; aqui
-    # solo mandamos un extracto corto del PRIMER fallo para que el banner
-    # de la web ya de una pista sin tener que ir a mirar la consola.
-    ap_detalle = ""
-    if resumen["fallidos"]:
-        primero = resumen["fallidos"][0]
-        ap_detalle = f"{primero['ip']}: {primero['motivo']}"[:200]
-    return redirect(url_for(
-        "admin.admin_equipos",
-        apagado="1",
-        ap_accion=accion,
-        ap_ok=len(resumen["ok"]),
-        ap_fallo=len(resumen["fallidos"]),
-        ap_detalle=ap_detalle or None,
-    ))
+    iniciado = apagado_remoto.iniciar_encolado_async(equipos, accion, aviso_segundos, mensaje)
+    return jsonify({"iniciado": iniciado})
+
+
+@bp.route("/admin/equipos/apagar_masivo/estado")
+def apagar_equipos_masivo_estado():
+    return jsonify(apagado_remoto.obtener_estado_encolado())
 
 
 @bp.route("/admin/equipos/importar_inventario", methods=["POST"])

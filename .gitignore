@@ -20,6 +20,10 @@ webapp/apagado_config.json
 # que corre en cada PC (ver agente_apagado/README_agente.md) -- nunca a git
 agente_apagado/agente_config.json
 agente_apagado/netwatch_agente.log
+agente_apagado/agente_token_cache.json
+agente_apagado/**/agente_config.json
+agente_apagado/**/netwatch_agente.log
+agente_apagado/**/agente_token_cache.json
 
 # Contiene el token real de la API de WhatsApp Business y el numero de
 # destinatario -- nunca a git (ver "alertas" adentro). Si necesitas la

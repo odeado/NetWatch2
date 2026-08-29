@@ -1,7 +1,7 @@
 {# Campos de edicion de un equipo, compartidos entre ficha.html (pagina completa)
    y admin_equipos.html (panel acordeon inline en Gestion de Equipos), para no
    mantener el mismo formulario largo duplicado en dos archivos. #}
-{% macro campos_equipo(e, usuarios, dispositivos, categorias_equipo, error=None, ip_conflicto=None, ip_nueva=None, origen=None) %}
+{% macro campos_equipo(e, usuarios, dispositivos, categorias_equipo, error=None, ip_conflicto=None, ip_nueva=None, origen=None, mostrar_estado_ciclo_vida=True) %}
   {# Mismo listado que db.CATEGORIAS_DISPOSITIVO_RED -- switches/impresoras/
      camaras no son PC, asi que no tiene sentido mostrarles CPU/RAM/OS/Office
      (quedaba desordenado con campos vacios que no aplican). #}
@@ -123,6 +123,7 @@
 
   <fieldset class="fieldset-compacto">
     <legend>Gestion</legend>
+    {% if mostrar_estado_ciclo_vida %}
     <label class="full">Estado del ciclo de vida
       <select name="estado_ciclo_vida">
         {% for opt in ["activo", "en_reparacion", "retirado", "bodega"] %}
@@ -130,6 +131,15 @@
         {% endfor %}
       </select>
     </label>
+    {% else %}
+    {# Andres pidio (2026-08-25) que esto NO se pueda tocar desde la edicion
+       rapida de Inventario de Equipos -- solo desde la Ficha completa, para
+       no marcar "en_reparacion" (u otro estado) sin querer de pasada en un
+       cambio rapido. Se manda igual como campo oculto con el valor actual
+       para que el guardado no lo borre (el backend siempre espera este
+       campo en el POST, ver app.py FICHA_FIELDS). #}
+    <input type="hidden" name="estado_ciclo_vida" value="{{ e.estado_ciclo_vida or '' }}">
+    {% endif %}
     <div class="full checkbox-row">
       <label class="checkbox"><input type="checkbox" name="critico" {% if e.critico %}checked{% endif %}> Critico</label>
       <label class="checkbox"><input type="checkbox" name="gestionado" {% if e.gestionado %}checked{% endif %}> Gestionado</label>

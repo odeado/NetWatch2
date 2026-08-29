@@ -358,6 +358,12 @@ code { background: #2a3348; padding: 1px 6px; border-radius: 4px; }
 .usuario-toggle-form { display: inline; margin-left: 6px; }
 .usuario-row-inactivo { opacity: 0.55; }
 
+/* Fila completa resaltada al marcar el checkbox de seleccion (Inventario de
+   Equipos / Gestion de Empleados) -- antes solo se notaba en el checkbox
+   suelto, dificil de ubicar en una tabla larga con varios equipos marcados. */
+.fila-seleccionada > td { background: rgba(52, 211, 153, 0.10); }
+.fila-seleccionada:hover > td { background: rgba(52, 211, 153, 0.16); }
+
 /* --- v9: topologia (dispositivos de red, mapa visual de puertos) --- */
 .dispositivo-mapa {
   margin-bottom: 28px; background: var(--panel); border: 1px solid var(--border);
@@ -902,6 +908,19 @@ code { background: #2a3348; padding: 1px 6px; border-radius: 4px; }
 }
 .panel-editar-header h3 { margin: 0; font-size: 17px; }
 .panel-editar .ficha-form { gap: 16px; }
+
+/* Tickets de soporte dentro del panel lateral -- version compacta de
+   .tickets-section (que en ficha.html usa una tabla ancha de 6 columnas,
+   demasiado para los 480px del drawer): lista vertical en vez de tabla. */
+.panel-tickets-section { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--border); }
+.panel-tickets-section h3 { margin: 0 0 10px; font-size: 15px; }
+.panel-tickets-lista { list-style: none; margin: 0 0 16px; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.panel-tickets-lista li {
+  background: #0f1420; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px;
+}
+.panel-ticket-linea { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.panel-ticket-linea .ticket-titulo { flex: 1; min-width: 100px; }
+.panel-ticket-acciones { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
 
 @media (max-width: 640px) {
   .panel-editar { width: 100%; }
