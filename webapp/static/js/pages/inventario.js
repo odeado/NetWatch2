@@ -1,0 +1,870 @@
+// static/js/pages/inventario.js
+// JS de la pantalla de Inicio (Inventario) -- extraido de templates/index.html
+// tal cual, sin cambios de logica, como parte del reorden a 1 archivo de JS por
+// pagina (ver plan de reorden). Los datos que antes venian embebidos via Jinja
+// siguen llegando igual: se leen de los <script type="application/json"> con id
+// netwatch-equipos-data / netwatch-summary-data / netwatch-eventos-data /
+// netwatch-subredes-data / netwatch-cidr-sitio-data que quedaron en el template.
+
+let NETWATCH_EQUIPOS = JSON.parse(document.getElementById('netwatch-equipos-data').textContent);
+let NETWATCH_SUMMARY = JSON.parse(document.getElementById('netwatch-summary-data').textContent);
+let NETWATCH_EVENTOS = JSON.parse(document.getElementById('netwatch-eventos-data').textContent);
+// Catalogo subred(CIDR) -> nombre de ciudad, editable en Administracion >
+// Parametros y Red -- es la unica fuente de verdad para el nombre que se
+// muestra en los gauges (antes se sacaba del campo "ciudad" del primer
+// equipo de cada grupo, que se llenaba inconsistente y a veces hacia
+// aparecer el mismo sitio duplicado con dos nombres distintos).
+const NETWATCH_SUBREDES = JSON.parse(document.getElementById('netwatch-subredes-data').textContent);
+const NETWATCH_CIUDAD_POR_CIDR = {};
+NETWATCH_SUBREDES.forEach(function (s) { NETWATCH_CIUDAD_POR_CIDR[s.cidr] = s.ciudad; });
+
+// nombre de sitio (tal cual lo publica el scanner remoto, ej. "iquique") ->
+// CIDR, para que al hacer clic en su pill de estado se pueda filtrar la
+// grilla por esa subred (ver netwatchFiltrarPorSubred).
+const NETWATCH_CIDR_POR_SITIO = JSON.parse(document.getElementById('netwatch-cidr-sitio-data').textContent);
+let NETWATCH_ULTIMO_EVENTO_ID = NETWATCH_EVENTOS.length ? Math.max.apply(null, NETWATCH_EVENTOS.map(function (e) { return e.id; })) : 0;
+
+// Por defecto la pantalla arranca mostrando solo CONFIRMADOS -- los
+// pendientes/descartados no se ven hasta que el usuario clickea esa
+// tarjeta a proposito (ver tarjeta "Pendientes"/"Descartados" y el tile
+// "Total en inventario" para ver todo sin filtrar). Antes arrancaba sin
+// filtro y mezclaba detecciones nunca confirmadas con el resto, lo que
+// llenaba la pantalla de fichas de equipos que en la practica no existen
+// (ver conversacion 2026-08-21, sitios caidos que dejaron cientos de
+// detecciones "pendiente" sin revisar).
+let netwatchFiltroTipo = 'estado';   // 'online' | 'estado' | 'tickets' | null (total)
+let netwatchFiltroValor = 'confirmado';  // 'online'/'offline' o 'confirmado'/'descartado'/'pendiente'
+let netwatchBusqueda = '';
+
+// Al descartar una ficha desde una vista que no es "Descartados" (ej. mientras
+// se revisan los offline uno por uno), se saca de la vista al toque -- si no,
+// se queda mezclada ahi con tag gris y hay que seguir mirandola entre las que
+// todavia faltan revisar. Solo dura la sesion (se limpia si se restaura o se
+// recarga la pagina); el estado real ya quedo guardado en la base al tiro.
+const NETWATCH_OCULTOS_TRAS_DESCARTE = new Set();
+let netwatchSonidoActivo = localStorage.getItem('netwatch_sonido') !== 'off';
+
+function netwatchEscapeHtml(s) {
+  if (s === null || s === undefined) return '';
+  return String(s).replace(/[&<>"']/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+  });
+}
+
+// --- resumen (tarjetas clickeables) -----------------------------------
+function netwatchSetFiltro(tipo, valor) {
+  if (tipo === 'total') {
+    netwatchFiltroTipo = null; netwatchFiltroValor = null;
+  } else if (netwatchFiltroTipo === tipo && netwatchFiltroValor === (valor || null)) {
+    // clic de nuevo sobre el mismo filtro activo -> lo saca (toggle)
+    netwatchFiltroTipo = null; netwatchFiltroValor = null;
+  } else {
+    netwatchFiltroTipo = tipo; netwatchFiltroValor = valor || null;
+  }
+  netwatchRenderResumen();
+  netwatchRenderFichas();
+}
+
+function netwatchRenderResumen() {
+  const criticos = NETWATCH_EQUIPOS.filter(function (e) { return e.critico; }).length;
+  const mapa = {
+    total: NETWATCH_SUMMARY.total, en_linea: NETWATCH_SUMMARY.en_linea, fuera_de_linea: NETWATCH_SUMMARY.fuera_de_linea,
+    confirmados: NETWATCH_SUMMARY.confirmados, descartados: NETWATCH_SUMMARY.descartados,
+    pendientes: NETWATCH_SUMMARY.pendientes, tickets_abiertos: NETWATCH_SUMMARY.tickets_abiertos,
+    criticos: criticos,
+  };
+  document.querySelectorAll('#resumen-cards [data-num]').forEach(function (el) {
+    el.textContent = mapa[el.dataset.num];
+  });
+  document.querySelectorAll('#resumen-cards .card-btn').forEach(function (btn) {
+    const tipo = btn.dataset.filtroTipo;
+    const valor = btn.dataset.filtroValor || null;
+    const activo = (tipo === 'total' && !netwatchFiltroTipo) ||
+                   (tipo === netwatchFiltroTipo && valor === netwatchFiltroValor);
+    btn.classList.toggle('active', !!activo);
+  });
+}
+
+// --- filtro + busqueda --------------------------------------------------
+function netwatchIpANumero(ip) {
+  if (!ip) return 0;
+  const partes = String(ip).split('.').map(function (n) { return parseInt(n, 10) || 0; });
+  return ((partes[0] || 0) * 16777216) + ((partes[1] || 0) * 65536) + ((partes[2] || 0) * 256) + (partes[3] || 0);
+}
+
+function netwatchAplicarFiltros() {
+  const q = netwatchBusqueda.trim().toLowerCase();
+  const verDescartados = netwatchFiltroTipo === 'estado' && netwatchFiltroValor === 'descartado';
+  const filtrados = NETWATCH_EQUIPOS.filter(function (e) {
+    if (!verDescartados && NETWATCH_OCULTOS_TRAS_DESCARTE.has(e.id)) return false;
+    if (netwatchFiltroTipo === 'online') {
+      const enLinea = !!e.en_linea;
+      if (netwatchFiltroValor === 'online' && !enLinea) return false;
+      if (netwatchFiltroValor === 'offline' && enLinea) return false;
+    } else if (netwatchFiltroTipo === 'estado') {
+      if (e.estado_deteccion !== netwatchFiltroValor) return false;
+    } else if (netwatchFiltroTipo === 'tickets') {
+      if (!e.tickets_abiertos) return false;
+    } else if (netwatchFiltroTipo === 'critico') {
+      if (!e.critico) return false;
+    }
+    if (q) {
+      const campos = [e.hostname, e.ip, e.sucursal, e.ciudad, e.ubicacion, e.responsable, e.subred];
+      const encontrado = campos.some(function (c) { return c && String(c).toLowerCase().indexOf(q) !== -1; });
+      if (!encontrado) return false;
+    }
+    return true;
+  });
+
+  // offline primero (para verlos sin tener que buscarlos), despues por IP ascendente
+  function grupoOrden(e) {
+    if (e.origen === 'manual') return 1; // los manuales no tienen deteccion real, van con los online
+    return e.en_linea ? 1 : 0;
+  }
+  filtrados.sort(function (a, b) {
+    const diff = grupoOrden(a) - grupoOrden(b);
+    if (diff !== 0) return diff;
+    return netwatchIpANumero(a.ip) - netwatchIpANumero(b.ip);
+  });
+  return filtrados;
+}
+
+// --- gauges de subred (nivel de agua = % de equipos caidos) ---------------
+function netwatchAgruparPorSubred() {
+  const grupos = {};
+  NETWATCH_EQUIPOS.forEach(function (e) {
+    if (e.origen === 'manual') return; // sin deteccion real, no aporta a la salud de la subred
+    const clave = e.subred || 'Sin subred';
+    if (!grupos[clave]) {
+      // El nombre mostrado sale del catalogo de Parametros y Red (por CIDR
+      // exacto) -- si esta subred no esta cargada ahi, se usa el CIDR crudo
+      // en vez del campo "ciudad" suelto de un equipo cualquiera (ese campo
+      // se llena inconsistente y antes hacia aparecer el mismo sitio dos
+      // veces con nombres distintos).
+      grupos[clave] = { subred: clave, total: 0, offline: 0, ciudad: NETWATCH_CIUDAD_POR_CIDR[clave] || null };
+    }
+    grupos[clave].total++;
+    if (!e.en_linea) grupos[clave].offline++;
+  });
+  return Object.values(grupos).filter(function (g) { return g.total > 0; })
+    .map(function (g) { return Object.assign(g, { pct: Math.round((g.offline / g.total) * 100) }); })
+    .sort(function (a, b) { return b.pct - a.pct || b.total - a.total; });
+}
+
+function netwatchColorGauge(pct) {
+  if (pct >= 50) return 'gauge-mal';
+  if (pct >= 20) return 'gauge-alerta';
+  return 'gauge-bien';
+}
+
+let netwatchSubredActiva = null;
+
+function netwatchFiltrarPorSubred(subred) {
+  if (netwatchSubredActiva === subred) {
+    // clic de nuevo sobre la misma subred activa: la saca (toggle) y limpia la busqueda
+    netwatchSubredActiva = null;
+    netwatchBusqueda = '';
+  } else {
+    netwatchSubredActiva = subred;
+    netwatchBusqueda = subred === 'Sin subred' ? '' : subred;
+  }
+  const buscador = document.getElementById('buscador');
+  if (buscador) buscador.value = netwatchBusqueda;
+  netwatchRenderSubredes();
+  netwatchRenderFichas();
+  const grid = document.getElementById('fichas-grid');
+  if (grid) grid.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+const NETWATCH_GAUGE_RADIO = 18;
+const NETWATCH_GAUGE_CIRCUNFERENCIA = 2 * Math.PI * NETWATCH_GAUGE_RADIO;
+
+function netwatchRenderSubredes() {
+  const cont = document.getElementById('subredes-gauges');
+  if (!cont) return;
+  const grupos = netwatchAgruparPorSubred();
+  if (!grupos.length) { cont.innerHTML = ''; return; }
+
+  cont.innerHTML = grupos.map(function (g) {
+    const colorClase = netwatchColorGauge(g.pct);
+    const activoClase = netwatchSubredActiva === g.subred ? ' gauge-activo' : '';
+    const offset = NETWATCH_GAUGE_CIRCUNFERENCIA * (1 - g.pct / 100);
+    return '<button type="button" class="gauge-card' + activoClase + '" onclick="netwatchFiltrarPorSubred(\'' + g.subred.replace(/'/g, "\\'") + '\')" title="' +
+      netwatchEscapeHtml('Ver solo ' + g.offline + ' de ' + g.total + ' caidos en ' + g.subred + ' (clic de nuevo para quitar el filtro)') + '">' +
+      '<span class="gauge-ring-wrap">' +
+        '<svg viewBox="0 0 44 44" class="gauge-ring">' +
+          '<circle class="gauge-ring-bg" cx="22" cy="22" r="' + NETWATCH_GAUGE_RADIO + '"></circle>' +
+          '<circle class="gauge-ring-fg ' + colorClase + '" cx="22" cy="22" r="' + NETWATCH_GAUGE_RADIO + '" ' +
+            'stroke-dasharray="' + NETWATCH_GAUGE_CIRCUNFERENCIA + '" stroke-dashoffset="' + offset + '"></circle>' +
+        '</svg>' +
+        '<span class="gauge-ring-valor">' + g.pct + '%</span>' +
+      '</span>' +
+      '<span class="gauge-label">' + netwatchEscapeHtml(g.ciudad || g.subred) + '</span>' +
+      '<span class="gauge-sub">' + g.offline + '/' + g.total + ' caidos</span>' +
+      '</button>';
+  }).join('');
+}
+
+// --- fichas --------------------------------------------------------------
+const NETWATCH_RDP_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+  'stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="13" rx="2"></rect>' +
+  '<path d="M8 21h8"></path><path d="M12 17v4"></path></svg>';
+
+function netwatchTiempoRelativo(iso) {
+  if (!iso) return null;
+  const entonces = new Date(iso.replace(' ', 'T'));
+  if (isNaN(entonces.getTime())) return null;
+  const segundos = Math.max(0, Math.round((Date.now() - entonces.getTime()) / 1000));
+  if (segundos < 60) return 'hace segundos';
+  const minutos = Math.round(segundos / 60);
+  if (minutos < 60) return 'hace ' + minutos + ' min';
+  const horas = Math.round(minutos / 60);
+  if (horas < 24) return 'hace ' + horas + (horas === 1 ? ' hora' : ' horas');
+  const dias = Math.round(horas / 24);
+  return 'hace ' + dias + (dias === 1 ? ' dia' : ' dias');
+}
+
+// Umbral para escalar de "Offline" a "Posible falla" -- mismo umbral que
+// eligio Andres para el aviso por WhatsApp de equipos criticos (15 min),
+// asi el badge visual y el aviso real cuentan la misma historia.
+const NETWATCH_UMBRAL_POSIBLE_FALLA_MIN = 15;
+
+// Equipos manuales (notebooks/torres en casa, VPN) a veces no tienen una IP
+// de red real -- en ese caso el campo "ip" en realidad guarda un identificador
+// de texto libre (ej. el mismo nombre del empleado). Esto detecta ese caso
+// para no mostrar el mismo texto duplicado en la ficha-card.
+const NETWATCH_IPV4_RE = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/;
+
+function netwatchMinutosDesde(iso) {
+  if (!iso) return null;
+  const entonces = new Date(iso.replace(' ', 'T'));
+  if (isNaN(entonces.getTime())) return null;
+  return (Date.now() - entonces.getTime()) / 60000;
+}
+
+function netwatchFichaHtml(e) {
+  const online = !!e.en_linea;
+  const esManual = e.origen === 'manual';
+  const cardClass = esManual ? '' : (online ? 'ficha-online' : 'ficha-offline');
+  const estadoClass = e.estado_deteccion === 'descartado' ? ' ficha-descartado' : '';
+  const tieneResponsable = !!e.responsable;
+  const titulo = tieneResponsable ? e.responsable : (e.hostname || e.ip);
+  const visto = netwatchTiempoRelativo(e.ultima_deteccion || e.desde);
+
+  let html = '<div class="ficha-card ' + cardClass + estadoClass + '" id="ficha-card-' + e.id + '" onclick="netwatchAbrirFicha(' + e.id + ')">';
+
+  if (e.tickets_abiertos) {
+    html += '<span class="ficha-ticket-banner">' + e.tickets_abiertos + ' ticket' + (e.tickets_abiertos > 1 ? 's' : '') + '</span>';
+  }
+
+  // eyebrow: subred/ciudad a la izquierda, dispositivo de red asociado a la derecha
+  html += '<div class="ficha-eyebrow"><span>' + netwatchEscapeHtml(e.subred || e.ciudad || '&nbsp;') + '</span>';
+  if (e.dispositivo_nombre) {
+    html += '<span class="ficha-eyebrow-empresa">' + netwatchEscapeHtml(e.dispositivo_nombre) + '</span>';
+  }
+  html += '</div>';
+
+  // titulo: el responsable es lo que uno recuerda, no la maquina
+  html += '<div class="ficha-card-head">';
+  html += '<span class="ficha-nombre">' + netwatchEscapeHtml(titulo) + '</span>';
+  html += '<span class="tag tag-' + e.estado_deteccion + '">' + netwatchEscapeHtml(e.estado_deteccion) + '</span>';
+  html += '</div>';
+  // linea de identificacion: nombre del equipo (si tiene) en su propia linea,
+  // y la IP debajo en otra -- antes iban en la misma linea separadas por "·"
+  // y un hostname largo (ej. un FQDN completo) hacia que la IP se desbordara
+  // hacia el costado, rompiendo la tarjeta (ver conversacion 2026-08-21). Si
+  // el "ip" guardado no es una IP de red real (equipos manuales sin IP fija,
+  // como notebooks/torres en casa), se usa como nombre en vez de duplicarlo.
+  const esIpReal = NETWATCH_IPV4_RE.test(e.ip || '');
+  const nombreEquipo = e.hostname || (esIpReal ? null : e.ip);
+  if (nombreEquipo) {
+    html += '<div class="ficha-equipo-sub"><span class="ficha-mono">' + netwatchEscapeHtml(nombreEquipo) + '</span></div>';
+    html += '<div class="ficha-equipo-ip">' + (esIpReal
+      ? '<span class="ficha-mono">' + netwatchEscapeHtml(e.ip) + '</span>'
+      : '<span class="muted">IP dinamica</span>') + '</div>';
+  } else if (esIpReal) {
+    html += '<div class="ficha-equipo-ip"><span class="ficha-mono">' + netwatchEscapeHtml(e.ip) + '</span></div>';
+  } else {
+    html += '<div class="ficha-equipo-ip"><span class="muted">Sin datos</span></div>';
+  }
+
+  html += '<div class="ficha-divider"></div>';
+
+  if (e.ubicacion) {
+    html += '<div class="ficha-linea"><span class="ficha-k">Ubicacion</span><span class="ficha-v">' + netwatchEscapeHtml(e.ubicacion) + '</span></div>';
+  }
+
+  html += '<div class="ficha-status-row">';
+  if (esManual) {
+    html += '<span class="status-pill status-pill-manual"><span class="status-dot"></span>Manual</span>';
+  } else {
+    html += '<span class="status-pill ' + (online ? 'status-pill-online' : 'status-pill-offline') + '">' +
+      '<span class="status-dot"></span>' + (online ? 'Online' : 'Offline') + '</span>';
+    if (!online) {
+      const minutosOffline = netwatchMinutosDesde(e.desde);
+      if (minutosOffline !== null && minutosOffline >= NETWATCH_UMBRAL_POSIBLE_FALLA_MIN) {
+        html += '<span class="status-pill status-pill-falla" title="Lleva offline hace rato, puede que no sea solo un corte">Posible falla</span>';
+      }
+    }
+  }
+  if (e.critico) {
+    html += '<span class="status-pill status-pill-critico" title="Marcado como critico">Critico</span>';
+  }
+  if (e.ip_temporal) {
+    html += '<span class="status-pill status-pill-temporal" title="Equipo bueno usando temporalmente la IP de otro que fallo -- sin alertas de WhatsApp mientras dure">IP temporal</span>';
+  }
+  if (e.has_rdp) {
+    html += '<span class="status-pill status-pill-rdp">RDP habilitado</span>';
+  }
+  html += '</div>';
+
+  html += '<div class="ficha-card-foot" onclick="event.stopPropagation()">';
+  html += '<span class="ficha-visto">' + (visto ? 'Visto ' + visto : '&nbsp;') + '</span>';
+  html += '<div class="ficha-foot-acciones">';
+  if (e.estado_deteccion === 'pendiente') {
+    html += '<form onsubmit="return netwatchActualizarEstado(event, ' + e.id + ')">' +
+      '<button type="submit" name="action" value="confirmado" class="btn btn-confirm btn-sm">Confirmar</button>' +
+      '<button type="submit" name="action" value="descartado" class="btn btn-ghost btn-sm">Descartar</button>' +
+      '</form>';
+  } else if (e.estado_deteccion === 'descartado') {
+    html += '<form onsubmit="return netwatchActualizarEstado(event, ' + e.id + ')">' +
+      '<button type="submit" name="action" value="pendiente" class="btn btn-ghost btn-sm">Restaurar</button>' +
+      '</form>';
+  }
+  html += '<button type="button" class="btn btn-sm ' + (e.critico ? 'btn-critico-on' : 'btn-ghost') + '" ' +
+    'onclick="netwatchToggleCritico(event, ' + e.id + ')">' + (e.critico ? 'Quitar critico' : 'Marcar critico') + '</button>';
+  if (e.has_rdp) {
+    html += '<a href="/equipo/' + e.id + '/rdp-open" class="rdp-icon-btn" title="Conectar por RDP">' + NETWATCH_RDP_ICON + '</a>';
+  }
+  html += '</div>';
+  html += '</div>';
+  html += '</div>';
+  return html;
+}
+
+// Editar ya no navega a la ficha completa -- abre el panel lateral encima
+// de la misma pantalla, asi al guardar o cancelar uno se queda exactamente
+// donde estaba (mismo scroll, mismo filtro, mismo buscador).
+function netwatchAbrirFicha(id) {
+  netwatchAbrirPanelEdicion(id);
+}
+
+async function netwatchAbrirPanelEdicion(id, queryExtra) {
+  const overlay = document.getElementById('panel-editar-overlay');
+  const contenido = document.getElementById('panel-editar-contenido');
+  overlay.classList.add('panel-open');
+  contenido.innerHTML = '<p class="empty small">Cargando...</p>';
+  try {
+    const res = await fetch('/equipo/' + id + '/panel' + (queryExtra || ''), {
+      headers: { 'X-Requested-With': 'XMLHttpRequest' },
+    });
+    contenido.innerHTML = await res.text();
+    netwatchInicializarPanelForm(id);
+  } catch (err) {
+    contenido.innerHTML = '<p class="empty small">No se pudo cargar la ficha del equipo.</p>';
+  }
+}
+
+function netwatchCerrarPanelEdicion() {
+  document.getElementById('panel-editar-overlay').classList.remove('panel-open');
+}
+
+function netwatchCerrarPanelEdicionClickFuera(ev) {
+  if (ev.target && ev.target.id === 'panel-editar-overlay') netwatchCerrarPanelEdicion();
+}
+
+function netwatchInicializarPanelForm(id) {
+  const form = document.getElementById('form-panel-editar');
+  if (form) form.addEventListener('submit', function (ev) { netwatchGuardarPanelEdicion(ev, id); });
+  const formFusion = form ? form.parentElement.querySelector('[id^="form-fusion-"]') : null;
+  if (formFusion) formFusion.addEventListener('submit', function (ev) { netwatchGuardarFusionPanel(ev, id); });
+
+  // Tickets de soporte dentro del panel: crear ticket nuevo y cambiar el
+  // estado de uno existente tampoco deben navegar a Ficha completa -- se
+  // intercepta igual que el formulario principal de arriba.
+  const formTicket = document.getElementById('form-panel-crear-ticket');
+  if (formTicket) formTicket.addEventListener('submit', function (ev) { netwatchGuardarPanelAjax(ev, id); });
+  document.querySelectorAll('.panel-ticket-acciones').forEach(function (formEstado) {
+    formEstado.addEventListener('submit', function (ev) { netwatchGuardarPanelAjax(ev, id); });
+  });
+}
+
+// Generico para cualquier formulario secundario del panel (crear ticket,
+// cambiar estado de un ticket) que solo necesita refrescar el fragmento del
+// panel con el resultado, sin cerrar el drawer como si fuera "Guardar
+// cambios" del equipo.
+async function netwatchGuardarPanelAjax(ev, id) {
+  ev.preventDefault();
+  const form = ev.target;
+  const contenido = document.getElementById('panel-editar-contenido');
+  try {
+    const res = await fetch(form.action, {
+      method: 'POST',
+      headers: { 'X-Requested-With': 'XMLHttpRequest' },
+      body: new FormData(form),
+    });
+    contenido.innerHTML = await res.text();
+    netwatchInicializarPanelForm(id);
+    netwatchPoll(); // refresca el badge de tickets abiertos en la tarjeta
+  } catch (err) {
+    // red caida momentaneamente: se deja el panel tal cual para reintentar
+  }
+  return false;
+}
+
+async function netwatchGuardarPanelEdicion(ev, id) {
+  ev.preventDefault();
+  const form = ev.target;
+  const contenido = document.getElementById('panel-editar-contenido');
+  try {
+    const res = await fetch(form.action, {
+      method: 'POST',
+      headers: { 'X-Requested-With': 'XMLHttpRequest' },
+      body: new FormData(form),
+    });
+    const guardado = res.headers.get('X-Netwatch-Guardado') === '1';
+    if (guardado) {
+      netwatchCerrarPanelEdicion();
+      netwatchPoll(); // refresca la tarjeta con los datos nuevos sin recargar la pagina
+    } else {
+      contenido.innerHTML = await res.text();
+      netwatchInicializarPanelForm(id);
+    }
+  } catch (err) {
+    // red caida momentaneamente: se deja el formulario tal cual para reintentar
+  }
+  return false;
+}
+
+async function netwatchGuardarFusionPanel(ev, id) {
+  // El onsubmit del formulario (definido en la macro fusion_equipo) ya
+  // muestra el confirm() -- si el usuario cancelo, el evento ya viene con
+  // defaultPrevented y no hay que hacer nada mas aca.
+  if (ev.defaultPrevented) return;
+  ev.preventDefault();
+  const form = ev.target;
+  const contenido = document.getElementById('panel-editar-contenido');
+  try {
+    const res = await fetch(form.action, {
+      method: 'POST',
+      headers: { 'X-Requested-With': 'XMLHttpRequest' },
+      body: new FormData(form),
+    });
+    if (res.headers.get('X-Netwatch-Guardado') === '1') {
+      netwatchCerrarPanelEdicion();
+      netwatchPoll();
+    } else {
+      contenido.innerHTML = await res.text();
+      netwatchInicializarPanelForm(id);
+    }
+  } catch (err) {
+    // red caida momentaneamente: se reintenta manualmente
+  }
+  return false;
+}
+
+// Ocultar Hardware/Software cuando la categoria elegida es un dispositivo de
+// red (switch, impresora, camara, etc.) -- esos campos no aplican y solo
+// desordenaban el formulario. Ver comentario en _macros_equipo.html sobre por
+// que la lista viaja separada por comas y no como tojson.
+function netwatchAplicarCategoriaEquipo(sel) {
+  const red = (sel.dataset.categoriasRed || '').split(',').filter(Boolean);
+  const esRed = red.indexOf(sel.value) !== -1;
+  const form = sel.closest('.ficha-form');
+  if (!form) return;
+  form.querySelectorAll('.fieldset-solo-pc').forEach(function (fs) { fs.style.display = esRed ? 'none' : ''; });
+}
+
+// Imagen del equipo dentro del panel (mismo patron que en ficha.html/admin_equipos.html).
+function netwatchFotoEquipoSeleccionada(input, id) {
+  if (!input.files || !input.files[0]) return;
+  const reader = new FileReader();
+  reader.onload = function (ev) {
+    const img = document.getElementById('foto-equipo-img-' + id);
+    const placeholder = document.getElementById('foto-equipo-placeholder-' + id);
+    img.src = ev.target.result;
+    img.style.display = 'block';
+    if (placeholder) placeholder.style.display = 'none';
+    document.getElementById('foto-equipo-eliminar-' + id).value = '0';
+  };
+  reader.readAsDataURL(input.files[0]);
+}
+
+function netwatchEliminarFotoEquipo(id) {
+  const img = document.getElementById('foto-equipo-img-' + id);
+  img.style.display = 'none';
+  img.src = '';
+  const placeholder = document.getElementById('foto-equipo-placeholder-' + id);
+  if (placeholder) placeholder.style.display = 'flex';
+  document.getElementById('foto-equipo-archivo-' + id).value = '';
+  document.getElementById('foto-equipo-eliminar-' + id).value = '1';
+}
+
+// Desde "Ultimos cambios"/toast: no editar, solo ubicar la ficha en la
+// grilla (limpia filtro/busqueda si estaban tapando la tarjeta) y resaltarla.
+function netwatchResaltarFicha(id) {
+  netwatchFiltroTipo = null;
+  netwatchFiltroValor = null;
+  netwatchBusqueda = '';
+  netwatchSubredActiva = null;
+  const buscador = document.getElementById('buscador');
+  if (buscador) buscador.value = '';
+  netwatchRenderResumen();
+  netwatchRenderSubredes();
+  netwatchRenderFichas();
+  requestAnimationFrame(function () {
+    const card = document.getElementById('ficha-card-' + id);
+    if (!card) return;
+    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    card.classList.add('ficha-resaltada');
+    setTimeout(function () { card.classList.remove('ficha-resaltada'); }, 2200);
+  });
+}
+
+// Confirmar/Descartar/Restaurar sin recargar la pagina, para no perder el
+// scroll donde estabas mirando (antes era un <form> normal que navegaba).
+const NETWATCH_CONTADOR_POR_ESTADO = { pendiente: 'pendientes', confirmado: 'confirmados', descartado: 'descartados' };
+
+async function netwatchActualizarEstado(ev, id) {
+  ev.preventDefault();
+  ev.stopPropagation();
+  const action = ev.submitter ? ev.submitter.value : null;
+  if (!action) return false;
+
+  const equipo = NETWATCH_EQUIPOS.find(function (e) { return e.id === id; });
+  const anterior = equipo ? equipo.estado_deteccion : null;
+
+  try {
+    await fetch('/confirm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest' },
+      body: 'id=' + encodeURIComponent(id) + '&action=' + encodeURIComponent(action),
+    });
+  } catch (err) {
+    // red caida momentaneamente: el proximo poll (7s) va a corregir el estado igual
+  }
+
+  if (equipo) equipo.estado_deteccion = action;
+  if (action === 'descartado') {
+    NETWATCH_OCULTOS_TRAS_DESCARTE.add(id);
+  } else {
+    NETWATCH_OCULTOS_TRAS_DESCARTE.delete(id);
+  }
+  if (anterior && NETWATCH_CONTADOR_POR_ESTADO[anterior]) {
+    NETWATCH_SUMMARY[NETWATCH_CONTADOR_POR_ESTADO[anterior]] = Math.max(0, (NETWATCH_SUMMARY[NETWATCH_CONTADOR_POR_ESTADO[anterior]] || 0) - 1);
+  }
+  if (NETWATCH_CONTADOR_POR_ESTADO[action]) {
+    NETWATCH_SUMMARY[NETWATCH_CONTADOR_POR_ESTADO[action]] = (NETWATCH_SUMMARY[NETWATCH_CONTADOR_POR_ESTADO[action]] || 0) + 1;
+  }
+  netwatchRenderResumen();
+  netwatchRenderFichas();
+  return false;
+}
+
+// Marcar/quitar critico desde la tarjeta, sin abrir la ficha completa ni
+// recargar la pagina (mismo patron que Confirmar/Descartar arriba).
+async function netwatchToggleCritico(ev, id) {
+  ev.preventDefault();
+  ev.stopPropagation();
+
+  const boton = ev.currentTarget;
+  if (boton && boton.disabled) return; // ya hay un cambio en curso -- ignora clicks de mas
+
+  const equipo = NETWATCH_EQUIPOS.find(function (e) { return e.id === id; });
+  if (!equipo) return;
+  const nuevoValor = equipo.critico ? 0 : 1;
+  if (boton) boton.disabled = true;
+
+  try {
+    // Se manda el valor final explicito (no un "toggle" ciego): si el click
+    // se llega a disparar dos veces, ambas peticiones piden lo mismo en vez
+    // de cancelarse entre si y dejar el estado real distinto al que se ve
+    // en pantalla hasta el proximo poll.
+    await fetch('/toggle-critico', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest' },
+      body: 'id=' + encodeURIComponent(id) + '&critico=' + nuevoValor,
+    });
+    equipo.critico = nuevoValor;
+  } catch (err) {
+    // red caida momentaneamente: el proximo poll (7s) va a corregir el estado igual
+  }
+
+  netwatchRenderResumen();
+  netwatchRenderFichas();
+}
+
+function netwatchRenderFichas() {
+  const grid = document.getElementById('fichas-grid');
+  const vacio = document.getElementById('fichas-vacio');
+  const lista = netwatchAplicarFiltros();
+
+  if (!NETWATCH_EQUIPOS.length) {
+    grid.innerHTML = '';
+    vacio.style.display = 'block';
+    vacio.innerHTML = 'Todavia no hay equipos importados. Corre <code>python monitor.py</code> (recomendado, queda corriendo solo) o <code>python scanner.py</code> + boton "Importar" arriba.';
+    return;
+  }
+  if (!lista.length) {
+    grid.innerHTML = '';
+    vacio.style.display = 'block';
+    vacio.textContent = 'Ningun equipo coincide con el filtro o la busqueda actual.';
+    return;
+  }
+  vacio.style.display = 'none';
+  grid.innerHTML = lista.map(netwatchFichaHtml).join('');
+}
+
+// --- buscador ------------------------------------------------------------
+document.getElementById('buscador').addEventListener('input', function (ev) {
+  netwatchBusqueda = ev.target.value;
+  if (netwatchSubredActiva !== null) {
+    netwatchSubredActiva = null;
+    netwatchRenderSubredes();
+  }
+  netwatchRenderFichas();
+});
+
+// --- sonido ----------------------------------------------------------------
+let netwatchAudioCtx = null;
+function netwatchToggleSonido() {
+  netwatchSonidoActivo = !netwatchSonidoActivo;
+  localStorage.setItem('netwatch_sonido', netwatchSonidoActivo ? 'on' : 'off');
+  netwatchRenderBotonSonido();
+}
+function netwatchRenderBotonSonido() {
+  const btn = document.getElementById('btn-sonido');
+  btn.textContent = 'Sonido: ' + (netwatchSonidoActivo ? 'ON' : 'OFF');
+  btn.classList.toggle('muted', !netwatchSonidoActivo);
+}
+function netwatchReproducirSonido(tipo) {
+  if (!netwatchSonidoActivo) return;
+  try {
+    if (!netwatchAudioCtx) netwatchAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const ctx = netwatchAudioCtx;
+    const freqs = tipo === 'online' ? [660, 880] : tipo === 'offline' ? [440, 300] : [520, 520];
+    // Ping mas fuerte y mas largo que antes (subido de volumen 0.16 -> 0.35 y
+    // de 0.4s a 0.55s) -- quedaba muy discreto y era facil no notarlo. Para
+    // "offline" ademas se repite dos veces (como una alarma corta), ya que es
+    // el aviso mas importante de no perderse.
+    const pulsos = tipo === 'offline' ? 2 : 1;
+    for (let i = 0; i < pulsos; i++) {
+      const inicio = ctx.currentTime + i * 0.32;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.type = 'sine';
+      gain.gain.setValueAtTime(0.0001, inicio);
+      gain.gain.exponentialRampToValueAtTime(0.35, inicio + 0.02);
+      osc.frequency.setValueAtTime(freqs[0], inicio);
+      osc.frequency.setValueAtTime(freqs[1], inicio + 0.15);
+      gain.gain.exponentialRampToValueAtTime(0.0001, inicio + 0.5);
+      osc.start(inicio);
+      osc.stop(inicio + 0.55);
+    }
+  } catch (err) { /* audio no disponible en este navegador, se ignora */ }
+}
+
+// --- toasts ------------------------------------------------------------
+// Los toasts de equipos criticos que se cayeron NO se autocierran a los 6s
+// como el resto -- se quedan fijos en pantalla hasta que el equipo vuelva
+// online (o alguien los cierre a mano con la x), asi no se pierden entre
+// los demas avisos mientras se investiga que paso.
+let netwatchToastsCriticosActivos = {}; // equipo_id -> elemento <div> del toast fijo
+
+function netwatchCerrarToast(div, equipoId) {
+  div.classList.remove('toast-show');
+  setTimeout(function () { div.remove(); }, 400);
+  if (equipoId && netwatchToastsCriticosActivos[equipoId] === div) {
+    delete netwatchToastsCriticosActivos[equipoId];
+  }
+}
+
+function netwatchMostrarToast(ev) {
+  const cont = document.getElementById('toast-container');
+  const tipo = ev.tipo;
+  const label = tipo === 'online' ? 'Volvio online' : tipo === 'offline' ? 'Paso a offline' : 'Nuevo equipo detectado';
+  const titulo = ev.responsable || ev.hostname || ev.ip;
+  const equipo = ev.equipo_id ? NETWATCH_EQUIPOS.find(function (e) { return e.id === ev.equipo_id; }) : null;
+  const esCriticoOffline = tipo === 'offline' && !!(equipo && equipo.critico);
+
+  // Si el equipo critico que estaba caido volvio online, cerramos su toast fijo
+  if (tipo === 'online' && ev.equipo_id && netwatchToastsCriticosActivos[ev.equipo_id]) {
+    netwatchCerrarToast(netwatchToastsCriticosActivos[ev.equipo_id], ev.equipo_id);
+  }
+
+  const div = document.createElement('div');
+  div.className = 'toast toast-' + tipo + (esCriticoOffline ? ' toast-critico' : '');
+  if (ev.equipo_id) {
+    div.classList.add('toast-clickeable');
+    div.addEventListener('click', function (evt) {
+      if (evt.target.closest('.toast-cerrar')) return;
+      netwatchResaltarFicha(ev.equipo_id);
+    });
+  }
+  const etiquetaCritico = esCriticoOffline ? '<span class="toast-tag-critico">CRITICO</span>' : '';
+  div.innerHTML = '<span class="toast-dot"></span><div class="toast-texto">' + etiquetaCritico + '<strong>' + netwatchEscapeHtml(titulo) +
+    '</strong><br><span class="toast-sub">' + label + ' &middot; ' + netwatchEscapeHtml(ev.ip) + '</span></div>' +
+    '<button type="button" class="toast-cerrar" title="Cerrar">&times;</button>';
+  const btnCerrar = div.querySelector('.toast-cerrar');
+  btnCerrar.addEventListener('click', function (evt) {
+    evt.stopPropagation();
+    netwatchCerrarToast(div, ev.equipo_id);
+  });
+  cont.appendChild(div);
+  requestAnimationFrame(function () { div.classList.add('toast-show'); });
+
+  if (esCriticoOffline) {
+    netwatchToastsCriticosActivos[ev.equipo_id] = div;
+  } else {
+    setTimeout(function () { netwatchCerrarToast(div, ev.equipo_id); }, 6000);
+  }
+  netwatchReproducirSonido(tipo);
+}
+
+// --- eventos recientes (panel lateral) ------------------------------------
+function netwatchRenderEventos() {
+  const ul = document.getElementById('eventos-lista');
+  const vacio = document.getElementById('eventos-vacio');
+  const items = NETWATCH_EVENTOS.slice(0, 20);
+  if (!items.length) {
+    ul.innerHTML = '';
+    vacio.style.display = 'block';
+    return;
+  }
+  vacio.style.display = 'none';
+  ul.innerHTML = items.map(function (ev) {
+    const label = ev.tipo === 'online' ? 'Volvio online' : ev.tipo === 'offline' ? 'Paso a offline' : 'Nuevo equipo';
+    const titulo = ev.responsable || ev.hostname || ev.ip;
+    const clickeable = !!ev.equipo_id;
+    const onclick = clickeable ? ' onclick="netwatchResaltarFicha(' + ev.equipo_id + ')"' : '';
+    return '<li class="evento evento-' + ev.tipo + (clickeable ? ' evento-clickeable' : '') + '"' + onclick + '>' +
+      '<span class="evento-tipo">' + label + '</span>' +
+      '<span class="evento-detalle">' + netwatchEscapeHtml(titulo) + ' (' + netwatchEscapeHtml(ev.ip) + ')</span>' +
+      '<span class="evento-ts">' + netwatchEscapeHtml((ev.ts || '').slice(0, 16)) + '</span>' +
+      '</li>';
+  }).join('');
+}
+
+// --- polling en vivo -------------------------------------------------------
+async function netwatchPoll() {
+  try {
+    const res = await fetch('/api/estado', { cache: 'no-store' });
+    if (!res.ok) return;
+    const data = await res.json();
+    NETWATCH_EQUIPOS = data.equipos;
+    NETWATCH_SUMMARY = data.summary;
+
+    const nuevos = (data.eventos || []).filter(function (e) { return e.id > NETWATCH_ULTIMO_EVENTO_ID; })
+      .sort(function (a, b) { return a.id - b.id; });
+    nuevos.forEach(netwatchMostrarToast);
+    if (data.eventos && data.eventos.length) {
+      NETWATCH_ULTIMO_EVENTO_ID = Math.max(NETWATCH_ULTIMO_EVENTO_ID, Math.max.apply(null, data.eventos.map(function (e) { return e.id; })));
+    }
+    NETWATCH_EVENTOS = data.eventos || [];
+
+    netwatchRenderResumen();
+    netwatchRenderFichas();
+    netwatchRenderEventos();
+    netwatchRenderSubredes();
+  } catch (err) {
+    // red caida momentaneamente o servidor reiniciando: se reintenta en el siguiente ciclo
+  }
+}
+
+// --- consola del monitor embebida (en vez de la ventana negra aparte) -----
+let netwatchConsolaColapsada = localStorage.getItem('netwatch_consola_colapsada') === '1';
+
+function netwatchToggleConsola() {
+  netwatchConsolaColapsada = !netwatchConsolaColapsada;
+  localStorage.setItem('netwatch_consola_colapsada', netwatchConsolaColapsada ? '1' : '0');
+  netwatchAplicarColapsoConsola();
+}
+
+function netwatchAplicarColapsoConsola() {
+  const body = document.getElementById('consola-body');
+  const icono = document.getElementById('consola-toggle-icono');
+  if (body) body.style.display = netwatchConsolaColapsada ? 'none' : 'block';
+  if (icono) icono.innerHTML = netwatchConsolaColapsada ? '&#9656;' : '&#9662;';
+}
+
+async function netwatchPollConsola() {
+  try {
+    const res = await fetch('/api/monitor_log', { cache: 'no-store' });
+    if (!res.ok) return;
+    const data = await res.json();
+
+    const dot = document.getElementById('consola-dot');
+    if (dot) dot.className = 'consola-dot ' + (data.activo ? 'consola-dot-on' : 'consola-dot-off');
+
+    const body = document.getElementById('consola-body');
+    if (body) {
+      const yaEstabaAbajo = body.scrollTop + body.clientHeight >= body.scrollHeight - 20;
+      body.textContent = data.lineas && data.lineas.length ? data.lineas.join('\n') :
+        (data.existe ? '' : 'Todavia no hay log del monitor. Deja monitor.py corriendo para verlo aca.');
+      if (yaEstabaAbajo) body.scrollTop = body.scrollHeight;
+    }
+
+    netwatchRenderFirebaseStatus(data.lineas || []);
+  } catch (err) {
+    // red caida momentaneamente: se reintenta en el proximo ciclo
+  }
+}
+
+// --- resumen "llego la firebase de hoy" -----------------------------------
+// Lee las mismas lineas de monitor.log que ya se pollean para la consola
+// (no hace falta otro endpoint) y se queda con la ULTIMA vez que cada sitio
+// remoto publico a Firebase, para no tener que bajar a leer la consola linea
+// por linea cada vez que se quiere confirmar que ya llego el dato del dia.
+const NETWATCH_FIREBASE_LINEA_RE = /\[FIREBASE\]\s+(\S+)\s+\([^)]*\):\s*(\d+)\/(\d+)\s+activos\s+\(publicado\s+([^)]+)\)/;
+
+function netwatchRenderFirebaseStatus(lineas) {
+  const cont = document.getElementById('firebase-status');
+  if (!cont) return;
+
+  const porSitio = {};
+  lineas.forEach(function (linea) {
+    const m = linea.match(NETWATCH_FIREBASE_LINEA_RE);
+    if (!m) return;
+    porSitio[m[1]] = { activos: m[2], total: m[3], publicado: m[4].trim() };
+  });
+
+  const nombres = Object.keys(porSitio).sort();
+  if (!nombres.length) { cont.innerHTML = ''; return; }
+
+  const hoy = new Date();
+  const hoyStr = hoy.getFullYear() + '-' + String(hoy.getMonth() + 1).padStart(2, '0') + '-' + String(hoy.getDate()).padStart(2, '0');
+
+  cont.innerHTML = nombres.map(function (nombre) {
+    const info = porSitio[nombre];
+    const fechaPublicado = info.publicado.slice(0, 10);
+    const esDeHoy = fechaPublicado === hoyStr;
+    const relativo = netwatchTiempoRelativo(info.publicado) || info.publicado;
+    const claseEstado = esDeHoy ? 'firebase-chip-ok' : 'firebase-chip-warn';
+    const texto = esDeHoy ? ('hoy, ' + relativo) : ('sin datos de hoy - ' + relativo);
+    const cidr = NETWATCH_CIDR_POR_SITIO[nombre];
+    const tituloBase = nombre + ': ' + info.activos + '/' + info.total + ' activos, publicado ' + info.publicado;
+    const titulo = cidr ? (tituloBase + ' -- clic para ver solo estos equipos') : tituloBase;
+    // Si conocemos el CIDR de este sitio, el pill filtra la grilla igual que
+    // los gauges de arriba; si no (sitio nuevo que todavia no esta en
+    // scanner/config.json de la forma esperada), queda solo informativo.
+    return '<' + (cidr ? 'button type="button" onclick="netwatchFiltrarPorSubred(\'' + cidr.replace(/'/g, "\\'") + '\')"' : 'span') +
+      ' class="firebase-chip ' + claseEstado + (cidr ? ' firebase-chip-clickeable' : '') + '" title="' +
+      netwatchEscapeHtml(titulo) + '">' +
+      '<span class="firebase-chip-dot"></span>' +
+      '<span class="firebase-chip-nombre">' + netwatchEscapeHtml(nombre) + '</span>' +
+      '<span class="firebase-chip-texto">' + netwatchEscapeHtml(texto) + '</span>' +
+      '</' + (cidr ? 'button' : 'span') + '>';
+  }).join('');
+}
+
+netwatchAplicarColapsoConsola();
+netwatchPollConsola();
+setInterval(netwatchPollConsola, 5000);
+
+netwatchRenderBotonSonido();
+netwatchRenderResumen();
+netwatchRenderFichas();
+netwatchRenderEventos();
+netwatchRenderSubredes();
+setInterval(netwatchPoll, 7000);
