@@ -1,0 +1,126 @@
+/* static/css/topologia_diagrama.css
+   Estilos propios del diagrama de flujo de red (pagina standalone, no usa style.css).
+   Extraido de templates/topologia_diagrama.html tal cual, sin cambios. */
+
+  :root { --line: #d8dce3; --muted: #6b7280; --text: #1a1f2b; --accent: #2563eb; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 20px 28px 40px; font-family: -apple-system, Segoe UI, Roboto, sans-serif;
+    background: #f4f5f7; color: var(--text);
+  }
+  .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; gap: 12px; flex-wrap: wrap; }
+  .toolbar a { color: var(--accent); text-decoration: none; font-size: 13px; }
+  .toolbar-acciones { display: flex; align-items: center; gap: 14px; }
+  .filtro-ciudad { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+  .filtro-ciudad select {
+    border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; font-size: 12.5px;
+    color: var(--text); background: #fff; cursor: pointer;
+  }
+  .toggle-tinta { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); cursor: pointer; }
+  .btn-imprimir {
+    background: var(--accent); color: #fff; border: none; border-radius: 6px; padding: 8px 16px;
+    font-size: 13px; font-weight: 600; cursor: pointer;
+  }
+  h1 { margin: 0 0 3px; font-size: 19px; }
+  .subtitle { margin: 0 0 14px; color: var(--muted); font-size: 12px; }
+  .leyenda { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 14px; font-size: 11px; color: var(--muted); }
+  .leyenda-item { display: flex; align-items: center; gap: 6px; }
+  .leyenda-badge {
+    width: 15px; height: 15px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+    font-size: 7px; font-weight: 700; color: #fff;
+  }
+  .leyenda-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .diagrama-layout { display: flex; gap: 14px; align-items: flex-start; }
+  .lienzo-wrap {
+    background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 10px;
+    overflow: auto; flex: 1 1 auto; min-width: 0;
+  }
+  .nodo-sombra { cursor: pointer; }
+  .detalle-panel {
+    display: none; flex: 0 0 280px; background: #fff; border: 1px solid var(--line); border-radius: 10px;
+    padding: 16px; font-size: 12.5px; max-height: 640px; overflow-y: auto;
+  }
+  .detalle-panel.activo { display: block; }
+  .detalle-cerrar {
+    float: right; border: none; background: none; color: var(--muted); font-size: 16px; cursor: pointer; line-height: 1;
+  }
+  .detalle-header { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+  .detalle-badge {
+    width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700; color: #fff; flex-shrink: 0;
+  }
+  .detalle-nombre { font-size: 15px; font-weight: 700; }
+  .detalle-tipo { font-size: 11px; color: var(--muted); }
+  .detalle-kv { display: grid; grid-template-columns: 76px 1fr; gap: 4px 8px; margin: 12px 0; font-size: 11.5px; }
+  .detalle-kv .k { color: var(--muted); }
+  .detalle-kv .v { color: var(--text); font-weight: 500; word-break: break-word; }
+  .detalle-seccion-titulo {
+    font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted);
+    margin: 16px 0 8px; padding-top: 12px; border-top: 1px solid var(--line);
+  }
+  .detalle-enlace, .detalle-equipo {
+    display: flex; align-items: center; gap: 8px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 7px;
+    margin-bottom: 6px; font-size: 11.5px;
+  }
+  .detalle-enlace-puerto {
+    font-size: 9.5px; font-weight: 700; color: var(--accent); background: rgba(37,99,235,0.1);
+    border-radius: 4px; padding: 1px 6px; flex-shrink: 0;
+  }
+  .detalle-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .detalle-empty { color: var(--muted); font-style: italic; font-size: 11.5px; }
+  .grupo-caja {
+    fill: none; stroke: var(--line); stroke-width: 1.5; stroke-dasharray: 5 4; rx: 14;
+  }
+  .grupo-label {
+    font-size: 10px; font-weight: 700; fill: var(--accent); font-family: inherit;
+    text-transform: uppercase; letter-spacing: 0.06em;
+  }
+  .nodo-sombra { filter: drop-shadow(0 2px 4px rgba(26,31,43,0.12)); }
+  .nodo-caja { fill: #fff; stroke: var(--line); stroke-width: 1.3; }
+  .nodo-caja.nodo-seleccionado { stroke: var(--accent); stroke-width: 2.5; }
+  .nodo-accent { }
+  .nodo-nombre { font-size: 13.5px; font-weight: 700; fill: var(--text); font-family: inherit; }
+  .nodo-tipo { font-size: 9.5px; fill: var(--muted); font-family: inherit; }
+  .nodo-ip { font-size: 9.5px; fill: var(--muted); font-family: inherit; }
+  .nodo-sigla-txt { font-size: 9px; font-weight: 700; fill: #fff; font-family: inherit; text-anchor: middle; }
+  .nodo-divisor { stroke: var(--line); stroke-width: 1; }
+  .nodo-footer-txt { font-size: 9.5px; font-family: inherit; font-weight: 600; }
+  .nodo-footer-total { fill: #15803d; }
+  .nodo-footer-offline { fill: #b91c1c; }
+  .nodo-sin-equipos { font-size: 9px; fill: var(--muted); font-family: inherit; font-style: italic; }
+  .drawer-stub { stroke: var(--line); stroke-width: 1.3; }
+  .drawer-caja { fill: #fafbfc; stroke: var(--line); stroke-width: 1.2; }
+  .leaf-fila { fill: #fff; stroke: var(--line); stroke-width: 1; }
+  .leaf-icono-txt { font-size: 6px; font-weight: 700; fill: #fff; font-family: inherit; text-anchor: middle; }
+  .leaf-nombre { font-size: 9.5px; font-weight: 600; fill: var(--text); font-family: inherit; }
+  .leaf-ip { font-size: 8px; fill: var(--muted); font-family: inherit; }
+  .capa-equipos { display: none; }
+  svg.mostrar-equipos .capa-equipos { display: block; }
+  .btn-toggle-equipos {
+    background: #fff; color: var(--accent); border: 1px solid var(--accent); border-radius: 6px; padding: 7px 14px;
+    font-size: 12.5px; font-weight: 600; cursor: pointer;
+  }
+  .btn-toggle-equipos.activo { background: var(--accent); color: #fff; }
+  .enlace-linea { stroke: var(--accent); stroke-width: 2; fill: none; opacity: 0.75; }
+  .enlace-punto { fill: var(--accent); }
+  .enlace-label-bg { fill: #fff; stroke: var(--line); stroke-width: 1; }
+  .enlace-label {
+    font-size: 9px; fill: var(--accent); font-family: inherit; text-anchor: middle; font-weight: 700;
+  }
+  .empty-note { color: var(--muted); font-size: 13px; font-style: italic; }
+
+  /* modo ahorro de tinta: menos relleno de color, solo bordes (para imprimir en papel de verdad) */
+  body.tinta-ahorro .nodo-sombra { filter: none; }
+  body.tinta-ahorro .nodo-sigla-txt { fill: #333; }
+  body.tinta-ahorro .enlace-linea { stroke: #444; opacity: 1; }
+  body.tinta-ahorro .enlace-punto { fill: #444; }
+  body.tinta-ahorro .enlace-label { fill: #333; }
+  body.tinta-ahorro .btn-imprimir { background: #111; }
+
+  @media print {
+    body { background: #fff; padding: 0 14px; }
+    .toolbar { display: none; }
+    .lienzo-wrap { border: none; padding: 0; }
+    .btn-toggle-equipos { display: none; }
+    .detalle-panel { display: none; }
+  }

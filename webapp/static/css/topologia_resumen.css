@@ -1,0 +1,104 @@
+/* static/css/topologia_resumen.css
+   Estilos propios del resumen de topologia (pagina standalone, no usa style.css).
+   Extraido de templates/topologia_resumen.html tal cual, sin cambios. */
+
+  :root { --line: #d8dce3; --muted: #6b7280; --text: #1a1f2b; --accent: #2563eb; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 20px 28px 40px; font-family: -apple-system, Segoe UI, Roboto, sans-serif;
+    background: #f4f5f7; color: var(--text); font-size: 12px;
+  }
+  .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; gap: 12px; flex-wrap: wrap; }
+  .toolbar a { color: var(--accent); text-decoration: none; font-size: 12px; }
+  .toolbar-acciones { display: flex; align-items: center; gap: 14px; }
+  .toggle-tinta { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); cursor: pointer; }
+  .btn-imprimir {
+    background: var(--accent); color: #fff; border: none; border-radius: 6px; padding: 8px 16px;
+    font-size: 12px; font-weight: 600; cursor: pointer;
+  }
+  h1 { margin: 0 0 3px; font-size: 18px; }
+  .subtitle { margin: 0 0 18px; color: var(--muted); font-size: 11px; }
+  .ciudad-bloque { margin-bottom: 20px; }
+  .ciudad-titulo {
+    font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+    color: var(--accent); border-bottom: 2px solid var(--accent); padding-bottom: 4px; margin-bottom: 10px;
+  }
+  .dispositivos-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: start;
+  }
+  .dispositivo-card {
+    background: #fff; border: 1px solid var(--line); border-radius: 7px; padding: 10px 14px; margin-bottom: 0;
+    break-inside: avoid;
+  }
+  .dispositivo-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; flex-wrap: wrap; gap: 4px; }
+  .dispositivo-nombre { font-size: 13px; font-weight: 700; }
+  .dispositivo-tipo { color: var(--muted); font-size: 10px; }
+
+  /* datos del equipo: en linea (label: valor), no apilados, para ocupar menos alto */
+  .datos-linea {
+    display: flex; flex-wrap: wrap; gap: 3px 14px; font-size: 10px; margin-bottom: 8px;
+    padding-bottom: 8px; border-bottom: 1px solid var(--line);
+  }
+  .datos-linea .dato { white-space: nowrap; }
+  .datos-linea .k { color: var(--muted); }
+  .datos-linea .v { color: var(--text); font-weight: 500; }
+
+  table.conexiones { width: 100%; border-collapse: collapse; font-size: 10px; margin-top: 6px; }
+  table.conexiones th, table.conexiones td { text-align: left; padding: 3px 6px; border-bottom: 1px solid var(--line); }
+  table.conexiones th { color: var(--muted); font-weight: 600; text-transform: uppercase; font-size: 9px; letter-spacing: 0.03em; }
+  .libres-nota { color: var(--muted); font-size: 10px; margin-top: 6px; }
+  .tag-offline {
+    display: inline-block; font-size: 8px; font-weight: 700; color: #b91c1c; background: rgba(248, 113, 113, 0.15);
+    border-radius: 8px; padding: 1px 6px; margin-left: 4px; text-transform: uppercase;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  body.tinta-ahorro .tag-offline { background: #fff; border: 1px solid #b91c1c; }
+  .empty-note { color: var(--muted); font-size: 11px; font-style: italic; }
+
+  /* diagrama de bocas, igual al de la vista interactiva de Infraestructura (colorido: bueno para PDF) */
+  .chasis-legend { display: flex; gap: 12px; font-size: 9px; color: var(--muted); align-items: center; margin-bottom: 5px; }
+  .legend-item { display: flex; align-items: center; gap: 4px; }
+  .legend-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+  .legend-dot.legend-ocupado { background: #34d399; }
+  .legend-dot.legend-offline { background: #f87171; }
+  .legend-dot.legend-libre { background: transparent; border: 1px solid #9aa1af; }
+  .chasis-bezel {
+    background: #171e2e; border: 1px solid #171e2e; border-radius: 6px; padding: 8px 8px 6px;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .puertos-row { display: flex; flex-wrap: wrap; gap: 4px; }
+  .puerto-box {
+    width: 20px; height: 20px; border-radius: 3px; display: flex; align-items: center; justify-content: center;
+    font-size: 7px; font-weight: 700; border: 1px solid #454f66; color: #8a93a8; background: #131a2b;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .puerto-box.puerto-libre { border-style: dashed; }
+  .puerto-box.puerto-ocupado { border-color: #34d399; color: #34d399; background: rgba(52, 211, 153, 0.15); }
+  .puerto-box.puerto-tipo-fibra { border-radius: 50%; }
+  .puerto-box.puerto-tipo-fibra.puerto-libre { border-color: #60a5fa; color: #60a5fa; opacity: 0.6; }
+  .puerto-box.puerto-tipo-fibra.puerto-ocupado { border-color: #60a5fa; color: #60a5fa; background: rgba(96, 165, 250, 0.2); }
+  .puerto-box.puerto-tipo-wan { border-radius: 4px; border-width: 2px; }
+  .puerto-box.puerto-tipo-wan.puerto-libre { border-color: #fbbf24; color: #fbbf24; opacity: 0.8; }
+  .puerto-box.puerto-tipo-wan.puerto-ocupado { border-color: #fbbf24; color: #fbbf24; background: rgba(251, 191, 36, 0.2); }
+  .puerto-box.puerto-tipo-dmz.puerto-libre { border-color: #f87171; color: #f87171; opacity: 0.7; }
+  .puerto-box.puerto-tipo-dmz.puerto-ocupado { border-color: #f87171; color: #f87171; background: rgba(248, 113, 113, 0.2); }
+  .puerto-box.puerto-tipo-consola { border-style: dotted; font-size: 7px; opacity: 0.75; }
+  /* boca ocupada pero el equipo esta fuera de linea: gana al color por tipo */
+  .puerto-box.puerto-ocupado.puerto-offline { border-color: #f87171; color: #f87171; background: rgba(248, 113, 113, 0.22); }
+
+  /* modo ahorro de tinta: fondos blancos, solo bordes de color (para imprimir en papel de verdad) */
+  body.tinta-ahorro .chasis-bezel { background: #fff; border-color: var(--line); }
+  body.tinta-ahorro .puerto-box { background: #fff; color: #444; border-color: #b7bcc6; }
+  body.tinta-ahorro .puerto-box.puerto-ocupado { background: #fff; color: #15803d; border-color: #15803d; }
+  body.tinta-ahorro .puerto-box.puerto-tipo-fibra.puerto-ocupado { color: #1d4ed8; border-color: #1d4ed8; background: #fff; }
+  body.tinta-ahorro .puerto-box.puerto-tipo-wan.puerto-ocupado { color: #b45309; border-color: #b45309; background: #fff; }
+  body.tinta-ahorro .puerto-box.puerto-tipo-dmz.puerto-ocupado { color: #b91c1c; border-color: #b91c1c; background: #fff; }
+  body.tinta-ahorro .puerto-box.puerto-ocupado.puerto-offline { color: #b91c1c; border-color: #b91c1c; border-width: 2px; background: #fff; }
+  body.tinta-ahorro .ciudad-titulo { color: #111; border-bottom-color: #111; }
+  body.tinta-ahorro .btn-imprimir { background: #111; }
+
+  @media print {
+    body { background: #fff; padding: 0 14px; }
+    .toolbar { display: none; }
+    .ciudad-bloque { page-break-inside: avoid; }
+  }
