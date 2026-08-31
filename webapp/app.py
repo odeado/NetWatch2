@@ -111,6 +111,13 @@ def _tiempo_relativo(iso):
 
 app.jinja_env.filters["tiempo_relativo"] = _tiempo_relativo
 
+# services/equipos.py:dispositivos_de_subred() -- filtra el selector de
+# "Dispositivo de red" de la ficha a solo los de la misma subred que la IP
+# del equipo (ver comentario de la funcion); se registra como global (no
+# filtro) porque toma 2-3 argumentos y se llama igual desde varios templates
+# que comparten templates/_macros_equipo.html.
+app.jinja_env.globals["dispositivos_de_subred"] = equipos_service.dispositivos_de_subred
+
 
 def _row_with_ports(row):
     row = dict(row)

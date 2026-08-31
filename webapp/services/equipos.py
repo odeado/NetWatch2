@@ -119,6 +119,46 @@ def actualizar_ficha(equipo_id, request):
     )
 
 
+# --- topologia: filtro de dispositivos por subred -------------------------
+def _octetos_ipv4(ip):
+    """Devuelve los primeros 3 octetos de una IPv4 valida (ej. ["172", "30",
+    "102"]), o None si no lo es -- el campo "ip" de un equipo tambien se usa
+    como identificador libre (hostname) cuando el escaneo no detecto una IP
+    real, ver el hint en el formulario de la ficha."""
+    partes = (ip or "").strip().split(".")
+    if len(partes) != 4 or not all(p.isdigit() for p in partes):
+        return None
+    return partes[:3]
+
+
+def dispositivos_de_subred(dispositivos, ip_equipo, dispositivo_actual_id=None):
+    """Filtra la lista de dispositivos de red para el selector "Dispositivo
+    de red" de Topologia en la ficha de un equipo, dejando solo los que
+    estan en la misma subred /24 que la IP del equipo (todas las subredes
+    de este proyecto son /24, ver scanner/config.json) -- asi el dropdown no
+    mezcla switches de otras sucursales.
+
+    Dos casos que a proposito NO se filtran, para no esconder opciones
+    validas por datos incompletos:
+    - Un dispositivo sin IP cargada no se puede clasificar en ninguna
+      subred (hoy mas de la mitad de los dispositivos cargados no tienen
+      IP) -- se deja en la lista igual.
+    - Si la IP del equipo no es una IPv4 valida, no hay subred con la que
+      comparar -- se devuelve la lista completa sin filtrar.
+    Ademas, el dispositivo ya asignado a este equipo (dispositivo_actual_id)
+    siempre se incluye aunque no calce, para no hacer desaparecer una
+    asignacion existente al abrir la ficha."""
+    octetos_equipo = _octetos_ipv4(ip_equipo)
+    if octetos_equipo is None:
+        return dispositivos
+    return [
+        d for d in dispositivos
+        if d["id"] == dispositivo_actual_id
+        or not d.get("ip")
+        or _octetos_ipv4(d["ip"]) == octetos_equipo
+    ]
+
+
 # --- vista de Inventario de Equipos (Administracion) ---------------------
 RESULTS_DIR = Path(__file__).resolve().parent.parent.parent / "scanner" / "results"
 _IP_ORDEN_RE = re.compile(r"^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$")

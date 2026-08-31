@@ -111,9 +111,14 @@
   <fieldset class="fieldset-compacto">
     <legend>Topologia</legend>
     <label>Dispositivo de red
+      {# Solo se listan los dispositivos de la misma subred /24 que la IP de
+         este equipo (ver services/equipos.py:dispositivos_de_subred) -- si
+         ya tenia uno asignado de otra subred, o si su "ip" no es una IPv4
+         valida (queda usada como identificador libre), esa funcion se
+         encarga de no esconderlo. #}
       <select name="dispositivo_id">
         <option value="">-- Sin asignar --</option>
-        {% for d in dispositivos %}
+        {% for d in dispositivos_de_subred(dispositivos, e.ip, e.dispositivo_id) %}
         <option value="{{ d.id }}" {% if e.dispositivo_id == d.id %}selected{% endif %}>{{ d.nombre }} ({{ d.tipo }}){% if d.sucursal %} - {{ d.sucursal }}{% endif %}</option>
         {% endfor %}
       </select>
