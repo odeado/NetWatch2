@@ -3,5 +3,19 @@ REM Win NetWatch RMM - Escaneo continuo de Matta, sin depender de VPN.
 REM Escanea localmente cada 120s y publica el resultado a Firebase (ver
 REM firebase_push.py) para que el PC central lo recoja solo. Pensado para
 REM dejarlo como tarea programada "Al iniciar el sistema" en este PC.
+REM
+REM OJO -- 2026-08-31: Matta se quedo sin reportar como 6 horas porque este
+REM script no tenia bucle de auto-reinicio (a diferencia de
+REM iniciar_rendic.bat/iniciar_rendic2.bat/iniciar_arica.bat, que ya lo
+REM tenian desde el 24-jul por el mismo motivo: "el proceso murio sin dejar
+REM error y nadie lo reinicio hasta que alguien lo noto"). Se agrega el
+REM mismo bucle y se baja de 150 a 20 workers -- 150 procesos de ping.exe en
+REM paralelo es la causa mas probable de que scanner.py se cuelgue en un PC
+REM de sucursal, mismo diagnostico que ya se hizo en Rendic/Rendic2/Arica.
 cd /d "%~dp0"
-C:\Python314\python.exe -u scanner.py --subnet 172.30.102.0/24 --repeat 120 --firebase-sitio matta --workers 150 >> scan_matta.log 2>&1
+:loop
+echo [%date% %time%] Iniciando scanner.py... >> scan_matta.log
+C:\Python314\python.exe -u scanner.py --subnet 172.30.102.0/24 --repeat 120 --firebase-sitio matta --workers 20 >> scan_matta.log 2>&1
+echo [%date% %time%] scanner.py termino -- reintentando en 10s... >> scan_matta.log
+timeout /t 10 /nobreak >nul
+goto loop
