@@ -62,12 +62,25 @@ def create_ticket(equipo_id):
 
 @bp.route("/tickets/<int:ticket_id>/estado", methods=["POST"])
 def ticket_estado(ticket_id):
-    estado = request.form["estado"]
-    db.update_ticket_estado(ticket_id, estado)
+    # OJO -- request.form.get() y no request.form["estado"]: este campo solo
+    # llega si el boton que se aprieta (Abierto/En progreso/Resolver, ver
+    # templates/_panel_editar_equipo.html) trae su name/value en el POST. El
+    # 2026-09-02 un bug de JS en el panel lateral (netwatchGuardarPanelAjax
+    # armaba el FormData sin el boton que disparo el submit -- ver
+    # netwatchFormData en static/js/pages/inventario.js) mandaba el POST sin
+    # 'estado' y esto tiraba BadRequestKeyError, mostrando el debugger de
+    # Flask entero a quien solo quiso cerrar un ticket. Ya se arreglo el JS,
+    # pero esta ruta queda tolerante igual -- si por lo que sea vuelve a
+    # faltar, no se cambia nada y se vuelve a donde estaba en vez de romper.
+    estado = request.form.get("estado")
+    if estado:
+        db.update_ticket_estado(ticket_id, estado)
     if request.form.get("origen") == "tickets":
         return redirect(url_for("tickets.tickets"))
-    equipo_id = int(request.form["equipo_id"])
-    return _responder_tras_ticket(equipo_id)
+    equipo_id = request.form.get("equipo_id")
+    if equipo_id:
+        return _responder_tras_ticket(int(equipo_id))
+    return redirect(url_for("tickets.tickets"))
 
 
 @bp.route("/tickets")

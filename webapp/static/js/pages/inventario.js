@@ -389,6 +389,23 @@ function netwatchInicializarPanelForm(id) {
   });
 }
 
+// FormData(form) NO incluye el name/value del boton que disparo el submit
+// -- el estandar solo lo agrega si se pasa ese boton como "submitter"
+// explicito (segundo argumento de FormData, o construyendolo a mano como
+// aca). Sin esto, los botones "Abierto/En progreso/Resolver" de un ticket
+// (<button name="estado" value="...">, ver templates/_panel_editar_equipo.html)
+// mandaban el POST sin el campo 'estado' y el servidor respondia 400
+// BadRequestKeyError -- confirmado en produccion el 2026-09-02 al apretar
+// "Resolver". ev.submitter (parte de SubmitEvent) es el boton que disparo
+// este submit en particular.
+function netwatchFormData(form, ev) {
+  const data = new FormData(form);
+  if (ev.submitter && ev.submitter.name) {
+    data.append(ev.submitter.name, ev.submitter.value);
+  }
+  return data;
+}
+
 // Generico para cualquier formulario secundario del panel (crear ticket,
 // cambiar estado de un ticket) que solo necesita refrescar el fragmento del
 // panel con el resultado, sin cerrar el drawer como si fuera "Guardar
@@ -401,7 +418,7 @@ async function netwatchGuardarPanelAjax(ev, id) {
     const res = await fetch(form.action, {
       method: 'POST',
       headers: { 'X-Requested-With': 'XMLHttpRequest' },
-      body: new FormData(form),
+      body: netwatchFormData(form, ev),
     });
     contenido.innerHTML = await res.text();
     netwatchInicializarPanelForm(id);
@@ -420,7 +437,7 @@ async function netwatchGuardarPanelEdicion(ev, id) {
     const res = await fetch(form.action, {
       method: 'POST',
       headers: { 'X-Requested-With': 'XMLHttpRequest' },
-      body: new FormData(form),
+      body: netwatchFormData(form, ev),
     });
     const guardado = res.headers.get('X-Netwatch-Guardado') === '1';
     if (guardado) {
@@ -448,7 +465,7 @@ async function netwatchGuardarFusionPanel(ev, id) {
     const res = await fetch(form.action, {
       method: 'POST',
       headers: { 'X-Requested-With': 'XMLHttpRequest' },
-      body: new FormData(form),
+      body: netwatchFormData(form, ev),
     });
     if (res.headers.get('X-Netwatch-Guardado') === '1') {
       netwatchCerrarPanelEdicion();
