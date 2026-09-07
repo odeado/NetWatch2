@@ -733,9 +733,13 @@ function netwatchMostrarToast(ev) {
 
   if (esCriticoOffline) {
     netwatchToastsCriticosActivos[ev.equipo_id] = div;
-  } else {
-    setTimeout(function () { netwatchCerrarToast(div, ev.equipo_id); }, 6000);
   }
+
+  // Todos los toasts se cierran automáticamente después de 6 segundos,
+  // incluyendo los críticos. Si el equipo vuelve online antes, se cierra
+  // su toast critico de forma manual (ver arriba, en línea 709-710).
+  setTimeout(function () { netwatchCerrarToast(div, ev.equipo_id); }, 6000);
+
   netwatchReproducirSonido(tipo);
 }
 

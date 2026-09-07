@@ -26,11 +26,13 @@ Uso:
 import argparse
 import ipaddress
 import json
+import os
 import platform
 import re
 import socket
 import subprocess
 import sys
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
@@ -460,6 +462,47 @@ def _run_once(subnets_to_scan, config, max_workers, out_dir, out_name, quiet=Fal
     return out_path
 
 
+def _run_with_timeout(subnets_to_scan, config, max_workers, out_dir, out_name, repeat_interval, quiet=False, firebase_sitio=None):
+    """Envuelve _run_once con un timeout. Si el ciclo se cuelga, mata el proceso
+    para que el .bat pueda reiniciarlo.
+
+    Timeout = repeat_interval + 30 segundos extra (ej: si --repeat 120, timeout es 150s).
+    Si el ciclo se cuelga mas tiempo que eso, lo matamos sin piedad.
+    """
+    timeout_secs = repeat_interval + 30 if repeat_interval else 180  # fallback: 3 min para single-run
+    marca_inicio = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    print(f"[{marca_inicio}] [CICLO INICIADO] timeout: {timeout_secs}s")
+    sys.stdout.flush()
+
+    result = [None]
+    exception = [None]
+
+    def run_ciclo():
+        try:
+            result[0] = _run_once(subnets_to_scan, config, max_workers, out_dir, out_name,
+                                  quiet=quiet, firebase_sitio=firebase_sitio)
+        except Exception as e:
+            exception[0] = e
+
+    thread = threading.Thread(target=run_ciclo, daemon=False)
+    thread.start()
+    thread.join(timeout=timeout_secs)
+
+    if thread.is_alive():
+        # El ciclo se cuelgo, mata todo
+        marca_ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        print(f"[{marca_ahora}] [TIMEOUT] El ciclo lleva {timeout_secs}s y no termina. "
+              f"El scanner se quedo colgado. Matando proceso...", flush=True)
+        # Fuerza salida inmediata
+        os._exit(1)
+
+    marca_fin = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    if exception[0]:
+        raise exception[0]
+    print(f"[{marca_fin}] [CICLO COMPLETADO]")
+    return result[0]
+
+
 def main():
     parser = argparse.ArgumentParser(description="Win NetWatch RMM - Escaner de red")
     group = parser.add_mutually_exclusive_group(required=False)
@@ -511,8 +554,8 @@ def main():
         print(f"Repitiendo cada {args.repeat}s. Ctrl+C para detener.")
         while True:
             try:
-                _run_once(subnets_to_scan, config, max_workers, args.out, args.out_name,
-                           quiet=True, firebase_sitio=args.firebase_sitio)
+                _run_with_timeout(subnets_to_scan, config, max_workers, args.out, args.out_name,
+                                 repeat_interval=args.repeat, quiet=True, firebase_sitio=args.firebase_sitio)
             except Exception as e:
                 # OJO -- bug real encontrado el 2026-07-20 en el sitio Rendic:
                 # un corte de internet a mitad de la subida a Firebase
