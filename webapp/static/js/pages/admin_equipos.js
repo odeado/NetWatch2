@@ -238,6 +238,7 @@ function netwatchOrdenarPorRam() {
 }
 
 let netwatchCategoriaActiva = '';
+let netwatchMostrarDescartados = false;  // Por defecto no mostrar descartados
 
 // Aplica a la vez el texto del buscador Y la pestana de categoria activa --
 // ambos filtros conviven (ej. buscar "matta" dentro de solo los Servidores).
@@ -266,7 +267,13 @@ function netwatchAplicarFiltrosEquipos() {
     } else if (netwatchCategoriaActiva) {
       coincideCategoria = tr.dataset.categoria === netwatchCategoriaActiva;
     }
-    const visible = coincideTexto && coincideCategoria;
+    // Filtro de estado_deteccion: por defecto oculta descartados
+    let noEsDescartado = true;
+    if (!netwatchMostrarDescartados) {
+      const texto = tr.dataset.buscar || '';
+      noEsDescartado = !texto.includes('descartado');
+    }
+    const visible = coincideTexto && coincideCategoria && noEsDescartado;
     tr.style.display = visible ? '' : 'none';
     if (visible) visibles++;
   });

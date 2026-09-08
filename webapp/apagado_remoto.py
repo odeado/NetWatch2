@@ -29,6 +29,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import firebase_sync
+from webapp.db import equipos as db_equipos
 
 CONFIG_PATH = Path(__file__).resolve().parent / "apagado_config.json"
 
@@ -386,7 +387,19 @@ def iniciar_encolado_async(equipos, accion, aviso_segundos=60, mensaje=None):
                         continue
                     info = agentes.get(ip)
                     visto = _parse_utc_agente(info.get("visto_en")) if info else None
+                    
+                    # Verificar que TANTO el agente reportó como que el scanner lo vea online
+                    equipo_vuelto = False
                     if visto and visto > confirmado_en[ip]:
+                        # El agente reportó después del reinicio -- ahora verifica que
+                        # el scanner lo vea online (en_linea=True en la BD)
+                        equipo_id = db_equipos.get_equipo_by_ip(ip)
+                        if equipo_id:
+                            equipo = db_equipos.get_equipo(equipo_id)
+                            if equipo and equipo.get('en_linea'):
+                                equipo_vuelto = True
+                    
+                    if equipo_vuelto:
                         vueltos.add(ip)
                 with _estado_lock:
                     _estado["vueltos"] = len(vueltos)
