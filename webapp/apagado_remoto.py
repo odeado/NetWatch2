@@ -29,7 +29,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import firebase_sync
-from webapp.db import equipos as db_equipos
+from db import equipos as db_equipos
 
 CONFIG_PATH = Path(__file__).resolve().parent / "apagado_config.json"
 
