@@ -25,3 +25,4 @@ O más explícitamente:
 
     from services.equipos import actualizar_ficha
     resultado = actualizar_ficha(equipo_id, request)
+"""
