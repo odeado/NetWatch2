@@ -152,8 +152,13 @@ function netwatchPintarAgentes() {
       return;
     }
     const relativo = netwatchTiempoRelativoAgente(visto);
-    const segundos = (Date.now() - new Date(visto).getTime()) / 1000;
-    const reciente = segundos >= 0 && segundos < NETWATCH_AGENTE_UMBRAL_RECIENTE_SEG;
+    // Math.max(0, ...) -- igual que netwatchTiempoRelativoAgente: si el reloj
+    // del agente esta unos segundos adelantado al del navegador (deriva de
+    // reloj normal entre PCs), "segundos" daba negativo y el badge se pintaba
+    // en rojo ("pendiente") aunque el texto ya decia "hace segundos" -- ahora
+    // ambos calculos usan la misma base no-negativa.
+    const segundos = Math.max(0, (Date.now() - new Date(visto).getTime()) / 1000);
+    const reciente = segundos < NETWATCH_AGENTE_UMBRAL_RECIENTE_SEG;
     td.innerHTML = '<span class="tag ' + (reciente ? 'tag-confirmado' : 'tag-pendiente') + '" title="Ultimo aviso: ' + visto + '">'
       + '<span class="dot ' + (reciente ? 'dot-on' : 'dot-off') + '"></span> Si' + (relativo ? ' (' + relativo + ')' : '') + '</span>';
   });

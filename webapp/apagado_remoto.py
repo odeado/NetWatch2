@@ -25,7 +25,7 @@ import re
 import subprocess
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import firebase_sync
@@ -310,6 +310,16 @@ CONFIRMAR_TIMEOUT_SEG = 90
 CONFIRMAR_INTERVALO_SEG = 4
 VOLVER_TIMEOUT_SEG = 8 * 60
 VOLVER_INTERVALO_SEG = 10
+# Margen minimo despues del apagado/reinicio programado (aviso_segundos)
+# antes de aceptar CUALQUIER heartbeat del agente como senal de "volvio".
+# Sin esto, el heartbeat que sigue llegando cada 1 min DURANTE la cuenta
+# regresiva de shutdown.exe (antes de que Windows realmente se reinicie) ya
+# es "mas nuevo" que confirmado_en y marcaba "ya volvio" de forma casi
+# instantanea -- visto en la practica el 2026-09-09: el panel decia "ya
+# volvio a conectarse" mientras la pantalla remota todavia mostraba
+# "Apagando el equipo...". 45s cubre POST + arranque rapido de Windows +
+# que la tarea programada del agente vuelva a correr.
+MARGEN_REBOOT_SEG = 45
 
 
 def _parse_utc_agente(iso):
@@ -353,6 +363,7 @@ def iniciar_encolado_async(equipos, accion, aviso_segundos=60, mensaje=None):
 
         confirmados = set()
         confirmado_en = {}  # ip -> momento (UTC) en que se detecto la ejecucion
+        vuelta_minima_en = {}  # ip -> momento (UTC) desde el que un heartbeat cuenta como "volvio"
         intentos = max(1, int(CONFIRMAR_TIMEOUT_SEG // CONFIRMAR_INTERVALO_SEG))
         for _ in range(intentos):
             if ips_por_confirmar and len(confirmados) >= len(ips_por_confirmar):
@@ -363,7 +374,9 @@ def iniciar_encolado_async(equipos, accion, aviso_segundos=60, mensaje=None):
             for ip in ips_por_confirmar:
                 if ip not in confirmados and ip.replace(".", "_") not in claves_pendientes:
                     confirmados.add(ip)
-                    confirmado_en[ip] = datetime.now(timezone.utc)
+                    ahora = datetime.now(timezone.utc)
+                    confirmado_en[ip] = ahora
+                    vuelta_minima_en[ip] = ahora + timedelta(seconds=aviso_segundos + MARGEN_REBOOT_SEG)
             with _estado_lock:
                 _estado["confirmados"] = len(confirmados)
 
@@ -387,18 +400,20 @@ def iniciar_encolado_async(equipos, accion, aviso_segundos=60, mensaje=None):
                         continue
                     info = agentes.get(ip)
                     visto = _parse_utc_agente(info.get("visto_en")) if info else None
-                    
-                    # Verificar que TANTO el agente reportó como que el scanner lo vea online
+
+                    # Verificar que TANTO el agente reporto DESPUES del margen minimo
+                    # de reinicio (no apenas se confirmo la orden -- ver MARGEN_REBOOT_SEG
+                    # mas arriba, evita el falso "volvio" mientras el equipo todavia
+                    # esta en la cuenta regresiva de shutdown.exe) COMO que el scanner
+                    # lo vea online (en_linea=True en la BD).
                     equipo_vuelto = False
-                    if visto and visto > confirmado_en[ip]:
-                        # El agente reportó después del reinicio -- ahora verifica que
-                        # el scanner lo vea online (en_linea=True en la BD)
+                    if visto and visto > vuelta_minima_en[ip]:
                         equipo_id = db_equipos.get_equipo_by_ip(ip)
                         if equipo_id:
                             equipo = db_equipos.get_equipo(equipo_id)
                             if equipo and equipo.get('en_linea'):
                                 equipo_vuelto = True
-                    
+
                     if equipo_vuelto:
                         vueltos.add(ip)
                 with _estado_lock:
