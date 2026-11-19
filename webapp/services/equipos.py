@@ -20,17 +20,17 @@ import firebase_sync
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 UPLOAD_DIR = BASE_DIR / "static" / "uploads"
-ALLOWED_IMAGE_EXT = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
+ALLOWED_IMAGE_EXT = {".png", ".jpg", ".jpeg", ".jfif", ".gif", ".webp", ".bmp", ".avif"}
 
 
 @dataclass
 class ResultadoActualizarFicha:
     """Lo que la ruta ficha() en app.py necesita para decidir que responder
-    tras guardar el formulario. ip_error es la unica validacion que puede
-    fallar (ver actualizar_ficha)."""
+    tras guardar el formulario. Conserva separados los errores de IP y foto."""
     ip_error: str = None
     ip_conflicto_id: int = None
     ip_nueva: str = None
+    foto_error: str = None
 
 
 def guardar_foto_equipo(request):
@@ -41,8 +41,16 @@ def guardar_foto_equipo(request):
     if archivo and archivo.filename:
         ext = Path(archivo.filename).suffix.lower()
         if ext not in ALLOWED_IMAGE_EXT:
-            return None, False
+            raise ValueError("foto_formato")
+        # Algunos JPG llegan con extension .jfif. Se guardan como .jpg para
+        # que Flask los sirva con el tipo image/jpeg en todos los equipos.
+        if ext == ".jfif":
+            ext = ".jpg"
+        if not archivo.stream.read(1):
+            raise ValueError("foto_vacia")
+        archivo.stream.seek(0)
         nombre_archivo = f"equipo_{uuid.uuid4().hex}{ext}"
+        UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
         archivo.save(UPLOAD_DIR / nombre_archivo)
         return f"uploads/{nombre_archivo}", True
 
@@ -68,12 +76,18 @@ def actualizar_ficha(equipo_id, request):
     fields["gestionado"] = 1 if request.form.get("gestionado") == "on" else 0
     fields["ip_temporal"] = 1 if request.form.get("ip_temporal") == "on" else 0
 
+    foto_error = None
     if request.form.get("eliminar_foto") == "1":
         fields["foto"] = None
     else:
-        foto, hubo_cambio_foto = guardar_foto_equipo(request)
-        if hubo_cambio_foto:
-            fields["foto"] = foto
+        try:
+            foto, hubo_cambio_foto = guardar_foto_equipo(request)
+            if hubo_cambio_foto:
+                fields["foto"] = foto
+        except ValueError as exc:
+            foto_error = str(exc)
+        except OSError:
+            foto_error = "foto_guardado"
 
     responsable_id_raw = request.form.get("responsable_id") or None
     responsable_id = int(responsable_id_raw) if responsable_id_raw else None
@@ -116,6 +130,7 @@ def actualizar_ficha(equipo_id, request):
     return ResultadoActualizarFicha(
         ip_error=ip_error, ip_conflicto_id=ip_conflicto_id,
         ip_nueva=nueva_ip if ip_error else None,
+        foto_error=foto_error,
     )
 
 
@@ -222,8 +237,12 @@ def armar_vista_admin_equipos(request):
     # de Equipos): trae TODOS los usuarios (no solo activos, para no fallar si
     # el responsable de un equipo quedo inactivo) con sus equipos asignados.
     usuarios_perfil = db.list_usuarios()
+    # Una sola consulta agrupada para todos los usuarios en vez de una por
+    # usuario (ver db.list_equipos_agrupados_por_responsable) -- antes eran
+    # 80+ consultas separadas en cada carga de Inventario de Equipos.
+    equipos_por_responsable = db.list_equipos_agrupados_por_responsable()
     for u in usuarios_perfil:
-        u["equipos_asignados"] = db.list_equipos_por_responsable(u["id"])
+        u["equipos_asignados"] = equipos_por_responsable.get(u["id"], [])
 
     resumen_importacion = None
     if request.args.get("importado") == "1":
@@ -251,6 +270,12 @@ def armar_vista_admin_equipos(request):
             # cuantos ya avisaron de vuelta despues de bootear.
             "vueltos": int(request.args.get("ap_vueltos", 0)),
             "sin_volver": int(request.args.get("ap_sin_volver", 0)),
+            # El agente recibio la orden pero shutdown.exe fallo (o la descarto).
+            "con_error": int(request.args.get("ap_con_error", 0)),
+            # IPs (ya acotadas por el JS) de los equipos que necesitan atencion.
+            "ips_sin_confirmar": request.args.get("ap_ips_sin_confirmar") or None,
+            "ips_sin_volver": request.args.get("ap_ips_sin_volver") or None,
+            "ips_con_error": request.args.get("ap_ips_con_error") or None,
         }
 
     # Si venimos de un choque de IP al editar (ver ficha() en app.py), esto le

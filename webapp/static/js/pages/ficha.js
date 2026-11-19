@@ -11,25 +11,20 @@ function netwatchAplicarCategoriaEquipo(sel) {
 }
 
 function netwatchFotoEquipoSeleccionada(input, id) {
-  if (!input.files || !input.files[0]) return;
-  const reader = new FileReader();
-  reader.onload = function (ev) {
-    const img = document.getElementById('foto-equipo-img-' + id);
-    const placeholder = document.getElementById('foto-equipo-placeholder-' + id);
-    img.src = ev.target.result;
-    img.style.display = 'block';
-    if (placeholder) placeholder.style.display = 'none';
-    document.getElementById('foto-equipo-eliminar-' + id).value = '0';
-  };
-  reader.readAsDataURL(input.files[0]);
+  netwatchPrepararFotoEquipo(input, id);
 }
 
 function netwatchEliminarFotoEquipo(id) {
   const img = document.getElementById('foto-equipo-img-' + id);
   img.style.display = 'none';
-  img.src = '';
+  img.removeAttribute('src');
   const placeholder = document.getElementById('foto-equipo-placeholder-' + id);
   if (placeholder) placeholder.style.display = 'flex';
   document.getElementById('foto-equipo-archivo-' + id).value = '';
   document.getElementById('foto-equipo-eliminar-' + id).value = '1';
+  const estado = document.getElementById('foto-equipo-estado-' + id);
+  if (estado) {
+    estado.textContent = 'La imagen se eliminará al guardar los cambios.';
+    estado.dataset.error = 'false';
+  }
 }

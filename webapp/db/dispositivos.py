@@ -3,6 +3,7 @@ de puertos). Toca la tabla equipos con SQL directo en un par de lugares
 (desvincular al borrar un dispositivo, liberar boca al reasignar) pero no
 llama funciones de equipos.py -- sin dependencias cruzadas."""
 import re
+from contextlib import nullcontext
 from datetime import datetime
 
 from ._core import _marca_sync, conexion
@@ -352,7 +353,7 @@ def list_conexiones_dispositivos():
     return {"origen": origen, "destino": destino}
 
 
-def aplicar_estado_red(results, offline_after_misses=2):
+def aplicar_estado_red(results, offline_after_misses=2, conn=None):
     """Aplica resultados de un ciclo de escaneo (mismo formato que
     equipos.apply_scan_results: lista de dicts con al menos 'ip' y 'alive')
     a los dispositivos_red que tengan esa IP cargada -- switches, routers,
@@ -373,13 +374,15 @@ def aplicar_estado_red(results, offline_after_misses=2):
     now = datetime.now().isoformat()
     cambios = []
 
-    with conexion() as conn:
+    propia = conn is None
+    with (conexion() if propia else nullcontext(conn)) as conn:
         dispositivos = conn.execute(
             "SELECT id, nombre, ip, en_linea, fallos_consecutivos FROM dispositivos_red WHERE ip IS NOT NULL AND ip != ''"
         ).fetchall()
         for d in dispositivos:
             if d["ip"] not in por_ip:
                 continue  # su IP no estaba en la subred escaneada este ciclo -- no tocar
+            conn.execute('UPDATE dispositivos_red SET sin_datos=0 WHERE id=?', (d['id'],))
             alive = por_ip[d["ip"]]
             # SQLite devuelve el entero 1/0 (no el bool True/False de Python)
             # para una columna INTEGER -- "1 is True" es FALSE en Python (son
@@ -416,5 +419,6 @@ def aplicar_estado_red(results, offline_after_misses=2):
                     )
                     if was_online is True:
                         cambios.append({"id": d["id"], "nombre": d["nombre"], "ip": d["ip"], "tipo": "offline"})
-        conn.commit()
+        if propia:
+            conn.commit()
     return cambios

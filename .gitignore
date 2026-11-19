@@ -61,3 +61,7 @@ webapp/netwatch_backup_*.db
 # Config local de Claude Code en esta PC (permisos, no hay nada sensible,
 # pero es config de la maquina, no del proyecto -- no tiene sentido en git)
 .claude/
+
+# Id de la ultima orden ejecutada por el agente (anti-bucle), por PC
+agente_apagado/agente_ultima_orden.txt
+agente_apagado/**/agente_ultima_orden.txt

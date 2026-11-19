@@ -26,6 +26,7 @@ from flask import Flask, Response, jsonify, make_response, redirect, render_temp
 
 import db
 import firebase_sync
+from notificaciones import agrupar_eventos
 from services import equipos as equipos_service
 from blueprints.admin import bp as admin_bp
 from blueprints.disponibilidad import bp as disponibilidad_bp
@@ -125,7 +126,7 @@ def _row_with_ports(row):
     return row
 
 
-def _build_estado_payload(estado_filtro=None, eventos_limit=30):
+def _build_estado_payload(estado_filtro=None, eventos_limit=30, eventos_despues=None):
     """Arma el paquete de datos (equipos + resumen + eventos recientes) que
     usan tanto la carga inicial de / como el polling en vivo de /api/estado,
     para que ambos queden siempre en sincronia con una sola fuente de verdad."""
@@ -140,16 +141,18 @@ def _build_estado_payload(estado_filtro=None, eventos_limit=30):
         e["dispositivo_nombre"] = dispositivos_por_id.get(e.get("dispositivo_id"))
 
     todos = db.list_equipos()
+    activos = [e for e in todos if e['estado_deteccion'] != 'descartado']
     summary = {
-        "total": len(todos),
+        "total": len(activos),
         "confirmados": sum(1 for r in todos if r["estado_deteccion"] == "confirmado"),
         "descartados": sum(1 for r in todos if r["estado_deteccion"] == "descartado"),
         "pendientes": sum(1 for r in todos if r["estado_deteccion"] == "pendiente"),
-        "en_linea": sum(1 for r in todos if r["en_linea"]),
-        "fuera_de_linea": sum(1 for r in todos if not r["en_linea"]),
+        "en_linea": sum(1 for r in activos if r["en_linea"] and not r['sin_datos']),
+        "fuera_de_linea": sum(1 for r in activos if not r["en_linea"] and not r['sin_datos']),
+        "sin_datos": sum(1 for r in activos if r['sin_datos']),
         "tickets_abiertos": db.count_open_tickets(),
     }
-    eventos = db.list_recent_events(eventos_limit)
+    eventos = db.list_recent_events(eventos_limit, after_id=eventos_despues)
     return equipos, summary, eventos
 
 
@@ -171,8 +174,12 @@ def api_estado():
     """JSON liviano para el polling en vivo del inventario: fichas + resumen +
     eventos recientes (online/offline/nuevo), usado para refrescar la grilla
     sin recargar la pagina y para disparar los toasts de aviso."""
-    equipos, summary, eventos = _build_estado_payload()
-    return jsonify({"equipos": equipos, "summary": summary, "eventos": eventos})
+    despues = request.args.get('despues', type=int)
+    equipos, summary, eventos = _build_estado_payload(eventos_limit=500 if despues is not None else 30,
+        eventos_despues=max(0,despues) if despues is not None else None)
+    return jsonify({"equipos": equipos, "summary": summary, "eventos": eventos,
+        "notificaciones": agrupar_eventos(eventos), "agentes": db.list_agentes_escaneo(),
+        "coincidencias": db.list_coincidencias_equipo()})
 
 
 @app.route("/api/devices/agent-report", methods=["POST"])
@@ -318,6 +325,7 @@ def _render_panel_editar_equipo(equipo_id, error=None, ip_conflicto_id=None, ip_
         "_panel_editar_equipo.html", e=equipo, usuarios=usuarios, dispositivos=dispositivos,
         categorias_equipo=db.CATEGORIAS_EQUIPO, error=error,
         ip_conflicto=ip_conflicto, ip_nueva=ip_nueva, tickets=tickets,
+        coincidencias=db.list_coincidencias_equipo(equipo_id),
     )
 
 
@@ -342,7 +350,7 @@ def ficha(equipo_id):
         resultado = equipos_service.actualizar_ficha(equipo_id, request)
         if resultado is None:
             return redirect(url_for("index"))
-        ip_error = resultado.ip_error
+        ip_error = resultado.ip_error or resultado.foto_error
         ip_conflicto_id = resultado.ip_conflicto_id
         nueva_ip = resultado.ip_nueva
 
@@ -428,6 +436,24 @@ def fusionar_equipo_ip(equipo_id):
     if request.form.get("origen") == "inventario":
         return redirect(url_for("admin.admin_equipos"))
     return redirect(url_for("ficha", equipo_id=equipo_id))
+
+
+@app.route('/coincidencia/<int:conocido_id>/<int:nuevo_id>', methods=['POST'])
+def resolver_coincidencia(conocido_id, nuevo_id):
+    coincidencia = next((c for c in db.list_coincidencias_equipo(nuevo_id) if c['conocido_id']==conocido_id and c['nuevo_id']==nuevo_id),None)
+    if not coincidencia:
+        return jsonify(ok=False,error='La coincidencia ya no está vigente'),409
+    accion = request.form.get('accion')
+    if accion == 'ignorar':
+        db.ignorar_coincidencia(conocido_id,nuevo_id)
+    elif accion == 'fusionar':
+        if not db.fusionar_equipo_por_ip(conocido_id,coincidencia['ip_nueva'],coincidencia_id=nuevo_id):
+            return jsonify(ok=False),409
+    else:
+        return jsonify(ok=False),400
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return jsonify(ok=True)
+    return redirect(url_for('ficha',equipo_id=conocido_id))
 
 
 @app.route("/equipo/<int:equipo_id>/rdp")

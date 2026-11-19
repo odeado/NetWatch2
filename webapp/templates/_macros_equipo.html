@@ -7,21 +7,31 @@
      (quedaba desordenado con campos vacios que no aplican). #}
   {% set categorias_red = ["Switch", "Router", "Firewall/UTM", "Access Point", "ONT/Modem", "Impresora", "Camara/DVR"] %}
   {% set es_dispositivo_red = e.categoria in categorias_red %}
+  {% if error in ['foto_formato', 'foto_vacia', 'foto_guardado'] %}
+  <p class="nw-form-feedback" role="alert">
+    {% if error == 'foto_formato' %}La imagen no se guardó: formato no compatible. Usa JPG, JPEG, JFIF, PNG, GIF, WebP, BMP o AVIF.
+    {% elif error == 'foto_vacia' %}La imagen no se guardó porque el archivo está vacío. Selecciona otra imagen.
+    {% else %}No se pudo guardar la imagen en el servidor. Reintenta y revisa el espacio y los permisos de la carpeta de imágenes.{% endif %}
+    Los demás cambios de la ficha se guardaron; la imagen anterior se conserva.
+  </p>
+  {% endif %}
   <div class="foto-upload-box">
     <p class="foto-upload-label">Imagen del equipo</p>
     <div class="foto-upload-row">
       <span class="foto-equipo-preview">
-        <img id="foto-equipo-img-{{ e.id }}" alt=""
+        <img id="foto-equipo-img-{{ e.id }}" alt="Imagen del equipo"
              src="{{ (e.foto if e.foto.startswith('http') else url_for('static', filename=e.foto)) if e.foto else '' }}"
+             onerror="netwatchFotoEquipoError(this, {{ e.id }})"
              style="display:{{ 'block' if e.foto else 'none' }}">
         <span id="foto-equipo-placeholder-{{ e.id }}" style="display:{{ 'none' if e.foto else 'flex' }}">Sin imagen</span>
       </span>
       <button type="button" class="btn btn-confirm" onclick="document.getElementById('foto-equipo-archivo-{{ e.id }}').click()">Cambiar imagen</button>
       <button type="button" class="btn btn-dark" onclick="netwatchEliminarFotoEquipo({{ e.id }})">Eliminar imagen</button>
-      <input type="file" name="foto_archivo" id="foto-equipo-archivo-{{ e.id }}" accept="image/*" style="display:none"
+      <input type="file" name="foto_archivo" id="foto-equipo-archivo-{{ e.id }}" accept="image/jpeg,image/png,image/gif,image/webp,image/bmp,image/avif,.jfif" style="display:none"
              onchange="netwatchFotoEquipoSeleccionada(this, {{ e.id }})">
       <input type="hidden" name="eliminar_foto" id="foto-equipo-eliminar-{{ e.id }}" value="0">
     </div>
+    <p class="foto-estado" id="foto-equipo-estado-{{ e.id }}" aria-live="polite">JPG, PNG, GIF, WebP, BMP o AVIF. La imagen se aplica al guardar los cambios.</p>
   </div>
 
   <fieldset>
@@ -52,7 +62,7 @@
     {% endif %}
     <label>IP / identificador <input type="text" name="ip" value="{{ e.ip or '' }}" required></label>
     <label>Hostname <input type="text" name="hostname" value="{{ e.hostname or '' }}" placeholder="Ej: PC-RECEPCION"></label>
-    <label>MAC <input type="text" name="mac" value="{{ e.mac or '' }}" placeholder="Ej: AA:BB:CC:DD:EE:FF" onblur="netwatchFormatearMac(this)"></label>
+    <label>MAC <input type="text" name="mac" value="{{ e.mac or '' }}" placeholder="Ej: AA:BB:CC:DD:EE:FF" maxlength="17" autocomplete="off" oninput="netwatchFormatearMac(this, event)" onblur="netwatchFormatearMac(this)"></label>
   </fieldset>
 
   <fieldset class="fieldset-compacto">

@@ -174,27 +174,22 @@ function netwatchAplicarCategoriaEquipo(sel) {
 }
 
 function netwatchFotoEquipoSeleccionada(input, id) {
-  if (!input.files || !input.files[0]) return;
-  const reader = new FileReader();
-  reader.onload = function (ev) {
-    const img = document.getElementById('foto-equipo-img-' + id);
-    const placeholder = document.getElementById('foto-equipo-placeholder-' + id);
-    img.src = ev.target.result;
-    img.style.display = 'block';
-    if (placeholder) placeholder.style.display = 'none';
-    document.getElementById('foto-equipo-eliminar-' + id).value = '0';
-  };
-  reader.readAsDataURL(input.files[0]);
+  netwatchPrepararFotoEquipo(input, id);
 }
 
 function netwatchEliminarFotoEquipo(id) {
   const img = document.getElementById('foto-equipo-img-' + id);
   img.style.display = 'none';
-  img.src = '';
+  img.removeAttribute('src');
   const placeholder = document.getElementById('foto-equipo-placeholder-' + id);
   if (placeholder) placeholder.style.display = 'flex';
   document.getElementById('foto-equipo-archivo-' + id).value = '';
   document.getElementById('foto-equipo-eliminar-' + id).value = '1';
+  const estado = document.getElementById('foto-equipo-estado-' + id);
+  if (estado) {
+    estado.textContent = 'La imagen se eliminará al guardar los cambios.';
+    estado.dataset.error = 'false';
+  }
 }
 
 let netwatchOrdenRamAsc = false; // primer click: de mayor a menor RAM
@@ -359,7 +354,7 @@ function netwatchActualizarEstadoVivo() {
 
         const celdaRed = fila.querySelector('.estado-red-cell');
         if (celdaRed && info.origen !== 'manual') {
-          celdaRed.innerHTML = '<span class="tag ' + (info.en_linea ? 'tag-confirmado' : 'tag-descartado') + '">'
+          celdaRed.innerHTML = info.sin_datos ? '<span class="tag">Sin información reciente</span>' : '<span class="tag ' + (info.en_linea ? 'tag-confirmado' : 'tag-descartado') + '">'
             + '<span class="dot ' + (info.en_linea ? 'dot-on' : 'dot-off') + '"></span> '
             + (info.en_linea ? 'Online' : 'Offline') + '</span>';
         }
@@ -419,7 +414,7 @@ function netwatchAbrirConfirmarApagado(accion) {
 
   document.getElementById('confirmar-apagado-nota').textContent =
     'Solo se ejecuta en las PCs que ya tengan instalado el agente NetWatch (ver agente_apagado/) -- ' +
-    'en el resto, la orden queda esperando sin hacer nada hasta que se instale ahi tambien. Cada equipo ' +
+    'en el resto, la orden se cancela sola a los 2 minutos. Cada equipo ' +
     'va a mostrar un aviso de Windows con cuenta regresiva antes de ' +
     (accion === 'reiniciar' ? 'reiniciarse.' : 'apagarse.');
 
@@ -509,7 +504,7 @@ function netwatchPollApagado(accion) {
         fill.style.width = pct + '%';
         fill.style.background = 'var(--green)';
         texto.textContent = 'Confirmando ejecucion... ' + estado.confirmados + ' / ' + estado.total_confirmar
-          + ' (esperando hasta 90s a que cada PC avise)';
+          + ' (esperando hasta 2 min a que cada PC avise)';
       } else {
         const pct = estado.total > 0 ? Math.min(100, Math.round((estado.procesados / estado.total) * 100)) : 0;
         fill.style.width = pct + '%';
@@ -535,6 +530,19 @@ function netwatchPollApagado(accion) {
       params.set('ap_sin_confirmar', (resumen.sin_confirmar || []).length);
       if (resumen.vueltos) params.set('ap_vueltos', resumen.vueltos.length);
       if (resumen.sin_volver) params.set('ap_sin_volver', resumen.sin_volver.length);
+      if (!apDetalle && (resumen.con_error || []).length > 0) {
+        const pe = resumen.con_error[0];
+        apDetalle = (pe.ip + ': ' + pe.detalle).slice(0, 200);
+      }
+      params.set('ap_con_error', (resumen.con_error || []).length);
+      // IPs de lo que necesita atencion (maximo 8 por grupo, para no inflar la URL).
+      const listaIps = function (ips) {
+        ips = ips || [];
+        return ips.slice(0, 8).join(', ') + (ips.length > 8 ? ' y ' + (ips.length - 8) + ' mas' : '');
+      };
+      if ((resumen.sin_confirmar || []).length) params.set('ap_ips_sin_confirmar', listaIps(resumen.sin_confirmar));
+      if ((resumen.sin_volver || []).length) params.set('ap_ips_sin_volver', listaIps(resumen.sin_volver));
+      if ((resumen.con_error || []).length) params.set('ap_ips_con_error', listaIps(resumen.con_error.map(function (x) { return x.ip; })));
       if (apDetalle) params.set('ap_detalle', apDetalle);
       window.location.href = NETWATCH_URL_ADMIN_EQUIPOS + '?' + params.toString();
     })

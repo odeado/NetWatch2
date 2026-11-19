@@ -19,14 +19,19 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='css/admin-tabs.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/panel-lateral-index.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/responsive.css') }}">
-<script src="{{ url_for('static', filename='formato_campos.js') }}"></script>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/netwatch-theme.css', v='20261014') }}">
+<script src="{{ url_for('static', filename='formato_campos.js', v='20261014') }}"></script>
 </head>
-<body>
+<body class="nw-inventario" data-icon-sprite="{{ url_for('static', filename='icons.svg') }}">
+{% import '_ui.html' as ui %}
 <header>
   <div class="header-row">
-    <div>
-      <h1>Win NetWatch RMM</h1>
-      <p class="subtitle">Inventario de equipos detectados &mdash; se actualiza solo, sin recargar la pagina</p>
+    <div class="nw-brand">
+      {{ ui.icon('network') }}
+      <div>
+        <h1>NetWatch <small>RMM</small></h1>
+        <p class="subtitle">Monitoreo e inventario de equipos · Actualización en vivo</p>
+      </div>
     </div>
     <div class="nav-links">
       <a href="{{ url_for('disponibilidad.disponibilidad') }}" class="tickets-nav-link">Disponibilidad</a>
@@ -39,49 +44,68 @@
   </div>
 </header>
 
-<section class="firebase-status" id="firebase-status"></section>
+<section class="nw-agentes" aria-label="Estado de los agentes de escaneo">
+  <div class="nw-section-label">{{ ui.icon('pulse') }} Agentes de escaneo</div>
+  <div class="firebase-status" id="firebase-status"></div>
+</section>
 
 <section class="subredes-gauges" id="subredes-gauges"></section>
 
 <section class="summary" id="resumen-cards">
   <button type="button" class="card total card-btn" data-filtro-tipo="total" onclick="netwatchSetFiltro('total')">
+    {{ ui.icon('monitor') }}
     <span class="num" data-num="total">{{ summary.total }}</span><span class="label">Total en inventario</span>
   </button>
   <button type="button" class="card en-linea card-btn" data-filtro-tipo="online" data-filtro-valor="online" onclick="netwatchSetFiltro('online', 'online')">
+    {{ ui.icon('pulse') }}
     <span class="num" data-num="en_linea">{{ summary.en_linea }}</span><span class="label">En linea</span>
   </button>
   <button type="button" class="card fuera-linea card-btn" data-filtro-tipo="online" data-filtro-valor="offline" onclick="netwatchSetFiltro('online', 'offline')">
+    {{ ui.icon('monitor') }}
     <span class="num" data-num="fuera_de_linea">{{ summary.fuera_de_linea }}</span><span class="label">Fuera de linea</span>
   </button>
   <button type="button" class="card confirmado card-btn" data-filtro-tipo="estado" data-filtro-valor="confirmado" onclick="netwatchSetFiltro('estado', 'confirmado')">
+    {{ ui.icon('check') }}
     <span class="num" data-num="confirmados">{{ summary.confirmados }}</span><span class="label">Confirmados</span>
   </button>
   <button type="button" class="card descartado card-btn" data-filtro-tipo="estado" data-filtro-valor="descartado" onclick="netwatchSetFiltro('estado', 'descartado')">
+    {{ ui.icon('archive') }}
     <span class="num" data-num="descartados">{{ summary.descartados }}</span><span class="label">Descartados</span>
   </button>
   <button type="button" class="card pendiente card-btn" data-filtro-tipo="estado" data-filtro-valor="pendiente" onclick="netwatchSetFiltro('estado', 'pendiente')">
+    {{ ui.icon('clock') }}
     <span class="num" data-num="pendientes">{{ summary.pendientes }}</span><span class="label">Pendientes</span>
   </button>
   <button type="button" class="card tickets card-btn" data-filtro-tipo="tickets" onclick="netwatchSetFiltro('tickets')">
+    {{ ui.icon('ticket') }}
     <span class="num" data-num="tickets_abiertos">{{ summary.tickets_abiertos }}</span><span class="label">Tickets abiertos</span>
   </button>
   <button type="button" class="card critico card-btn" data-filtro-tipo="critico" onclick="netwatchSetFiltro('critico')">
+    {{ ui.icon('alert') }}
     <span class="num" data-num="criticos">0</span><span class="label">Criticos</span>
   </button>
+  <button type="button" class="card card-btn" data-filtro-tipo="sin_datos" onclick="netwatchSetFiltro('sin_datos')">
+    {{ ui.icon('clock') }}<span class="num" data-num="sin_datos">{{ summary.sin_datos }}</span><span class="label">Sin información</span>
+  </button>
 </section>
+<section id="coincidencias-equipo" class="nw-coincidencias" hidden></section>
 
 <div class="layout">
 <div class="main-col">
   <div class="fichas-toolbar">
-    <input type="text" id="buscador" class="fichas-buscador" placeholder="Buscar por nombre, IP, sucursal, ciudad o responsable...">
+    <label class="nw-search">
+      {{ ui.icon('search') }}
+      <input type="search" id="buscador" class="fichas-buscador" aria-label="Buscar equipos" placeholder="Buscar por nombre, IP, sucursal, ciudad o responsable...">
+    </label>
     <button type="button" id="btn-sonido" class="btn-sonido" onclick="netwatchToggleSonido()">Sonido: ON</button>
+    <button type="button" class="btn-sonido" onclick="netwatchProbarAviso()" title="Muestra un aviso de prueba y suena si el sonido está activado">Probar aviso</button>
   </div>
   <div id="fichas-grid" class="fichas-grid"></div>
   <p id="fichas-vacio" class="empty" style="display:none; margin-top: 14px;"></p>
 </div>
 
 <aside class="side-col">
-  <h2>Ultimos cambios</h2>
+  <h2>{{ ui.icon('clock') }} Actividad reciente</h2>
   <ul class="eventos" id="eventos-lista"></ul>
   <p id="eventos-vacio" class="empty small" style="display:none">Todavia no hay cambios registrados.</p>
 </aside>
@@ -98,7 +122,7 @@
 <div class="toast-container" id="toast-container"></div>
 
 <div class="panel-overlay" id="panel-editar-overlay" onclick="netwatchCerrarPanelEdicionClickFuera(event)">
-  <aside class="panel-editar" id="panel-editar" onclick="event.stopPropagation()">
+  <aside class="panel-editar" id="panel-editar" role="dialog" aria-modal="true" aria-label="Editar equipo" tabindex="-1" onclick="event.stopPropagation()">
     <div id="panel-editar-contenido"></div>
   </aside>
 </div>
@@ -108,7 +132,7 @@
 <script id="netwatch-eventos-data" type="application/json">{{ eventos | tojson }}</script>
 <script id="netwatch-subredes-data" type="application/json">{{ subredes | tojson }}</script>
 <script id="netwatch-cidr-sitio-data" type="application/json">{{ cidr_por_sitio | tojson }}</script>
-<script src="{{ url_for('static', filename='js/pages/inventario.js') }}"></script>
+<script src="{{ url_for('static', filename='js/pages/inventario.js', v='20261015') }}"></script>
 
 </body>
 </html>

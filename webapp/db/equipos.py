@@ -7,11 +7,13 @@ crear un equipo manual o asignarle responsable -- unica dependencia cruzada
 de este submodulo.
 """
 import json
+from contextlib import nullcontext
 from datetime import datetime
 from pathlib import Path
 
 from ._core import _marca_sync, conexion
 from .usuarios import get_usuario
+from .coincidencias import detectar_coincidencias
 
 FICHA_FIELDS = [
     "hostname", "mac",
@@ -47,7 +49,7 @@ def list_scan_files(results_dir: Path):
     return sorted(results_dir.glob("scan_*.json"), reverse=True)
 
 
-def apply_scan_results(subred, results, source="monitor", offline_after_misses=2, subred_label=None):
+def apply_scan_results(subred, results, source="monitor", offline_after_misses=2, subred_label=None, conn=None, observado_en=None):
     """
     Aplica los resultados de un escaneo (vivos y no-vivos) a la base de datos:
     actualiza cada equipo ya conocido, inserta los nuevos que si respondieron,
@@ -61,20 +63,24 @@ def apply_scan_results(subred, results, source="monitor", offline_after_misses=2
     fallos no llegue al umbral, el equipo se mantiene en_linea=1 (se actualiza
     fallos_consecutivos pero no se dispara el evento/toast de offline).
     """
-    now = datetime.now().isoformat()
+    now = observado_en or datetime.now().isoformat()
     eventos = []
-
-    with conexion() as conn:
+    propia = conn is None
+    with (conexion() if propia else nullcontext(conn)) as conn:
         for h in results:
             ip = h["ip"]
             alive = bool(h.get("alive"))
             existing = conn.execute(
-                "SELECT id, en_linea, fallos_consecutivos FROM equipos WHERE ip = ?", (ip,)
+                "SELECT id, en_linea, fallos_consecutivos, sin_datos FROM equipos WHERE ip = ?", (ip,)
             ).fetchone()
 
             if existing:
                 eq_id = existing["id"]
                 was_online = bool(existing["en_linea"])
+                if existing['sin_datos']:
+                    conn.execute("INSERT INTO eventos(equipo_id,ip,tipo,ts) VALUES (?,?,?,?)",
+                        (eq_id,ip,'datos_online' if was_online else 'datos_offline',now))
+                    conn.execute("UPDATE equipos SET sin_datos=0,desde=?,fallos_consecutivos=0 WHERE id=?", (now,eq_id))
 
                 if alive:
                     open_ports_json = json.dumps(h.get("open_ports", []))
@@ -105,7 +111,7 @@ def apply_scan_results(subred, results, source="monitor", offline_after_misses=2
                     if not was_online:
                         eventos.append({"equipo_id": eq_id, "ip": ip, "hostname": h.get("hostname"), "tipo": "online", "ts": now})
                 else:
-                    fallos = (existing["fallos_consecutivos"] or 0) + 1
+                    fallos = (0 if existing['sin_datos'] else (existing["fallos_consecutivos"] or 0)) + 1
                     if was_online and fallos < offline_after_misses:
                         # todavia no llega al umbral: se cuenta el fallo pero se mantiene online
                         conn.execute(
@@ -155,8 +161,14 @@ def apply_scan_results(subred, results, source="monitor", offline_after_misses=2
                 "INSERT INTO eventos (equipo_id, ip, hostname, tipo, ts) VALUES (?, ?, ?, ?, ?)",
                 (ev["equipo_id"], ev["ip"], ev["hostname"], ev["tipo"], ev["ts"]),
             )
+        for h in results:
+            if h.get('alive') and (h.get('mac') or h.get('hostname')):
+                fila = conn.execute("SELECT id FROM equipos WHERE ip=? AND estado_deteccion='pendiente'", (h['ip'],)).fetchone()
+                if fila:
+                    detectar_coincidencias(conn, fila['id'])
 
-        conn.commit()
+        if propia:
+            conn.commit()
 
     return eventos
 
@@ -197,12 +209,15 @@ def aplicar_reporte_agente(data):
 
     with conexion() as conn:
         existing = conn.execute(
-            "SELECT id, en_linea FROM equipos WHERE ip = ?", (ip,)
+            "SELECT id, en_linea, sin_datos FROM equipos WHERE ip = ?", (ip,)
         ).fetchone()
 
         if existing:
             eq_id = existing["id"]
             was_online = bool(existing["en_linea"])
+            if existing['sin_datos']:
+                conn.execute("INSERT INTO eventos(equipo_id,ip,tipo,ts) VALUES (?,?,?,?)",
+                    (eq_id,ip,'datos_online' if was_online else 'datos_offline',now))
             conn.execute(
                 """
                 UPDATE equipos
@@ -220,10 +235,12 @@ def aplicar_reporte_agente(data):
                        office = COALESCE(?, office),
                        antivirus = COALESCE(?, antivirus),
                        metodo_deteccion = 'agente',
+                       sin_datos = 0,
+                       ultimo_scan_file = 'agente',
                        ultima_deteccion = ?,
                        en_linea = 1,
                        fallos_consecutivos = 0,
-                       desde = CASE WHEN en_linea = 0 THEN ? ELSE desde END,
+                       desde = CASE WHEN en_linea = 0 OR sin_datos=1 THEN ? ELSE desde END,
                        actualizado_en = ?
                  WHERE id = ?
                 """,
@@ -239,6 +256,7 @@ def aplicar_reporte_agente(data):
                     "INSERT INTO eventos (equipo_id, ip, hostname, tipo, ts) VALUES (?, ?, ?, 'online', ?)",
                     (eq_id, ip, campos["hostname"], now),
                 )
+            detectar_coincidencias(conn, eq_id)
             conn.commit()
             return eq_id, False
 
@@ -262,6 +280,7 @@ def aplicar_reporte_agente(data):
             "INSERT INTO eventos (equipo_id, ip, hostname, tipo, ts) VALUES (?, ?, ?, 'nuevo', ?)",
             (eq_id, ip, campos["hostname"], now),
         )
+        detectar_coincidencias(conn, eq_id)
         conn.commit()
         return eq_id, True
 
@@ -306,13 +325,15 @@ def list_equipos(estado=None):
                 "SELECT * FROM equipos "
                 "ORDER BY (estado_deteccion = 'pendiente') DESC, en_linea DESC, confidence_score DESC"
             ).fetchall()
-        return [dict(r) for r in rows]
+        from .monitoreo import anotar_salud_equipos
+        return anotar_salud_equipos([dict(r) for r in rows])
 
 
 def get_equipo(equipo_id):
     with conexion() as conn:
         row = conn.execute("SELECT * FROM equipos WHERE id = ?", (equipo_id,)).fetchone()
-        return dict(row) if row else None
+        from .monitoreo import anotar_salud_equipos
+        return anotar_salud_equipos([dict(row)])[0] if row else None
 
 
 def update_estado(equipo_id, estado):
@@ -368,7 +389,7 @@ _CAMPOS_TECNICOS_FUSION = [
 ]
 
 
-def fusionar_equipo_por_ip(equipo_id, ip_nueva):
+def fusionar_equipo_por_ip(equipo_id, ip_nueva, coincidencia_id=None):
     """Un equipo real cambio de IP (ej. le asignaron una IP nueva porque la
     vieja se dio de baja), pero el escaneo ya creo un registro aparte para esa
     IP nueva apenas la vio en la red -- por eso "ya existe" al intentar
@@ -379,6 +400,7 @@ def fusionar_equipo_por_ip(equipo_id, ip_nueva):
     tickets/rdp_history/eventos (por si tuviera alguno) para no perder nada.
     Devuelve True si fusiono algo, False si no encontro el duplicado."""
     with conexion() as conn:
+        conn.execute('BEGIN IMMEDIATE')
         dup_row = conn.execute("SELECT * FROM equipos WHERE ip = ?", (ip_nueva,)).fetchone()
         if not dup_row:
             return False
@@ -391,10 +413,27 @@ def fusionar_equipo_por_ip(equipo_id, ip_nueva):
         if not actual_row:
             return False
         actual = dict(actual_row)
+        if coincidencia_id is not None:
+            from .coincidencias import motivos
+            pendiente = conn.execute("SELECT 1 FROM coincidencias_equipo WHERE conocido_id=? AND nuevo_id=? AND estado='pendiente'",
+                (equipo_id,coincidencia_id)).fetchone()
+            if (dup_id != coincidencia_id or not pendiente or actual['estado_deteccion']!='confirmado'
+                    or duplicado['estado_deteccion']!='pendiente' or not motivos(actual,duplicado)):
+                return False
 
         updates = {"ip": ip_nueva, "actualizado_en": _marca_sync()}
-        for campo in _CAMPOS_TECNICOS_FUSION:
+        for campo in set(_CAMPOS_TECNICOS_FUSION + FICHA_FIELDS + ['foto']):
             if not actual.get(campo) and duplicado.get(campo):
+                updates[campo] = duplicado[campo]
+        # La conectividad observada pertenece a la IP que se adopta; no se
+        # debe conservar el estado ni la subred de la direccion anterior.
+        for campo in ['en_linea','sin_datos','fallos_consecutivos','subred','open_ports',
+                      'confidence_score','confidence_label','metodo_deteccion',
+                      'ultima_deteccion','ultimo_scan_file','desde']:
+            if duplicado.get(campo) is not None:
+                updates[campo] = duplicado[campo]
+        for campo in ['responsable_id','dispositivo_id']:
+            if actual.get(campo) is None and duplicado.get(campo) is not None:
                 updates[campo] = duplicado[campo]
 
         # OJO -- el duplicado hay que borrarlo ANTES de ponerle su IP al equipo
@@ -405,6 +444,7 @@ def fusionar_equipo_por_ip(equipo_id, ip_nueva):
         conn.execute("UPDATE tickets SET equipo_id = ? WHERE equipo_id = ?", (equipo_id, dup_id))
         conn.execute("UPDATE rdp_history SET equipo_id = ? WHERE equipo_id = ?", (equipo_id, dup_id))
         conn.execute("DELETE FROM equipos WHERE id = ?", (dup_id,))
+        conn.execute('DELETE FROM coincidencias_equipo WHERE conocido_id=? OR nuevo_id=?', (dup_id,dup_id))
 
         set_clause = ", ".join(f"{c} = ?" for c in updates)
         conn.execute(f"UPDATE equipos SET {set_clause} WHERE id = ?", list(updates.values()) + [equipo_id])
@@ -485,6 +525,26 @@ def list_equipos_por_responsable(usuario_id):
         return [dict(r) for r in rows]
 
 
+def list_equipos_agrupados_por_responsable():
+    """Trae en UNA sola consulta los equipos de TODOS los responsables,
+    agrupados por responsable_id -- reemplaza llamar a
+    list_equipos_por_responsable() una vez por usuario (services/equipos.py
+    armaba el modal de "ver ficha del responsable" para TODOS los usuarios,
+    activos e inactivos, en cada carga de Inventario de Equipos -- con 80+
+    usuarios eran 80+ consultas separadas a la base para un modal que la
+    mayoria de las veces ni se abre)."""
+    with conexion() as conn:
+        rows = conn.execute(
+            "SELECT id, ip, hostname, en_linea, estado_deteccion, responsable_id FROM equipos "
+            "WHERE responsable_id IS NOT NULL ORDER BY hostname, ip"
+        ).fetchall()
+    agrupado = {}
+    for r in rows:
+        d = dict(r)
+        agrupado.setdefault(d["responsable_id"], []).append(d)
+    return agrupado
+
+
 def list_equipos_basico():
     with conexion() as conn:
         rows = conn.execute(
@@ -502,8 +562,9 @@ def list_equipos_estado_vivo():
     quedaba "en duda" varios minutos sin saber si de verdad ya volvio hasta
     que refrescaba la pagina a mano."""
     with conexion() as conn:
-        rows = conn.execute("SELECT id, ip, en_linea, origen FROM equipos").fetchall()
-        return [dict(r) for r in rows]
+        rows = conn.execute("SELECT id, ip, en_linea, origen, sin_datos, subred, ultimo_scan_file FROM equipos").fetchall()
+        from .monitoreo import anotar_salud_equipos
+        return anotar_salud_equipos([dict(r) for r in rows])
 
 
 def set_responsable_equipo(equipo_id, usuario_id):

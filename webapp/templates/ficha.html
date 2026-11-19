@@ -19,7 +19,8 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='css/admin-tabs.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/panel-lateral-index.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/responsive.css') }}">
-<script src="{{ url_for('static', filename='formato_campos.js') }}"></script>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/netwatch-theme.css', v='20261014') }}">
+<script src="{{ url_for('static', filename='formato_campos.js', v='20261014') }}"></script>
 </head>
 <body>
 <header>
@@ -40,6 +41,9 @@
     {% endif %}
   </div>
 </header>
+{% if e.sin_datos %}
+<p class="panel-warning" role="status">Sin información reciente del colector. Último estado conocido: {{ 'conectado' if e.en_linea else 'desconectado' }}.</p>
+{% endif %}
 
 <section class="deteccion-info">
   <div><span class="k">IP</span><span class="v">{{ e.ip }}</span></div>
@@ -71,12 +75,14 @@
   </span></div>
   <div><span class="k">Primera deteccion</span><span class="v">{{ e.primera_deteccion[:16] if e.primera_deteccion else '-' }}</span></div>
   <div><span class="k">Ultima deteccion</span><span class="v">{{ e.ultima_deteccion[:16] if e.ultima_deteccion else '-' }}</span></div>
-  {% if disponibilidad %}
+  {% if disponibilidad and not disponibilidad.sin_muestras %}
   <div><span class="k">Disponibilidad ({{ disponibilidad.dias }}d)</span><span class="v">
     <span class="disp-barra-wrap"><div class="disp-barra {{ 'disp-mal' if disponibilidad.pct_online < 90 else ('disp-alerta' if disponibilidad.pct_online < 98 else 'disp-bien') }}" style="width:{{ disponibilidad.pct_online }}%"></div></span>
     <span class="disp-pct">{{ disponibilidad.pct_online }}%</span>
     <span class="muted">&middot; {{ disponibilidad.caidas }} caida{{ 's' if disponibilidad.caidas != 1 else '' }}</span>
+    {% if disponibilidad.cobertura_pct < 100 %}<span class="muted"> · Datos disponibles: {{ disponibilidad.cobertura_pct }}% del período</span>{% endif %}
   </span></div>
+  {% elif disponibilidad %}<div><span class="k">Disponibilidad</span><span class="v">Sin observaciones suficientes en este período</span></div>
   {% endif %}
 </section>
 

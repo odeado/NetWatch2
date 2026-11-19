@@ -25,6 +25,7 @@ import re
 import subprocess
 import threading
 import time
+import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -258,9 +259,14 @@ def encolar_comandos_equipos(equipos, accion, aviso_segundos=60, mensaje=None, o
         if not ip:
             resumen["fallidos"].append({"id": e["id"], "ip": ip, "motivo": "sin_ip"})
             continue
-        ok, detalle = firebase_sync.encolar_comando_equipo(ip, accion, aviso_segundos, mensaje)
+        # id propio de cada orden: el agente lo devuelve en
+        # agentes_estado/{ip}/ultima_orden, y asi se sabe CUAL orden se ejecuto
+        # (y con que resultado) en vez de deducirlo de que la orden desaparecio.
+        orden_id = uuid.uuid4().hex[:12]
+        ok, detalle = firebase_sync.encolar_comando_equipo(
+            ip, accion, aviso_segundos, mensaje, orden_id=orden_id, caduca_seg=ORDEN_CADUCA_SEG)
         if ok:
-            resumen["ok"].append({"id": e["id"], "ip": ip})
+            resumen["ok"].append({"id": e["id"], "ip": ip, "orden_id": orden_id})
         else:
             resumen["fallidos"].append({"id": e["id"], "ip": ip, "motivo": detalle})
             print(f"[apagado_remoto] no se pudo encolar {accion} en {ip} (equipo id {e['id']}): {detalle}")
@@ -306,7 +312,14 @@ _estado = {
     "accion": None, "resumen": None,
 }
 
-CONFIRMAR_TIMEOUT_SEG = 90
+CONFIRMAR_TIMEOUT_SEG = 120
+# Plazo de vida de una orden en la cola: el agente la descarta si es mas vieja
+# (PC apagada al encolar) y, ademas, lo que no se confirmo en
+# CONFIRMAR_TIMEOUT_SEG se borra de la cola desde aca (ver _en_hilo).
+ORDEN_CADUCA_SEG = 600
+# Un reinicio real mueve la hora de arranque (arranque_en) del agente al menos
+# esto hacia adelante. Margen para el "tembleque" de LastBootUpTime.
+ARRANQUE_MIN_DIF_SEG = 30
 CONFIRMAR_INTERVALO_SEG = 4
 VOLVER_TIMEOUT_SEG = 8 * 60
 VOLVER_INTERVALO_SEG = 10
@@ -334,6 +347,22 @@ def _parse_utc_agente(iso):
         return None
 
 
+def _visto_utc(info):
+    """Ultima vez que el agente reporto, como datetime UTC. Prefiere la hora
+    del SERVIDOR de Firebase (visto_en_srv, milisegundos) sobre la del reloj
+    de la PC (visto_en), que en PCs con la pila de la BIOS agotada puede estar
+    cualquier dia. Agentes viejos solo traen visto_en."""
+    if not info:
+        return None
+    ms = info.get("visto_en_srv")
+    if isinstance(ms, (int, float)):
+        try:
+            return datetime.fromtimestamp(ms / 1000, timezone.utc)
+        except (OverflowError, OSError, ValueError):
+            pass
+    return _parse_utc_agente(info.get("visto_en"))
+
+
 def obtener_estado_encolado():
     with _estado_lock:
         return dict(_estado)
@@ -355,33 +384,79 @@ def iniciar_encolado_async(equipos, accion, aviso_segundos=60, mensaje=None):
             _estado["procesados"] += 1
 
     def _en_hilo():
+        # Foto previa: hora de arranque de Windows de cada PC ANTES de la orden.
+        # Despues de reiniciar, el agente reporta otra distinta -- esa es la
+        # senal definitiva de "volvio" (no depende del reloj de la PC ni del
+        # ciclo del scanner).
+        agentes_previos = firebase_sync.leer_agentes_estado()
+        arranque_previo = {}
+        for e in equipos:
+            info_previa = agentes_previos.get(e.get("ip")) or {}
+            arranque_previo[e.get("ip")] = _parse_utc_agente(info_previa.get("arranque_en"))
+
         resumen = encolar_comandos_equipos(equipos, accion, aviso_segundos, mensaje, on_progreso=_avance)
 
-        ips_por_confirmar = [e["ip"] for e in resumen["ok"]]
+        ordenes = {x["ip"]: x["orden_id"] for x in resumen["ok"]}
+        ips_por_confirmar = list(ordenes)
         with _estado_lock:
             _estado.update(fase="confirmando", total_confirmar=len(ips_por_confirmar), confirmados=0)
 
         confirmados = set()
+        con_error = {}  # ip -> detalle: el agente la recibio pero fallo (o la descarto)
+        ausentes = {}  # ip -> veces seguidas que la orden ya no estaba en la cola
         confirmado_en = {}  # ip -> momento (UTC) en que se detecto la ejecucion
         vuelta_minima_en = {}  # ip -> momento (UTC) desde el que un heartbeat cuenta como "volvio"
+
+        def _confirmar(ip):
+            ahora = datetime.now(timezone.utc)
+            confirmados.add(ip)
+            confirmado_en[ip] = ahora
+            vuelta_minima_en[ip] = ahora + timedelta(seconds=aviso_segundos + MARGEN_REBOOT_SEG)
+
         intentos = max(1, int(CONFIRMAR_TIMEOUT_SEG // CONFIRMAR_INTERVALO_SEG))
         for _ in range(intentos):
-            if ips_por_confirmar and len(confirmados) >= len(ips_por_confirmar):
+            por_resolver = [ip for ip in ips_por_confirmar if ip not in confirmados and ip not in con_error]
+            if not por_resolver:
                 break
             time.sleep(CONFIRMAR_INTERVALO_SEG)
-            pendientes = firebase_sync.leer_comandos_pendientes()
-            claves_pendientes = set(pendientes.keys())
-            for ip in ips_por_confirmar:
-                if ip not in confirmados and ip.replace(".", "_") not in claves_pendientes:
-                    confirmados.add(ip)
-                    ahora = datetime.now(timezone.utc)
-                    confirmado_en[ip] = ahora
-                    vuelta_minima_en[ip] = ahora + timedelta(seconds=aviso_segundos + MARGEN_REBOOT_SEG)
+            claves_pendientes = set(firebase_sync.leer_comandos_pendientes().keys())
+            agentes = firebase_sync.leer_agentes_estado()
+            for ip in por_resolver:
+                info = agentes.get(ip) or {}
+                ultima = info.get("ultima_orden")
+                if isinstance(ultima, dict) and ultima.get("id") == ordenes[ip]:
+                    # Resultado REAL reportado por el agente para ESTA orden.
+                    if ultima.get("resultado") == "ok":
+                        _confirmar(ip)
+                    else:
+                        con_error[ip] = ultima.get("detalle") or ultima.get("resultado") or "error"
+                elif ip.replace(".", "_") not in claves_pendientes:
+                    # La orden ya no esta en la cola pero no hay resultado: es un
+                    # agente viejo (no reporta resultado; ahi "borrada" es lo unico
+                    # que hay) o el reporte del resultado fallo -- tras 3 revisiones
+                    # seguidas se da por ejecutada.
+                    ausentes[ip] = ausentes.get(ip, 0) + 1
+                    if not info.get("agente_version") or ausentes[ip] >= 3:
+                        _confirmar(ip)
+                else:
+                    ausentes[ip] = 0
             with _estado_lock:
-                _estado["confirmados"] = len(confirmados)
+                _estado["confirmados"] = len(confirmados) + len(con_error)
+
+        # Lo que nadie recogio en el plazo se BORRA de la cola: si no, una PC
+        # apagada (o sin agente) ejecutaria el reinicio horas despues, apenas
+        # alguien la prenda.
+        sin_confirmar = sorted(set(ips_por_confirmar) - confirmados - set(con_error))
+        canceladas = []
+        for ip in sin_confirmar:
+            cancelada, _motivo = firebase_sync.cancelar_comando_equipo(ip)
+            if cancelada:
+                canceladas.append(ip)
 
         resumen["confirmados"] = sorted(confirmados)
-        resumen["sin_confirmar"] = sorted(set(ips_por_confirmar) - confirmados)
+        resumen["sin_confirmar"] = sin_confirmar
+        resumen["canceladas"] = canceladas
+        resumen["con_error"] = [{"ip": ip, "detalle": d} for ip, d in sorted(con_error.items())]
 
         # Fase 3, solo tiene sentido para "reiniciar" -- un equipo apagado
         # no vuelve solo, asi que esperar a que "vuelva" no aplica.
@@ -399,15 +474,22 @@ def iniciar_encolado_async(equipos, accion, aviso_segundos=60, mensaje=None):
                     if ip in vueltos:
                         continue
                     info = agentes.get(ip)
-                    visto = _parse_utc_agente(info.get("visto_en")) if info else None
+                    visto = _visto_utc(info)
+                    # El heartbeat que sigue llegando DURANTE la cuenta regresiva de
+                    # shutdown.exe (ver MARGEN_REBOOT_SEG) no cuenta como "volvio".
+                    if not visto or visto <= vuelta_minima_en[ip]:
+                        continue
 
-                    # Verificar que TANTO el agente reporto DESPUES del margen minimo
-                    # de reinicio (no apenas se confirmo la orden -- ver MARGEN_REBOOT_SEG
-                    # mas arriba, evita el falso "volvio" mientras el equipo todavia
-                    # esta en la cuenta regresiva de shutdown.exe) COMO que el scanner
-                    # lo vea online (en_linea=True en la BD).
-                    equipo_vuelto = False
-                    if visto and visto > vuelta_minima_en[ip]:
+                    nuevo_arranque = _parse_utc_agente(info.get("arranque_en"))
+                    previo = arranque_previo.get(ip)
+                    if nuevo_arranque and previo:
+                        # Senal definitiva: Windows arranco de nuevo (la hora de
+                        # arranque que reporta el agente cambio).
+                        equipo_vuelto = nuevo_arranque > previo + timedelta(seconds=ARRANQUE_MIN_DIF_SEG)
+                    else:
+                        # Sin hora de arranque previa (agente viejo): heartbeat nuevo
+                        # + que el scanner lo vea online en la BD.
+                        equipo_vuelto = False
                         equipo_id = db_equipos.get_equipo_by_ip(ip)
                         if equipo_id:
                             equipo = db_equipos.get_equipo(equipo_id)

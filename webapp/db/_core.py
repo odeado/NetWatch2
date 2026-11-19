@@ -222,6 +222,22 @@ def init_db():
     conn.executescript(SCHEMA)
     # migracion suave para bases de datos creadas antes de agregar en_linea/desde
     cols = {row["name"] for row in conn.execute("PRAGMA table_info(equipos)")}
+    if "sin_datos" not in cols:
+        conn.execute("ALTER TABLE equipos ADD COLUMN sin_datos INTEGER NOT NULL DEFAULT 0")
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS agentes_escaneo (
+            nombre TEXT PRIMARY KEY, cidr TEXT NOT NULL, ciudad TEXT,
+            intervalo INTEGER NOT NULL DEFAULT 120,
+            ultimo_reporte TEXT, ultima_revision TEXT, ultimo_scan_id TEXT,
+            ultimo_respaldo TEXT, error TEXT
+        );
+        CREATE TABLE IF NOT EXISTS coincidencias_equipo (
+            conocido_id INTEGER NOT NULL, nuevo_id INTEGER NOT NULL,
+            motivos TEXT NOT NULL, creado_en TEXT NOT NULL,
+            estado TEXT NOT NULL DEFAULT 'pendiente',
+            PRIMARY KEY (conocido_id, nuevo_id)
+        );
+    """)
     if "en_linea" not in cols:
         conn.execute("ALTER TABLE equipos ADD COLUMN en_linea INTEGER DEFAULT 1")
     if "fallos_consecutivos" not in cols:
@@ -257,6 +273,8 @@ def init_db():
     if "foto" not in cols:
         conn.execute("ALTER TABLE equipos ADD COLUMN foto TEXT")
     disp_cols = {row["name"] for row in conn.execute("PRAGMA table_info(dispositivos_red)")}
+    if disp_cols and "sin_datos" not in disp_cols:
+        conn.execute("ALTER TABLE dispositivos_red ADD COLUMN sin_datos INTEGER NOT NULL DEFAULT 0")
     if disp_cols:
         if "marca" not in disp_cols:
             conn.execute("ALTER TABLE dispositivos_red ADD COLUMN marca TEXT")

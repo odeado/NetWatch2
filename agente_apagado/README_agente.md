@@ -145,3 +145,44 @@ PowerShell) **como administrador**, parado en la carpeta del agente
   asegurate de tener la version mas nueva de `netwatch_agente.ps1`
   (busca la funcion `Guardar-Cache` en el archivo -- si no esta, es una
   version vieja, reemplazala).
+
+## Version 1.1.0 (2026-11-19) -- que cambio y como actualizar
+
+Cambios del agente (`netwatch_agente.ps1`):
+
+- **Las ordenes caducan.** El agente descarta (y borra) una orden con mas de
+  10 min de antiguedad, medida con la hora del servidor de Firebase (no con
+  el reloj de la PC). Antes, una orden encolada con la PC apagada se
+  ejecutaba apenas alguien la prendia. Ademas el servidor borra de la cola
+  lo que nadie recogio en 2 min.
+- **Anti-bucle.** Cada orden lleva un `id`; el agente anota el ultimo id
+  ejecutado en `agente_ultima_orden.txt` (junto al script) y no vuelve a
+  ejecutar el mismo. Protege contra el reinicio en bucle si falla el
+  `DELETE` justo despues de ejecutar.
+- **Resultado real.** Ahora se revisa el codigo de salida de `shutdown.exe`
+  (antes el log decia "OK" aunque fallara) y el resultado queda en
+  `agentes_estado/{ip}/ultima_orden` (`ok` / `error` / `caducada` /
+  `ignorada`, con codigo y detalle). El panel lo usa para confirmar y
+  muestra las PCs donde fallo.
+- **Valida lo que viene de Firebase:** aviso entre 10 y 900 s, mensaje de
+  hasta 400 caracteres.
+- **Heartbeat** (ahora PATCH, para no pisar `ultima_orden`) suma
+  `arranque_en` (hora de arranque de Windows), `visto_en_srv` (hora del
+  servidor) y `agente_version`. El panel detecta "ya volvio" porque
+  `arranque_en` cambio, sin depender del reloj de la PC ni del scanner.
+
+Compatibilidad: el servidor sigue funcionando con agentes viejos (no
+reportan resultado ni arranque; ahi se usa la senal anterior). Por eso se
+puede actualizar PC por PC sin apuro.
+
+**Actualizar una PC que ya tiene el agente:** reemplaza solo
+`netwatch_agente.ps1` en su carpeta (por RDP, igual que al instalar). No
+hace falta volver a correr `instalar_agente.bat` ni tocar
+`agente_config.json`: la tarea programada usa el archivo nuevo en la
+siguiente corrida. Para confirmar, la linea del heartbeat en
+`netwatch_agente.log` dice `agente v1.1.0`.
+
+Nota: `agente_apagado/netwatch_agente.ps1` y
+`agente_apagado/NetWatchAgente/netwatch_agente.ps1` son ahora identicos (la
+copia de la raiz estaba desactualizada y es la que usa
+`instalar_agente.bat`). Si cambias una, copia la otra.

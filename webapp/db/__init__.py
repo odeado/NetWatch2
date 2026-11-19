@@ -32,6 +32,8 @@ pisaria la copia de este __init__, no la que get_connection() realmente
 lee)."""
 
 from . import _core  # noqa: F401  (submodulo expuesto para tests/monkeypatching, ver arriba)
+from .monitoreo import instante, estado_agente, registrar_revision, list_agentes_escaneo, marcar_subred_sin_datos, aplicar_escaneo_remoto
+from .coincidencias import list_coincidencias_equipo, ignorar_coincidencia
 from ._core import DB_PATH, get_connection, init_db  # noqa: F401
 
 from .equipos import (  # noqa: F401
@@ -39,7 +41,7 @@ from .equipos import (  # noqa: F401
     aplicar_reporte_agente, apply_scan_results, create_equipo_manual,
     delete_equipos, fusionar_equipo_por_ip, get_equipo, get_equipo_by_ip,
     get_equipos_count_por_responsable, import_scan, list_equipos,
-    list_equipos_basico, list_equipos_estado_vivo, list_equipos_export, list_equipos_por_dispositivo,
+    list_equipos_agrupados_por_responsable, list_equipos_basico, list_equipos_estado_vivo, list_equipos_export, list_equipos_por_dispositivo,
     list_equipos_por_responsable, list_scan_files, migrate_legacy_confirmations,
     set_critico, set_responsable_equipo, update_estado, update_ficha,
 )

@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from ._core import conexion
 
 
-def list_recent_events(limit=20):
+def list_recent_events(limit=20, after_id=None):
     """Trae los ultimos cambios (online/offline/nuevo) con el responsable
     actual del equipo (si tiene uno asignado), para que el panel lateral y
     los toasts puedan mostrar el nombre de la persona en vez de solo el
@@ -17,12 +17,16 @@ def list_recent_events(limit=20):
     with conexion() as conn:
         rows = conn.execute(
             """
-            SELECT eventos.*, equipos.responsable AS responsable
+            SELECT eventos.*, equipos.responsable AS responsable, equipos.subred,
+                   equipos.ciudad, equipos.critico
             FROM eventos
             LEFT JOIN equipos ON equipos.id = eventos.equipo_id
-            ORDER BY eventos.id DESC LIMIT ?
+            WHERE equipos.estado_deteccion!='descartado' AND equipos.sin_datos=0
+              AND eventos.tipo IN ('online','offline','nuevo')
+              AND (? IS NULL OR eventos.id>?)
+            ORDER BY CASE WHEN ? IS NOT NULL THEN eventos.id END ASC, eventos.id DESC LIMIT ?
             """,
-            (limit,),
+            (after_id,after_id,after_id,limit),
         ).fetchall()
         return [dict(r) for r in rows]
 
@@ -32,35 +36,30 @@ def _calcular_pct_online(eventos_ts_tipo, inicio_dt, fin_dt, online_al_inicio=Tr
     'online'/'offline'), calcula el % de tiempo online entre inicio y fin,
     asumiendo el estado inicial indicado hasta el primer evento real. Se usa
     tanto para la ficha de un equipo como para el ranking general."""
-    total = (fin_dt - inicio_dt).total_seconds()
-    if total <= 0:
-        return 100.0, 0
-
-    offline_segundos = 0.0
+    estados = {'online':True, 'offline':False, 'datos_online':True, 'datos_offline':False, 'sin_datos':None}
+    online = offline = 0.0
     caidas = 0
-    estado_online = online_al_inicio
+    estado = online_al_inicio
     cursor = inicio_dt
-
-    for ts, tipo in eventos_ts_tipo:
-        if ts < inicio_dt:
+    for ts, tipo in sorted(eventos_ts_tipo):
+        if tipo not in estados:
             continue
         if ts > fin_dt:
             break
-        if estado_online and tipo == "offline":
-            cursor = ts
-            estado_online = False
-            caidas += 1
-        elif not estado_online and tipo == "online":
-            offline_segundos += (ts - cursor).total_seconds()
-            cursor = ts
-            estado_online = True
-        # eventos repetidos del mismo tipo seguido (duplicados) se ignoran
-
-    if not estado_online:
-        offline_segundos += (fin_dt - cursor).total_seconds()
-
-    pct_online = max(0.0, min(100.0, 100.0 * (1 - offline_segundos / total)))
-    return round(pct_online, 1), caidas
+        if ts < inicio_dt:
+            estado = estados[tipo]
+            continue
+        duracion = max(0,(ts-cursor).total_seconds())
+        if estado is True: online += duracion
+        elif estado is False: offline += duracion
+        if estado is True and tipo == 'offline': caidas += 1
+        estado = estados[tipo]
+        cursor = ts
+    duracion = max(0,(fin_dt-cursor).total_seconds())
+    if estado is True: online += duracion
+    elif estado is False: offline += duracion
+    conocidos = online + offline
+    return (round(100*online/conocidos,1) if conocidos else 0.0), caidas
 
 
 def _disponibilidad_desde_conn(conn, equipo_id, primera_deteccion, dias):
@@ -79,7 +78,7 @@ def _disponibilidad_desde_conn(conn, equipo_id, primera_deteccion, dias):
             pass
 
     filas = conn.execute(
-        "SELECT ts, tipo FROM eventos WHERE equipo_id = ? AND tipo IN ('online','offline') ORDER BY ts ASC",
+        "SELECT ts, tipo FROM eventos WHERE equipo_id = ? AND tipo IN ('online','offline','sin_datos','datos_online','datos_offline') ORDER BY ts ASC",
         (equipo_id,),
     ).fetchall()
 
@@ -93,11 +92,22 @@ def _disponibilidad_desde_conn(conn, equipo_id, primera_deteccion, dias):
     # Si el primer evento visible en la ventana es "offline", lo mas probable
     # es que antes estuviera online (asi arranca todo equipo nuevo).
     online_al_inicio = True
-    if eventos_parseados and eventos_parseados[0][1] == "offline" and eventos_parseados[0][0] <= inicio_dt:
-        online_al_inicio = False
-
     pct_online, caidas = _calcular_pct_online(eventos_parseados, inicio_dt, fin_dt, online_al_inicio)
-    return {"pct_online": pct_online, "caidas": caidas, "dias": dias}
+    ultimo_estado = 'online'
+    cursor = inicio_dt
+    sin_datos = 0.0
+    for ts,tipo in eventos_parseados:
+        if ts > fin_dt: break
+        if ts < inicio_dt:
+            ultimo_estado = tipo
+            continue
+        if ultimo_estado == 'sin_datos': sin_datos += (ts-cursor).total_seconds()
+        cursor, ultimo_estado = ts, tipo
+    if ultimo_estado == 'sin_datos': sin_datos += (fin_dt-cursor).total_seconds()
+    total = max(0,(fin_dt-inicio_dt).total_seconds())
+    cobertura = round(100*max(0,total-sin_datos)/total,1) if total else 0
+    return {"pct_online": pct_online, "caidas": caidas, "dias": dias,
+            "cobertura_pct":cobertura, "sin_muestras":cobertura==0}
 
 
 def calcular_disponibilidad(equipo_id, dias=30):
@@ -148,7 +158,7 @@ def ranking_disponibilidad(dias=30, limite=15, orden="disponibilidad"):
     with conexion() as conn:
         equipos = conn.execute(
             "SELECT id, hostname, ip, responsable, sucursal, ciudad, en_linea, primera_deteccion, desde "
-            "FROM equipos WHERE origen != 'manual'"
+            "FROM equipos WHERE origen != 'manual' AND estado_deteccion!='descartado' AND sin_datos=0"
         ).fetchall()
 
         resultados = []
@@ -183,6 +193,7 @@ def equipos_criticos_pendientes_alerta(umbral_minutos=15):
             SELECT id, ip, hostname, responsable, sucursal, ciudad, desde
             FROM equipos
             WHERE critico = 1 AND en_linea = 0 AND alerta_offline_enviada = 0
+              AND estado_deteccion!='descartado' AND sin_datos=0
               AND desde IS NOT NULL AND COALESCE(ip_temporal, 0) = 0
             """
         ).fetchall()

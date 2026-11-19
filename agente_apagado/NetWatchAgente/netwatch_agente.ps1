@@ -38,6 +38,16 @@ $CarpetaScript = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RutaConfig = Join-Path $CarpetaScript "agente_config.json"
 $RutaLog = Join-Path $CarpetaScript "netwatch_agente.log"
 $RutaCache = Join-Path $CarpetaScript "agente_token_cache.json"
+$RutaUltimaOrden = Join-Path $CarpetaScript "agente_ultima_orden.txt"
+
+# Version del agente -- se reporta en el heartbeat (agentes_estado/{ip}/agente_version)
+# para que el servidor sepa que PCs tienen la version nueva. Subirla en cada cambio.
+#   1.1.0 (2026-11-19): las ordenes CADUCAN (10 min), cada orden lleva id y se
+#   anota el ultimo id ejecutado en agente_ultima_orden.txt (anti-bucle), se
+#   revisa el codigo de salida de shutdown.exe, el resultado real se reporta en
+#   agentes_estado/{ip}/ultima_orden, y el heartbeat suma arranque_en (hora de
+#   arranque de Windows) + visto_en_srv (hora del servidor de Firebase).
+$AgenteVersion = "1.1.0"
 
 function Escribir-Log {
     param([string]$Mensaje)
@@ -125,17 +135,42 @@ foreach ($campo in @("databaseURL", "apiKey", "email", "password")) {
 }
 $databaseURL = $cfg.databaseURL.TrimEnd("/")
 
+# Hora del servidor (cabecera HTTP "Date" de Firebase) vs reloj de esta PC.
+# Hay PCs con el reloj mal (pila de la BIOS agotada, sin NTP) y la caducidad de
+# las ordenes no puede depender de eso: se mide el desfase la primera vez que
+# Firebase responde y se corrige con el.
+$script:DesfaseServidor = $null
+
+function Guardar-FechaServidor {
+    param($Cliente)
+    try {
+        $texto = $Cliente.ResponseHeaders["Date"]
+        if ($texto) {
+            $fecha = [datetime]::Parse($texto, [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::AdjustToUniversal)
+            $script:DesfaseServidor = $fecha - (Get-Date).ToUniversalTime()
+        }
+    } catch {}
+}
+
+function Obtener-AhoraUtc {
+    $ahora = (Get-Date).ToUniversalTime()
+    if ($script:DesfaseServidor -ne $null) { $ahora = $ahora + $script:DesfaseServidor }
+    return $ahora
+}
+
 function Llamar-Http {
     param([string]$Url, [string]$Metodo, [string]$Cuerpo)
     $wc = New-Object System.Net.WebClient
     $wc.Headers["Content-Type"] = "application/json"
     try {
         if ($Metodo -eq "GET") {
-            return $wc.DownloadString($Url)
+            $resultadoHttp = $wc.DownloadString($Url)
         } else {
             if ($null -eq $Cuerpo) { $Cuerpo = "" }
-            return $wc.UploadString($Url, $Metodo, $Cuerpo)
+            $resultadoHttp = $wc.UploadString($Url, $Metodo, $Cuerpo)
         }
+        Guardar-FechaServidor $wc
+        return $resultadoHttp
     } catch [System.Net.WebException] {
         # Firebase manda el detalle util (ej. "Permission denied") en el
         # CUERPO de la respuesta de error, que .NET no incluye en
@@ -268,6 +303,32 @@ if ($ipsLocales.Count -eq 0) {
     exit 0
 }
 
+# Deja en agentes_estado/{ip}/ultima_orden lo que paso con la ultima orden
+# (ok / error / caducada / ignorada). PATCH, no PUT: asi no pisa el resto del
+# heartbeat (y el heartbeat, tambien PATCH, no borra este resultado).
+function Reportar-Resultado {
+    param([string]$Ip, [string]$IdOrden, [string]$Accion, [string]$Resultado, [int]$Codigo, [string]$Detalle)
+    $claveRes = $Ip -replace '\.', '_'
+    $urlRes = "$databaseURL/agentes_estado/$claveRes.json?auth=$idToken"
+    $cuerpoRes = (@{
+        ip = $Ip
+        ultima_orden = @{
+            id = $IdOrden
+            accion = $Accion
+            resultado = $Resultado
+            codigo = $Codigo
+            detalle = $Detalle
+            ejecutada_en = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+            ejecutada_en_srv = @{ ".sv" = "timestamp" }
+        }
+    } | ConvertTo-Json2)
+    try {
+        Llamar-Http -Url $urlRes -Metodo "PATCH" -Cuerpo $cuerpoRes | Out-Null
+    } catch {
+        Escribir-Log "ERROR reportando el resultado de la orden $IdOrden para $Ip : $($_.Exception.Message)"
+    }
+}
+
 # --- 3. Por cada IP local, preguntar si hay una orden pendiente. ---
 foreach ($ip in $ipsLocales) {
     $claveIp = $ip -replace '\.', '_'
@@ -288,20 +349,85 @@ foreach ($ip in $ipsLocales) {
     }
 
     $accion = $orden.accion
-    $avisoSegundos = if ($orden.aviso_segundos) { [int]$orden.aviso_segundos } else { 60 }
-    $mensaje = if ($orden.mensaje) { $orden.mensaje } else { "Apagado programado desde NetWatch - Sistemas" }
+
+    # Id de la orden: lo pone el servidor al encolar. Las ordenes viejas (sin id)
+    # usan solicitado_en como identificador.
+    $idOrden = $orden.id
+    if (-not $idOrden) { $idOrden = "legacy-" + $orden.solicitado_en }
+    $idOrden = [string]$idOrden
+
+    # ANTI-BUCLE: el id de la ultima orden ejecutada queda en un archivo local.
+    # Si el DELETE de abajo falla (corte de red justo despues de ejecutar) la
+    # orden seguiria en Firebase y, tras el reinicio, se ejecutaria otra vez, y
+    # otra, en bucle. Con el id anotado, una orden ya ejecutada solo se borra.
+    $ultimaEjecutada = $null
+    if (Test-Path $RutaUltimaOrden) {
+        try { $ultimaEjecutada = (Get-Content $RutaUltimaOrden -ErrorAction Stop | Select-Object -First 1) } catch {}
+    }
+    if ($ultimaEjecutada -and ([string]$ultimaEjecutada).Trim() -eq $idOrden) {
+        Escribir-Log "Orden $idOrden para $ip ya se ejecuto antes en esta PC -- se descarta y se borra (evita reinicio en bucle)."
+        try { Llamar-Http -Url $urlComando -Metodo "DELETE" -Cuerpo "" | Out-Null } catch {}
+        continue
+    }
+
+    # CADUCIDAD: una orden de reinicio que lleva horas en la cola (PC apagada
+    # cuando se encolo) no debe ejecutarse apenas alguien prenda la PC. Se mide
+    # contra la hora del servidor (ver Obtener-AhoraUtc), no contra el reloj de
+    # esta PC. El servidor puede fijar su propio plazo con caduca_seg.
+    $maxEdadSeg = 600
+    if ($orden.caduca_seg) {
+        try { $c = [int]$orden.caduca_seg; if ($c -ge 30 -and $c -le 3600) { $maxEdadSeg = $c } } catch {}
+    }
+    $edadSeg = $null
+    if ($orden.solicitado_en) {
+        try {
+            $solicitadoUtc = [datetime]::Parse([string]$orden.solicitado_en, [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::AdjustToUniversal)
+            $difEdad = (Obtener-AhoraUtc) - $solicitadoUtc
+            $edadSeg = [int]$difEdad.TotalSeconds
+        } catch {
+            Escribir-Log "AVISO: no se pudo leer solicitado_en ('$($orden.solicitado_en)') de la orden $idOrden : $($_.Exception.Message)"
+        }
+    }
+    if ($edadSeg -ne $null -and $edadSeg -gt $maxEdadSeg) {
+        Escribir-Log "Orden $idOrden ($accion) para $ip CADUCADA: tiene $edadSeg s de antiguedad (maximo $maxEdadSeg s). No se ejecuta."
+        Reportar-Resultado -Ip $ip -IdOrden $idOrden -Accion $accion -Resultado "caducada" -Codigo 0 -Detalle "orden con $edadSeg s de antiguedad (maximo $maxEdadSeg s)"
+        try { Llamar-Http -Url $urlComando -Metodo "DELETE" -Cuerpo "" | Out-Null } catch {}
+        continue
+    }
+
+    # Valores que vienen de Firebase: se acotan (aviso 10-900 s, mensaje <= 400
+    # caracteres) para que una orden mal formada no pueda apagar sin aviso.
+    $avisoSegundos = 60
+    if ($orden.aviso_segundos) {
+        try { $avisoSegundos = [int]$orden.aviso_segundos } catch { $avisoSegundos = 60 }
+    }
+    if ($avisoSegundos -lt 10) { $avisoSegundos = 10 }
+    if ($avisoSegundos -gt 900) { $avisoSegundos = 900 }
+    $mensaje = "Apagado programado desde NetWatch - Sistemas"
+    if ($orden.mensaje) { $mensaje = [string]$orden.mensaje }
+    if ($mensaje.Length -gt 400) { $mensaje = $mensaje.Substring(0, 400) }
 
     $bandera = $null
     if ($accion -eq "apagar") { $bandera = "/s" }
     elseif ($accion -eq "reiniciar") { $bandera = "/r" }
 
     if (-not $bandera) {
-        Escribir-Log "Orden para $ip con accion desconocida ('$accion'), se ignora y se borra."
+        Escribir-Log "Orden $idOrden para $ip con accion desconocida ('$accion'), se ignora y se borra."
+        Reportar-Resultado -Ip $ip -IdOrden $idOrden -Accion ([string]$accion) -Resultado "ignorada" -Codigo 0 -Detalle "accion desconocida"
         try { Llamar-Http -Url $urlComando -Metodo "DELETE" -Cuerpo "" | Out-Null } catch {}
         continue
     }
 
-    Escribir-Log "Orden encontrada para $ip : $accion en $avisoSegundos s. Ejecutando shutdown.exe..."
+    Escribir-Log "Orden $idOrden encontrada para $ip : $accion en $avisoSegundos s (antiguedad $edadSeg s). Ejecutando shutdown.exe..."
+
+    # Anotar el id ANTES de ejecutar (ver ANTI-BUCLE arriba).
+    try { Set-Content -Path $RutaUltimaOrden -Value $idOrden -ErrorAction Stop } catch {
+        Escribir-Log "AVISO: no se pudo guardar $RutaUltimaOrden ($($_.Exception.Message)) -- sin proteccion anti-bucle para esta orden."
+    }
+
+    $resultadoOrden = "ok"
+    $codigoSalida = 0
+    $detalleOrden = ""
     try {
         # OJO -- 2026-08-25: en al menos una PC (172.30.100.64) el PATH del
         # sistema no incluye System32 (tambien fallaba "schtasks" a mano por
@@ -311,10 +437,28 @@ foreach ($ip in $ipsLocales) {
         # PATH de esa PC en particular.
         $shutdownExe = Join-Path $env:WINDIR "System32\shutdown.exe"
         & $shutdownExe $bandera /t $avisoSegundos /c $mensaje
-        Escribir-Log "shutdown.exe ejecutado OK para $ip ($accion)."
+        # shutdown.exe NO lanza excepcion si falla (ej. 1190 = ya hay un apagado
+        # programado, 5 = acceso denegado): solo deja el codigo de salida.
+        $codigoSalida = $LASTEXITCODE
+        if ($codigoSalida -ne 0) {
+            $resultadoOrden = "error"
+            $detalleOrden = "shutdown.exe devolvio el codigo $codigoSalida"
+        }
     } catch {
-        Escribir-Log "ERROR ejecutando shutdown.exe: $($_.Exception.Message)"
+        $resultadoOrden = "error"
+        $codigoSalida = -1
+        $detalleOrden = $_.Exception.Message
     }
+
+    if ($resultadoOrden -eq "ok") {
+        Escribir-Log "shutdown.exe ejecutado OK para $ip ($accion, orden $idOrden)."
+    } else {
+        Escribir-Log "ERROR ejecutando shutdown.exe para $ip (orden $idOrden): $detalleOrden"
+    }
+
+    # El resultado REAL queda en Firebase para que el panel no tenga que
+    # adivinar por el simple hecho de que la orden desaparecio.
+    Reportar-Resultado -Ip $ip -IdOrden $idOrden -Accion $accion -Resultado $resultadoOrden -Codigo $codigoSalida -Detalle $detalleOrden
 
     # Borrar la orden SIEMPRE despues de intentar ejecutarla -- si no, la
     # proxima vez que corra el agente (1 minuto despues) la va a volver a
@@ -337,17 +481,33 @@ foreach ($ip in $ipsLocales) {
 # que nunca corrio. Andres pidio poder confirmar "esta corriendo" mirando el
 # log -- ahora cada corrida deja SIEMPRE una linea (OK o ERROR real) por
 # cada IP local, sin importar si hubo o no una orden de apagado pendiente. ---
+
+# Hora de arranque de Windows (UTC). El panel la usa para saber, sin adivinar,
+# que un reinicio realmente ocurrio: cambia solo cuando la PC volvio a bootear.
+$arranqueEn = $null
+try {
+    $sistemaOp = Get-WmiObject Win32_OperatingSystem
+    $arranqueEn = $sistemaOp.ConvertToDateTime($sistemaOp.LastBootUpTime).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+} catch {
+    Escribir-Log "AVISO: no se pudo leer la hora de arranque de Windows: $($_.Exception.Message)"
+}
+
 foreach ($ip in $ipsLocales) {
     $claveIp = $ip -replace '\.', '_'
     $urlEstado = "$databaseURL/agentes_estado/$claveIp.json?auth=$idToken"
-    $cuerpoEstado = (@{
+    $estadoAgente = @{
         ip = $ip
         hostname = $env:COMPUTERNAME
         visto_en = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
-    } | ConvertTo-Json2)
+        visto_en_srv = @{ ".sv" = "timestamp" }
+        agente_version = $AgenteVersion
+    }
+    if ($arranqueEn) { $estadoAgente["arranque_en"] = $arranqueEn }
+    $cuerpoEstado = ($estadoAgente | ConvertTo-Json2)
     try {
-        Llamar-Http -Url $urlEstado -Metodo "PUT" -Cuerpo $cuerpoEstado | Out-Null
-        Escribir-Log "Heartbeat OK para $ip ($env:COMPUTERNAME)."
+        # PATCH (no PUT): conserva agentes_estado/{ip}/ultima_orden.
+        Llamar-Http -Url $urlEstado -Metodo "PATCH" -Cuerpo $cuerpoEstado | Out-Null
+        Escribir-Log "Heartbeat OK para $ip ($env:COMPUTERNAME, agente v$AgenteVersion)."
     } catch {
         Escribir-Log "ERROR enviando heartbeat para $ip : $($_.Exception.Message)"
     }

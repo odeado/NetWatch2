@@ -19,6 +19,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='css/admin-tabs.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/panel-lateral-index.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/responsive.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/netwatch-theme.css', v='20261014') }}">
 </head>
 <body>
 
@@ -63,7 +64,7 @@
     <input type="text" name="ip" placeholder="Ej: 172.30.100.2" value="{{ (d.ip or '') if d else '' }}">
   </label>
   <label>Direccion MAC
-    <input type="text" name="mac" placeholder="Ej: 78:fe:3d:35:21:40" value="{{ (d.mac or '') if d else '' }}">
+    <input type="text" name="mac" placeholder="Ej: 78:FE:3D:35:21:40" maxlength="17" autocomplete="off" value="{{ (d.mac or '') if d else '' }}" oninput="netwatchFormatearMac(this, event)" onblur="netwatchFormatearMac(this)">
   </label>
 </div>
 <div class="modal-grid">
@@ -189,8 +190,8 @@
   {% endfor %}
 </div>
 {% set con_ip = dispositivos|selectattr('ip')|list %}
-{% set cant_online = con_ip|selectattr('en_linea', 'equalto', 1)|list|length %}
-{% set cant_offline = con_ip|selectattr('en_linea', 'equalto', 0)|list|length %}
+{% set cant_online = con_ip|rejectattr('sin_datos')|selectattr('en_linea', 'equalto', 1)|list|length %}
+{% set cant_offline = con_ip|rejectattr('sin_datos')|selectattr('en_linea', 'equalto', 0)|list|length %}
 {% set cant_sin_datos = con_ip|length - cant_online - cant_offline %}
 <div class="categoria-tabs" id="estado-red-tabs">
   <button type="button" class="categoria-tab activa" data-estado-filtro="" onclick="netwatchFiltrarPorEstadoRed('', this)">
@@ -243,14 +244,16 @@
     </tr>
     {% for d in sub.dispositivos %}
     <tr data-tipo="{{ d.tipo }}" data-grupo-sucursal="banner-sucursal-{{ loop_ciudad.index }}-{{ loop_sucursal.index }}"
-        {% if d.ip %}data-en-linea="{{ '' if d.en_linea is none else d.en_linea }}"{% endif %}>
+        {% if d.ip %}data-en-linea="{{ '' if d.sin_datos or d.en_linea is none else d.en_linea }}"{% endif %}>
       <td class="empleado-nombre">{{ d.nombre }}</td>
       <td><span class="tipo-badge tipo-badge-{{ d.tipo if d.tipo in tipo_labels else 'otro' }}">{{ tipo_labels.get(d.tipo, d.tipo) }}</span></td>
       <td>{{ (d.marca or '-') }} {{ d.modelo or '' }}</td>
       <td>
         {{ d.ip or '-' }}
         {% if d.ip %}
-          {% if d.en_linea == 1 %}
+          {% if d.sin_datos %}
+          <span class="status-pill status-pill-sin-datos">Sin información reciente</span>
+          {% elif d.en_linea == 1 %}
           <span class="status-pill status-pill-online" title="Responde ping/puerto en el ultimo escaneo del monitor{{ (' (' + d.ultima_deteccion[:16] + ')') if d.ultima_deteccion else '' }}"><span class="status-dot"></span>Online</span>
           {% elif d.en_linea == 0 %}
           <span class="status-pill status-pill-offline" title="No responde desde {{ d.desde[:16] if d.desde else 'hace un tiempo' }}"><span class="status-dot"></span>Offline</span>
@@ -375,6 +378,7 @@
 
 <script id="netwatch-equipos-data" type="application/json">{{ equipos | tojson }}</script>
 <script id="netwatch-dispositivos-data" type="application/json">{{ dispositivos | tojson }}</script>
+<script src="{{ url_for('static', filename='formato_campos.js') }}"></script>
 <script src="{{ url_for('static', filename='js/pages/topologia.js') }}"></script>
 
 </body>

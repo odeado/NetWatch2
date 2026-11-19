@@ -19,7 +19,8 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='css/admin-tabs.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/panel-lateral-index.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/responsive.css') }}">
-<script src="{{ url_for('static', filename='formato_campos.js') }}"></script>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/netwatch-theme.css', v='20261014') }}">
+<script src="{{ url_for('static', filename='formato_campos.js', v='20261014') }}"></script>
 </head>
 <body>
 {% import "_macros_equipo.html" as m %}
@@ -61,19 +62,20 @@
 {% endif %}
 
 {% if resumen_apagado %}
-<div class="import-resumen {{ 'import-resumen-error' if resumen_apagado.ok == 0 else '' }}">
+<div class="import-resumen {{ 'import-resumen-error' if (resumen_apagado.ok == 0 or resumen_apagado.con_error > 0) else '' }}">
   <strong>{{ 'Reinicio remoto' if resumen_apagado.accion == 'reiniciar' else 'Apagado remoto' }}:</strong>
   {{ resumen_apagado.ok }} equipo(s) con {{ 'reinicio' if resumen_apagado.accion == 'reiniciar' else 'apagado' }} encolado{% if resumen_apagado.fallo %}, {{ resumen_apagado.fallo }} fallaron al encolar (revisa la conexion con Firebase){% endif %}.
   {% if resumen_apagado.ok > 0 %}
   <br>
-  {% if resumen_apagado.confirmados > 0 %}<span style="color: var(--green)">{{ resumen_apagado.confirmados }} confirmado(s): un agente recogio la orden y la ejecuto.</span>{% endif %}
+  {% if resumen_apagado.confirmados > 0 %}<span style="color: var(--green)">{{ resumen_apagado.confirmados }} confirmado(s): el agente ejecuto la orden en la PC (shutdown.exe respondio OK).</span>{% endif %}
+  {% if resumen_apagado.con_error > 0 %}<br><span style="color: var(--red, #f87171)">{{ resumen_apagado.con_error }} fallaron al ejecutar en la propia PC{% if resumen_apagado.ips_con_error %} ({{ resumen_apagado.ips_con_error }}){% endif %} -- el agente la recibio pero Windows no acepto la orden (ver detalle abajo y netwatch_agente.log de esa PC).</span>{% endif %}
   {% if resumen_apagado.sin_confirmar > 0 %}
-  <span class="muted">{{ resumen_apagado.sin_confirmar }} sin confirmar despues de 90s de espera -- probablemente esa PC no tiene el agente instalado (ver columna "Agente" mas abajo) o esta apagada. La orden queda encolada igual por si acaso.</span>
+  <span class="muted">{{ resumen_apagado.sin_confirmar }} sin confirmar despues de 2 min de espera{% if resumen_apagado.ips_sin_confirmar %} ({{ resumen_apagado.ips_sin_confirmar }}){% endif %} -- probablemente esa PC no tiene el agente instalado (ver columna "Agente" mas abajo) o esta apagada. La orden se cancelo para que no se ejecute por sorpresa mas tarde, cuando alguien prenda esa PC.</span>
   {% endif %}
   {% if resumen_apagado.accion == 'reiniciar' %}
   {% if resumen_apagado.vueltos > 0 %}<br><span style="color: var(--teal, #2dd4bf)">{{ resumen_apagado.vueltos }} ya volvieron a conectarse despues de reiniciar.</span>{% endif %}
   {% if resumen_apagado.sin_volver > 0 %}
-  <br><span class="muted">{{ resumen_apagado.sin_volver }} no avisaron de vuelta despues de 8 min -- puede que todavia esten booteando (Windows a veces demora mas por actualizaciones) o algo se trabo. Revisa esa PC si sigue sin aparecer online en un rato mas.</span>
+  <br><span class="muted">{{ resumen_apagado.sin_volver }} no avisaron de vuelta despues de 8 min{% if resumen_apagado.ips_sin_volver %} ({{ resumen_apagado.ips_sin_volver }}){% endif %} -- puede que todavia esten booteando (Windows a veces demora mas por actualizaciones) o algo se trabo. Revisa esa PC si sigue sin aparecer online en un rato mas.</span>
   {% endif %}
   {% endif %}
   {% endif %}
@@ -119,7 +121,7 @@
   <form method="post" action="{{ url_for('crear_equipo_manual') }}" class="ticket-form">
     <label>IP o identificador <input type="text" name="ip" required placeholder="Ej: 192.168.1.50 o notebook-ventas-01"></label>
     <label>Hostname <input type="text" name="hostname" placeholder="Ej: NB-Ventas-01"></label>
-    <label>MAC <input type="text" name="mac"></label>
+    <label>MAC <input type="text" name="mac" placeholder="Ej: AA:BB:CC:DD:EE:FF" maxlength="17" autocomplete="off" oninput="netwatchFormatearMac(this, event)" onblur="netwatchFormatearMac(this)"></label>
     <label>Marca <input type="text" name="marca"></label>
     <label>Modelo <input type="text" name="modelo"></label>
     <label>Responsable
@@ -255,7 +257,7 @@
         {% if e.origen == 'manual' %}
         <span class="tag" style="background:#2a3348;color:var(--blue)">Sin monitoreo</span>
         {% else %}
-        <span class="tag {{ 'tag-confirmado' if e.en_linea else 'tag-descartado' }}"><span class="dot {{ 'dot-on' if e.en_linea else 'dot-off' }}"></span> {{ 'Online' if e.en_linea else 'Offline' }}</span>
+        {% if e.sin_datos %}<span class="tag">Sin información reciente</span>{% else %}<span class="tag {{ 'tag-confirmado' if e.en_linea else 'tag-descartado' }}"><span class="dot {{ 'dot-on' if e.en_linea else 'dot-off' }}"></span> {{ 'Online' if e.en_linea else 'Offline' }}</span>{% endif %}
         {% endif %}
       </td>
       <td class="agente-cell" data-visto="{{ e.agente_visto_en or '' }}" title="Agente de apagado/reinicio remoto (ver Editar equipo &gt; Apagar/Reiniciar)"><span class="muted">-</span></td>
@@ -426,7 +428,7 @@
   const NETWATCH_URL_ADMIN_EQUIPOS = "{{ url_for('admin.admin_equipos') }}";
   const NETWATCH_URL_ESTADO_VIVO = "{{ url_for('admin.admin_equipos_estado_vivo') }}";
 </script>
-<script src="{{ url_for('static', filename='js/pages/admin_equipos.js') }}"></script>
+<script src="{{ url_for('static', filename='js/pages/admin_equipos.js', v='20261015') }}"></script>
 
 </body>
 </html>

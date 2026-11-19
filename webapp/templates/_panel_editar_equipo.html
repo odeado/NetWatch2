@@ -3,10 +3,30 @@
    pide por fetch y se inyecta en el drawer -- nunca se navega a esta URL
    directamente, por eso no tiene layout de pagina completa. #}
 {% import "_macros_equipo.html" as m %}
+{% import '_ui.html' as ui %}
 <div class="panel-editar-header">
-  <h3>{{ e.hostname or e.ip }}</h3>
-  <button type="button" class="modal-close" onclick="netwatchCerrarPanelEdicion()" title="Cerrar">&times;</button>
+  <div class="nw-dock-heading">
+    {{ ui.icon('monitor') }}
+    <div><p class="nw-dock-eyebrow">Ficha del equipo · Edición</p><h3>{{ e.hostname or e.ip }}</h3></div>
+  </div>
+  <button type="button" class="modal-close" onclick="netwatchCerrarPanelEdicion()" title="Cerrar" aria-label="Cerrar ficha">{{ ui.icon('close') }}</button>
 </div>
+<p id="panel-guardar-error" class="nw-form-feedback" role="alert" hidden></p>
+{% for c in coincidencias %}
+<section class="nw-coincidencias">
+  <strong>Posible cambio de IP · Requiere revisión</strong>
+  <p>{{ c.nombre_anterior or c.ip_anterior }}: {{ c.ip_anterior }} → {{ c.ip_nueva }}<br>{{ c.motivos | join(' · ') }}</p>
+  {% if c.anterior_online and c.nuevo_online and not c.anterior_sin_datos and not c.nuevo_sin_datos %}
+  <p class="field-hint">Ambas IP figuran en línea. Verifica la identidad antes de fusionar: podrían ser equipos distintos.</p>
+  {% endif %}
+  <p class="field-hint">Se conserva la ficha original y se trasladan los tickets y el historial del registro nuevo. No se realiza ninguna fusión automática.</p>
+  <form method="post" class="panel-coincidencia-form" action="{{ url_for('resolver_coincidencia', conocido_id=c.conocido_id, nuevo_id=c.nuevo_id) }}">
+    <button type="submit" name="accion" value="ignorar" class="btn btn-ghost">Son equipos distintos</button>
+    <button type="submit" name="accion" value="fusionar" class="btn btn-primary" onclick="return confirm('¿Conservar la ficha original, adoptar la IP nueva y fusionar ambos registros? Se trasladarán los tickets y el historial.')">Confirmar cambio y fusionar</button>
+  </form>
+</section>
+{% endfor %}
+{% if e.sin_datos %}<p class="nw-form-feedback">Sin información reciente del escáner. El último estado conocido no confirma una conexión o desconexión actual.</p>{% endif %}
 <form method="post" action="{{ url_for('ficha', equipo_id=e.id) }}" class="modal-form ficha-form" enctype="multipart/form-data" id="form-panel-editar" data-equipo-id="{{ e.id }}">
   <input type="hidden" name="origen" value="index">
   {{ m.campos_equipo(e, usuarios, dispositivos, categorias_equipo, error, ip_conflicto, ip_nueva, 'index') }}

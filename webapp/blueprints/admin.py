@@ -59,6 +59,7 @@ def admin_equipos_estado_vivo():
         info = agentes_estado.get(e.get("ip"))
         resultado[e["id"]] = {
             "en_linea": bool(e["en_linea"]),
+            "sin_datos": bool(e['sin_datos']),
             "origen": e["origen"],
             "agente_visto_en": info.get("visto_en") if info else None,
         }

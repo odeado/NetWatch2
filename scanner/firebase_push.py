@@ -119,7 +119,7 @@ def publicar(sitio, all_results, log=print):
     # (ej. "172.30.102.0/24") siempre tiene una.
     cidr, hosts = next(iter(all_results.items()))
     payload = {
-        "generated_at": datetime.now().isoformat(),
+        "generated_at": datetime.now().astimezone().isoformat(),
         "cidr": cidr,
         "hosts": _compactar(hosts),
     }

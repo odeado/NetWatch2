@@ -32,6 +32,8 @@ import threading
 import unicodedata
 import urllib.error
 import urllib.request
+import time
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -214,11 +216,40 @@ def _http_json(url, method="GET", body=None, timeout=15):
 
 
 def _iniciar_sesion(cfg):
+    """Login "en frio" contra Firebase Auth -- siempre pide un token nuevo.
+    Usar _obtener_id_token() en vez de esta funcion directo salvo que de
+    verdad se necesite forzar un login (esta se mantiene solo como pieza
+    interna del cache de abajo)."""
     url = f"https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={cfg['apiKey']}"
     resp = _http_json(url, method="POST", body={
         "email": cfg["email"], "password": cfg["password"], "returnSecureToken": True,
     })
-    return resp["idToken"]
+    return resp["idToken"], int(resp.get("expiresIn", 3600))
+
+
+# Cache del token de Firebase Auth: antes CADA lectura/escritura a Firebase
+# (incluida la que hace leer_agentes_estado() en cada carga de Administracion)
+# hacia un login completo ademas de la consulta real -- dos viajes de red por
+# internet, sincronicos, donde bastaba con uno. Los tokens de Firebase duran
+# 1 hora (el propio Firebase lo informa en "expiresIn"); se guarda el que ya
+# se pidio y se reusa mientras le queden mas de TOKEN_MARGEN_SEG por vencer,
+# con un lock porque Flask puede atender varias requests a la vez.
+_token_cache = {}
+_token_lock = threading.Lock()
+TOKEN_MARGEN_SEG = 300  # se renueva 5 min antes de vencer, no al filo
+
+
+def _obtener_id_token(cfg):
+    clave = cfg["apiKey"]
+    ahora = time.monotonic()
+    with _token_lock:
+        cache = _token_cache.get(clave)
+        if cache and cache["vence_en"] - TOKEN_MARGEN_SEG > ahora:
+            return cache["token"]
+    token, expira_en_seg = _iniciar_sesion(cfg)
+    with _token_lock:
+        _token_cache[clave] = {"token": token, "vence_en": ahora + expira_en_seg}
+    return token
 
 
 def _leer_nodo(cfg, nodo, id_token):
@@ -584,7 +615,7 @@ def leer_escaneo_remoto(sitio):
     configuracion, no hay internet, o el sitio todavia no ha publicado nada."""
     try:
         cfg = _cargar_config()
-        id_token = _iniciar_sesion(cfg)
+        id_token = _obtener_id_token(cfg)
         data = _leer_nodo(cfg, f"escaneos_remotos/{sitio}", id_token)
     except FirebaseConfigError:
         return None
@@ -609,7 +640,7 @@ def leer_agentes_estado():
     carga de la pagina de Administracion)."""
     try:
         cfg = _cargar_config()
-        id_token = _iniciar_sesion(cfg)
+        id_token = _obtener_id_token(cfg)
         data = _leer_nodo(cfg, "agentes_estado", id_token)
     except FirebaseConfigError:
         return {}
@@ -632,14 +663,14 @@ def leer_comandos_pendientes():
     lanza excepcion; devuelve {} si no hay config/internet/nada pendiente."""
     try:
         cfg = _cargar_config()
-        id_token = _iniciar_sesion(cfg)
+        id_token = _obtener_id_token(cfg)
         data = _leer_nodo(cfg, "comandos_equipo", id_token)
     except FirebaseConfigError:
         return {}
     return data or {}
 
 
-def encolar_comando_equipo(ip, accion, aviso_segundos=60, mensaje=None):
+def encolar_comando_equipo(ip, accion, aviso_segundos=60, mensaje=None, orden_id=None, caduca_seg=600):
     """Deja una orden de apagado/reinicio pendiente en Firebase para que el
     agente que corre en la propia PC (tarea programada via GPO, ver
     scripts/netwatch_agente.ps1) la recoja la proxima vez que consulte --
@@ -652,7 +683,7 @@ def encolar_comando_equipo(ip, accion, aviso_segundos=60, mensaje=None):
         return False, "ip_invalida"
     try:
         cfg = _cargar_config()
-        id_token = _iniciar_sesion(cfg)
+        id_token = _obtener_id_token(cfg)
         url = f"{cfg['databaseURL']}/comandos_equipo/{_clave_ip(ip)}.json?auth={id_token}"
         _http_json(url, method="PUT", body={
             "ip": ip,
@@ -660,6 +691,12 @@ def encolar_comando_equipo(ip, accion, aviso_segundos=60, mensaje=None):
             "aviso_segundos": aviso_segundos,
             "mensaje": mensaje or "Apagado programado desde NetWatch - Sistemas",
             "solicitado_en": datetime.now(timezone.utc).isoformat(),
+            # id: el agente lo anota al ejecutar (anti-bucle) y lo devuelve en
+            # agentes_estado/{ip}/ultima_orden para confirmar CUAL orden se
+            # ejecuto. caduca_seg: pasado ese plazo el agente la descarta en
+            # vez de ejecutarla (PC que estaba apagada al encolar).
+            "id": orden_id or uuid.uuid4().hex[:12],
+            "caduca_seg": caduca_seg,
         })
     except FirebaseConfigError as e:
         return False, str(e)
@@ -674,7 +711,7 @@ def cancelar_comando_equipo(ip):
         return False, "ip_invalida"
     try:
         cfg = _cargar_config()
-        id_token = _iniciar_sesion(cfg)
+        id_token = _obtener_id_token(cfg)
         url = f"{cfg['databaseURL']}/comandos_equipo/{_clave_ip(ip)}.json?auth={id_token}"
         _http_json(url, method="DELETE")
     except FirebaseConfigError as e:
@@ -690,7 +727,7 @@ def sincronizar():
     try:
         _actualizar_estado(fase="conectando")
         cfg = _cargar_config()
-        id_token = _iniciar_sesion(cfg)
+        id_token = _obtener_id_token(cfg)
     except FirebaseConfigError as e:
         _actualizar_estado(error=str(e))
         return {"error": str(e)}
