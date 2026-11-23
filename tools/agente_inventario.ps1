@@ -4,12 +4,12 @@
     Compatible con PowerShell 2.0+ (Windows XP/7/2008 en adelante).
     Recopila caracteristicas del equipo y las reporta al backend de NetWatch.
 .PARAMETER ServerUrl
-    La URL base del backend de NetWatch (ej: http://172.30.100.29:5001).
+    La URL base del backend de NetWatch (ej: http://172.30.100.29:6001).
     OJO: el puerto por defecto de abajo hay que confirmarlo -- ver nota al
     final del script.
 #>
 param(
-    [string]$ServerUrl = "http://localhost:5001"
+    [string]$ServerUrl = "http://localhost:6001"
 )
 Write-Host "=============================================" -ForegroundColor Cyan
 Write-Host "    RECOPILADOR DE INVENTARIO NETWATCH" -ForegroundColor Cyan

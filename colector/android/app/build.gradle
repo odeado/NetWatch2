@@ -1,0 +1,50 @@
+import groovy.json.JsonSlurper
+
+plugins {
+    id 'com.android.application'
+}
+
+// Datos de Firebase para la app: los genera Compilar_APK_NetWatch.bat desde
+// colector_config.json (android/colector_apk_config.json, no va a git).
+def cfgFile = rootProject.file('colector_apk_config.json')
+def cfg = cfgFile.exists() ? new JsonSlurper().parse(cfgFile) : [:]
+def esc = { v -> (v == null ? '' : v.toString()).replace('\\', '\\\\').replace('"', '\\"') }
+
+android {
+    namespace 'cl.mercurioantofagasta.netwatch'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "cl.mercurioantofagasta.netwatch"
+        minSdk 24
+        targetSdk 34
+        versionCode 1
+        versionName "1.0.0"
+
+        buildConfigField "String", "DB_URL", "\"${esc((cfg.databaseURL ?: '').toString().replaceAll('/+$', ''))}\""
+        buildConfigField "String", "API_KEY", "\"${esc(cfg.apiKey)}\""
+        buildConfigField "String", "EMAIL", "\"${esc(cfg.email)}\""
+        buildConfigField "String", "PASSWORD", "\"${esc(cfg.password)}\""
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+}
+
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'com.google.android.material:material:1.11.0'
+    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+    implementation 'androidx.swiperefreshlayout:swiperefreshlayout:1.1.0'
+}

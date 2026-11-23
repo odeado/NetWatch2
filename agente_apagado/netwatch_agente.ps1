@@ -47,12 +47,28 @@ $RutaUltimaOrden = Join-Path $CarpetaScript "agente_ultima_orden.txt"
 #   revisa el codigo de salida de shutdown.exe, el resultado real se reporta en
 #   agentes_estado/{ip}/ultima_orden, y el heartbeat suma arranque_en (hora de
 #   arranque de Windows) + visto_en_srv (hora del servidor de Firebase).
-$AgenteVersion = "1.1.0"
+#   1.1.1 (2026-11-19): shutdown.exe ahora lleva /f (forzar el cierre de los
+#   programas abiertos al terminar la cuenta regresiva). Sin /f, un programa
+#   con datos sin guardar bloqueaba el reinicio y la PC se quedaba con el
+#   cartel "Estas a punto de cerrar la sesion" para siempre. La orden puede
+#   traer forzar=false para no forzar.
+$AgenteVersion = "1.1.1"
 
 function Escribir-Log {
     param([string]$Mensaje)
     $linea = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $Mensaje"
-    try { Add-Content -Path $RutaLog -Value $linea -ErrorAction SilentlyContinue } catch {}
+    try {
+        Add-Content -Path $RutaLog -Value $linea -ErrorAction SilentlyContinue
+        # Autoborrado / rotacion: si el log pasa de 500 KB, recortar a las ultimas 1000 lineas
+        if ((Test-Path $RutaLog) -and (Get-Item $RutaLog).Length -gt 512000) {
+            $todas = [System.IO.File]::ReadAllLines($RutaLog)
+            if ($todas.Length -gt 1500) {
+                $inicio = $todas.Length - 1000
+                $recorte = $todas[$inicio..($todas.Length - 1)]
+                [System.IO.File]::WriteAllLines($RutaLog, $recorte)
+            }
+        }
+    } catch {}
 }
 
 # TLS 1.2: el enum [Net.SecurityProtocolType]::Tls12 solo existe si esta PC
@@ -406,6 +422,9 @@ foreach ($ip in $ipsLocales) {
     $mensaje = "Apagado programado desde NetWatch - Sistemas"
     if ($orden.mensaje) { $mensaje = [string]$orden.mensaje }
     if ($mensaje.Length -gt 400) { $mensaje = $mensaje.Substring(0, 400) }
+    # Por defecto SIEMPRE se fuerza el cierre (ver nota de la version 1.1.1).
+    $forzar = $true
+    if ($orden.forzar -eq $false) { $forzar = $false }
 
     $bandera = $null
     if ($accion -eq "apagar") { $bandera = "/s" }
@@ -418,7 +437,7 @@ foreach ($ip in $ipsLocales) {
         continue
     }
 
-    Escribir-Log "Orden $idOrden encontrada para $ip : $accion en $avisoSegundos s (antiguedad $edadSeg s). Ejecutando shutdown.exe..."
+    Escribir-Log "Orden $idOrden encontrada para $ip : $accion en $avisoSegundos s (antiguedad $edadSeg s, forzar=$forzar). Ejecutando shutdown.exe..."
 
     # Anotar el id ANTES de ejecutar (ver ANTI-BUCLE arriba).
     try { Set-Content -Path $RutaUltimaOrden -Value $idOrden -ErrorAction Stop } catch {
@@ -436,7 +455,9 @@ foreach ($ip in $ipsLocales) {
         # ruta completa via $env:WINDIR para que funcione sin importar el
         # PATH de esa PC en particular.
         $shutdownExe = Join-Path $env:WINDIR "System32\shutdown.exe"
-        & $shutdownExe $bandera /t $avisoSegundos /c $mensaje
+        $argsShutdown = @($bandera, "/t", [string]$avisoSegundos, "/c", $mensaje)
+        if ($forzar) { $argsShutdown += "/f" }
+        & $shutdownExe $argsShutdown
         # shutdown.exe NO lanza excepcion si falla (ej. 1190 = ya hay un apagado
         # programado, 5 = acceso denegado): solo deja el codigo de salida.
         $codigoSalida = $LASTEXITCODE

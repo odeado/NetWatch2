@@ -58,8 +58,10 @@ ETIQUETAS = {"online": "VOLVIO ONLINE", "offline": "PASO A OFFLINE", "nuevo": "N
 # solo cuando crece mucho, para no dejarlo crecer para siempre en una maquina
 # que queda prendida semanas.
 LOG_FILE = Path(__file__).resolve().parent.parent / "webapp" / "monitor.log"
-LOG_MAX_LINEAS = 4000
-LOG_RECORTE_A = 2000
+MONITOR_ERROR_LOG = Path(__file__).resolve().parent / "monitor_error.log"
+WEB_ERROR_LOG = Path(__file__).resolve().parent.parent / "webapp" / "web_error.log"
+LOG_MAX_LINEAS = 2000
+LOG_RECORTE_A = 1000
 
 
 def log(msg):
@@ -73,15 +75,24 @@ def log(msg):
         pass  # si no se puede escribir el log no debe frenar el monitoreo
 
 
-def _recortar_log_si_crecio_mucho():
+def _recortar_archivo(ruta, max_lineas=LOG_MAX_LINEAS, recorte_a=LOG_RECORTE_A):
     try:
-        with open(LOG_FILE, "r", encoding="utf-8", errors="replace") as f:
+        p = Path(ruta)
+        if not p.exists() or p.stat().st_size < 200_000:
+            return
+        with open(p, "r", encoding="utf-8", errors="replace") as f:
             lineas = f.readlines()
-        if len(lineas) > LOG_MAX_LINEAS:
-            with open(LOG_FILE, "w", encoding="utf-8") as f:
-                f.writelines(lineas[-LOG_RECORTE_A:])
+        if len(lineas) > max_lineas:
+            with open(p, "w", encoding="utf-8") as f:
+                f.writelines(lineas[-recorte_a:])
     except OSError:
         pass
+
+
+def _recortar_log_si_crecio_mucho():
+    _recortar_archivo(LOG_FILE)
+    _recortar_archivo(MONITOR_ERROR_LOG)
+    _recortar_archivo(WEB_ERROR_LOG)
 
 
 def run_once(subnets, config, max_workers):

@@ -14,7 +14,9 @@ diario, y acceso RDP en un clic:
   protocolo no esta instalado todavia.
 
 Requiere Flask (pip install -r requirements.txt). Corre con: python app.py
-Luego abre http://localhost:5001 - la pagina se refresca sola cada 20s.
+Luego abre http://localhost:6001 (el puerto sale de netwatch_puerto.txt en la
+raiz del proyecto; para cambiarlo usa "Cambiar Puerto.bat") - la pagina se
+refresca sola cada 20s.
 """
 
 import json
@@ -22,10 +24,11 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from flask import Flask, Response, jsonify, make_response, redirect, render_template, request, url_for
+from flask import Flask, Response, jsonify, make_response, redirect, render_template, request, send_from_directory, url_for
 
 import db
 import firebase_sync
+from netwatch_puerto import leer_puerto
 from notificaciones import agrupar_eventos
 from services import equipos as equipos_service
 from blueprints.admin import bp as admin_bp
@@ -495,6 +498,56 @@ def open_rdp(equipo_id):
     return render_template("rdp_redirect.html", equipo=equipo)
 
 
+def _cargar_firebase_config():
+    p = BASE_DIR / "firebase_config.json"
+    if p.exists():
+        try:
+            return json.loads(p.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    return {}
+
+
+@app.route("/movil", strict_slashes=False)
+def movil_app():
+    fb_cfg = _cargar_firebase_config()
+    return render_template(
+        "movil.html",
+        firebase_api_key=fb_cfg.get("apiKey", ""),
+        firebase_db_url=(fb_cfg.get("databaseURL") or "").rstrip("/"),
+        firebase_email=fb_cfg.get("email", ""),
+        firebase_pass=fb_cfg.get("password", ""),
+    )
+
+
+@app.route("/movil/manifest.json")
+def movil_manifest():
+    return send_from_directory(
+        BASE_DIR / "static" / "movil",
+        "manifest.json",
+        mimetype="application/manifest+json",
+    )
+
+
+@app.route("/movil/sw.js")
+def movil_service_worker():
+    resp = make_response(
+        send_from_directory(
+            BASE_DIR / "static" / "movil",
+            "sw.js",
+            mimetype="application/javascript",
+        )
+    )
+    resp.headers["Service-Worker-Allowed"] = "/movil"
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
+@app.route("/movil/icons/<path:filename>")
+def movil_icons(filename):
+    return send_from_directory(BASE_DIR / "static" / "movil" / "icons", filename)
+
+
 if __name__ == "__main__":
     # use_reloader=False es a proposito: con el reloader activo, Flask lanza
     # DOS procesos python.exe (uno vigilante + uno de trabajo). Si "Detener
@@ -502,4 +555,12 @@ if __name__ == "__main__":
     # solo y la pagina sigue respondiendo aunque se haya presionado Detener
     # (visto en la practica el 2026-07-14). Al desactivar el reloader queda
     # un solo proceso, que se cierra de verdad con Stop-Process.
-    app.run(host="0.0.0.0", port=5001, debug=True, threaded=True, use_reloader=False)
+    puerto = leer_puerto()
+    try:
+        app.run(host="0.0.0.0", port=puerto, debug=True, threaded=True, use_reloader=False)
+    except OSError as e:
+        # Tipicamente "Only one usage of each socket address": otro programa ya
+        # usa el puerto. Queda escrito en web_error.log (iniciar_netwatch.vbs).
+        print(f"[NetWatch] No se pudo abrir el puerto {puerto}: {e}. "
+              f"Ejecuta 'Cambiar Puerto.bat' para elegir otro.", flush=True)
+        raise

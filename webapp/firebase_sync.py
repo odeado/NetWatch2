@@ -670,7 +670,7 @@ def leer_comandos_pendientes():
     return data or {}
 
 
-def encolar_comando_equipo(ip, accion, aviso_segundos=60, mensaje=None, orden_id=None, caduca_seg=600):
+def encolar_comando_equipo(ip, accion, aviso_segundos=60, mensaje=None, orden_id=None, caduca_seg=600, forzar=True):
     """Deja una orden de apagado/reinicio pendiente en Firebase para que el
     agente que corre en la propia PC (tarea programada via GPO, ver
     scripts/netwatch_agente.ps1) la recoja la proxima vez que consulte --
@@ -689,7 +689,15 @@ def encolar_comando_equipo(ip, accion, aviso_segundos=60, mensaje=None, orden_id
             "ip": ip,
             "accion": accion,
             "aviso_segundos": aviso_segundos,
-            "mensaje": mensaje or "Apagado programado desde NetWatch - Sistemas",
+            # Solo ASCII: shutdown.exe /c pasa por la consola de Windows y los
+            # acentos salen rotos en algunas PCs.
+            "mensaje": mensaje or (
+                "Sistemas reiniciara este equipo. Guarda tu trabajo: los programas abiertos se cerraran."
+                if accion == "reiniciar" else
+                "Sistemas apagara este equipo. Guarda tu trabajo: los programas abiertos se cerraran."),
+            # forzar: el agente agrega /f a shutdown.exe (cierra los programas
+            # abiertos; sin eso uno con datos sin guardar bloquea el reinicio).
+            "forzar": bool(forzar),
             "solicitado_en": datetime.now(timezone.utc).isoformat(),
             # id: el agente lo anota al ejecutar (anti-bucle) y lo devuelve en
             # agentes_estado/{ip}/ultima_orden para confirmar CUAL orden se

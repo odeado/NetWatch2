@@ -1,0 +1,16 @@
+<resources>
+    <!-- Paleta del tema NetWatch (webapp/static/css/netwatch-theme.css) -->
+    <color name="background">#0B1120</color>
+    <color name="panel">#151E2E</color>
+    <color name="border">#293548</color>
+    <color name="text">#E7EDF7</color>
+    <color name="muted">#A1AEC3</color>
+    <color name="primary">#60A5FA</color>
+    <color name="primary_dark">#3B82F6</color>
+    <color name="ok">#4ADEA3</color>
+    <color name="warn">#F5C15C</color>
+    <color name="err">#F48891</color>
+    <color name="teal">#78C9C1</color>
+    <color name="white">#FFFFFFFF</color>
+    <color name="black">#FF000000</color>
+</resources>

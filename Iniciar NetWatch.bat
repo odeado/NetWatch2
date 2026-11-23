@@ -18,5 +18,9 @@ wscript "%BASE%iniciar_netwatch.vbs"
 
 timeout /t 4 /nobreak >nul
 
-start "" "http://localhost:5001"
+REM El puerto sale de netwatch_puerto.txt (se cambia con "Cambiar Puerto.bat").
+set "PUERTO=6001"
+if exist "%BASE%netwatch_puerto.txt" set /p PUERTO=<"%BASE%netwatch_puerto.txt"
+set "PUERTO=%PUERTO: =%"
+start "" "http://localhost:%PUERTO%"
 exit

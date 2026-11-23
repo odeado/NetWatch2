@@ -27,9 +27,10 @@ import winsound
 from ctypes import wintypes
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'webapp'))
+from netwatch_puerto import leer_puerto
 from notificaciones import agrupar_eventos
 
-NETWATCH_API_URL = "http://localhost:5001/api/estado"
+NETWATCH_API_URL = f"http://localhost:{leer_puerto()}/api/estado"
 INTERVALO_POLL_MS = 5000
 DURACION_TOAST_MS = 6000
 ARCHIVO_ESTADO = Path(__file__).parent / "toast_pantalla1_estado.json"

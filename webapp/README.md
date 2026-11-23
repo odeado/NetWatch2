@@ -90,7 +90,7 @@ migran solas la primera vez que importas o corres el monitor.
 
 **Con un clic**: doble clic en `Iniciar NetWatch.bat` (en la carpeta raiz del
 proyecto, un nivel arriba de `webapp/`). Abre el monitor y la pagina web cada
-uno en su ventana, y despues abre el navegador solo en `localhost:5001`. Para
+uno en su ventana, y despues abre el navegador solo en `localhost:6001`. Para
 apagar todo, cierra esas dos ventanas.
 
 **Manual** (si prefieres controlarlo tu mismo):
@@ -107,8 +107,10 @@ python monitor.py
 python app.py
 ```
 
-Abre **http://localhost:5001** (o el puerto que hayas configurado en
-`app.py` si el 5001 también estaba ocupado). Si dejaste el monitor
+Abre **http://localhost:6001**. El puerto sale de `netwatch_puerto.txt` (en la
+raiz del proyecto); si esta ocupado por otro programa, ejecuta
+`Cambiar Puerto.bat` para elegir otro (detiene NetWatch, actualiza el archivo
+y lo vuelve a iniciar). Si dejaste el monitor
 corriendo, la tabla y el panel de cambios se van a ir llenando y
 actualizando solos, sin que tengas que hacer nada más.
 

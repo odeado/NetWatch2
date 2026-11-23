@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="NetWatch">
+  <meta name="theme-color" content="#0f172a">
+  <title>NetWatch</title>
+  <link rel="manifest" href="/movil/manifest.json">
+  <link rel="apple-touch-icon" href="/movil/icons/apple-touch-icon.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/movil/icons/apple-touch-icon.png">
+  <link rel="apple-touch-icon" sizes="192x192" href="/movil/icons/icon-192.png">
+  <style>
+    :root {
+      --bg: #0f172a;
+      --bg2: #1e293b;
+      --bg3: #334155;
+      --ok: #4ade80;
+      --err: #f87171;
+      --warn: #fbbf24;
+      --info: #60a5fa;
+      --muted: #94a3b8;
+      --text: #f1f5f9;
+      --text2: #cbd5e1;
+      --radius: 14px;
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 15px;
+      min-height: 100dvh;
+      padding-top: calc(var(--safe-top) + 0px);
+      padding-bottom: calc(var(--safe-bottom) + 70px);
+    }
+
+    /* ---- Header ---- */
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(15,23,42,0.92);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      padding: calc(var(--safe-top) + 12px) 16px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .header-left { display: flex; align-items: center; gap: 10px; }
+    .logo { font-size: 20px; font-weight: 700; letter-spacing: -0.5px; }
+    .logo span { color: var(--info); }
+    #conexion-badge {
+      font-size: 11px;
+      padding: 3px 8px;
+      border-radius: 100px;
+      background: var(--bg3);
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    #conexion-badge.ok { background: rgba(74,222,128,0.15); color: var(--ok); }
+    #conexion-badge.err { background: rgba(248,113,113,0.15); color: var(--err); }
+    #conexion-badge.warn { background: rgba(251,191,36,0.15); color: var(--warn); }
+    #btn-refresh {
+      background: none; border: none; cursor: pointer; color: var(--muted); padding: 6px;
+      border-radius: 8px; transition: color 0.2s;
+    }
+    #btn-refresh:active { color: var(--info); }
+    #btn-refresh svg { width: 20px; height: 20px; }
+
+    /* ---- Tabs ---- */
+    nav.tabs {
+      position: fixed;
+      bottom: 0;
+      left: 0; right: 0;
+      z-index: 100;
+      background: rgba(15,23,42,0.95);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-top: 1px solid rgba(255,255,255,0.08);
+      display: flex;
+      padding-bottom: var(--safe-bottom);
+    }
+    .tab {
+      flex: 1; display: flex; flex-direction: column; align-items: center;
+      justify-content: center; gap: 3px; padding: 10px 4px 8px;
+      background: none; border: none; cursor: pointer;
+      color: var(--muted); font-size: 11px; transition: color 0.2s;
+    }
+    .tab svg { width: 22px; height: 22px; }
+    .tab.active { color: var(--info); }
+    .tab-badge {
+      position: absolute; top: 6px; right: calc(50% - 18px);
+      background: var(--err); color: white; font-size: 10px; font-weight: 700;
+      min-width: 16px; height: 16px; border-radius: 100px;
+      display: flex; align-items: center; justify-content: center; padding: 0 4px;
+    }
+    .tab { position: relative; }
+
+    /* ---- Pages ---- */
+    .page { display: none; padding: 12px; }
+    .page.active { display: block; }
+
+    /* ---- Cards ---- */
+    .card {
+      background: var(--bg2);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+      margin-bottom: 10px;
+      border: 1px solid rgba(255,255,255,0.05);
+    }
+    .card-title {
+      font-size: 11px; font-weight: 700; letter-spacing: 0.08em;
+      text-transform: uppercase; color: var(--muted); margin-bottom: 10px;
+    }
+
+    /* ---- Stat strip ---- */
+    .stat-strip {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+      margin-bottom: 10px;
+    }
+    .stat {
+      background: var(--bg2); border-radius: 12px;
+      padding: 12px 10px; text-align: center;
+      border: 1px solid rgba(255,255,255,0.05);
+    }
+    .stat-num { font-size: 26px; font-weight: 700; line-height: 1; }
+    .stat-label { font-size: 11px; color: var(--muted); margin-top: 3px; }
+    .stat-num.ok { color: var(--ok); }
+    .stat-num.err { color: var(--err); }
+    .stat-num.warn { color: var(--warn); }
+
+    /* ---- Fila equipo ---- */
+    .fila {
+      display: flex; align-items: flex-start; gap: 10px;
+      padding: 10px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+    }
+    .fila:last-child { border-bottom: none; }
+    .dot {
+      width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; margin-top: 5px;
+    }
+    .dot.ok { background: var(--ok); }
+    .dot.err { background: var(--err); box-shadow: 0 0 6px var(--err); }
+    .dot.warn { background: var(--warn); }
+    .dot.muted { background: var(--muted); }
+    .dot.info { background: var(--info); }
+    .fila-cuerpo { flex: 1; min-width: 0; }
+    .fila-titulo { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .fila-sub { font-size: 12px; color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .fila-tiempo { font-size: 11px; color: var(--muted); flex-shrink: 0; margin-top: 4px; }
+
+    /* ---- Chips agentes ---- */
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chip {
+      padding: 5px 10px; border-radius: 100px; font-size: 12px; font-weight: 500;
+      display: flex; align-items: center; gap: 5px;
+    }
+    .chip.ok { background: rgba(74,222,128,0.12); color: var(--ok); }
+    .chip.warn { background: rgba(251,191,36,0.12); color: var(--warn); }
+    .chip.err { background: rgba(248,113,113,0.12); color: var(--err); }
+    .chip.muted { background: rgba(148,163,184,0.12); color: var(--muted); }
+    .chip-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+
+    /* ---- Gauges ---- */
+    .gauge-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .gauge {
+      background: var(--bg3); border-radius: 12px; padding: 12px;
+      text-align: center; border: 1px solid rgba(255,255,255,0.05);
+    }
+    .gauge-nombre { font-size: 12px; font-weight: 600; margin-bottom: 6px; }
+    .gauge-bar-bg {
+      background: rgba(255,255,255,0.08); border-radius: 100px; height: 8px;
+      margin-bottom: 6px; overflow: hidden;
+    }
+    .gauge-bar { height: 100%; border-radius: 100px; transition: width 0.6s; }
+    .gauge-pct { font-size: 11px; color: var(--muted); }
+
+    /* ---- Empty state ---- */
+    .empty { text-align: center; padding: 40px 20px; color: var(--muted); font-size: 14px; }
+    .empty-icon { font-size: 36px; margin-bottom: 10px; }
+
+    /* ---- Spinner ---- */
+    .spin {
+      display: inline-block; width: 18px; height: 18px;
+      border: 2px solid rgba(255,255,255,0.1); border-top-color: var(--info);
+      border-radius: 50%; animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ---- Notificaciones in-app ---- */
+    #toast-container {
+      position: fixed; top: calc(var(--safe-top) + 65px); left: 12px; right: 12px;
+      z-index: 999; display: flex; flex-direction: column; gap: 8px;
+    }
+    .toast {
+      border-radius: 12px; padding: 12px 14px; font-size: 13px;
+      background: var(--bg2); border: 1px solid rgba(255,255,255,0.1);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+      display: flex; gap: 10px; align-items: flex-start;
+      animation: slide-in 0.3s ease;
+    }
+    .toast.err { border-color: rgba(248,113,113,0.4); }
+    .toast.ok { border-color: rgba(74,222,128,0.4); }
+    .toast.info { border-color: rgba(96,165,250,0.4); }
+    @keyframes slide-in { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+    .toast-icon { font-size: 18px; flex-shrink: 0; }
+    .toast-body { flex: 1; }
+    .toast-title { font-weight: 600; }
+    .toast-sub { color: var(--muted); margin-top: 2px; }
+    .toast-close { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 16px; padding: 0; }
+
+    /* ---- Permisos notif ---- */
+    #banner-notif {
+      background: rgba(96,165,250,0.08); border: 1px solid rgba(96,165,250,0.25);
+      border-radius: 12px; padding: 12px 14px; margin-bottom: 10px;
+      display: flex; justify-content: space-between; align-items: center; gap: 10px;
+    }
+    #banner-notif p { font-size: 13px; color: var(--text2); flex: 1; }
+    #btn-notif { background: var(--info); color: white; border: none; border-radius: 8px; padding: 7px 14px; font-size: 13px; cursor: pointer; white-space: nowrap; }
+    #banner-notif-ios {
+      background: rgba(96,165,250,0.08); border: 1px solid rgba(96,165,250,0.25);
+      border-radius: 12px; padding: 12px 14px; margin-bottom: 10px;
+      font-size: 13px; color: var(--text2); line-height: 1.6;
+    }
+  </style>
+</head>
+<body>
+
+<div id="toast-container"></div>
+
+<header>
+  <div class="header-left">
+    <div class="logo">Net<span>Watch</span></div>
+    <div id="conexion-badge">Conectando…</div>
+  </div>
+  <button id="btn-refresh" title="Actualizar ahora" onclick="ciclo(true)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M23 4v6h-6"/><path d="M1 20v-6h6"/>
+      <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+    </svg>
+  </button>
+</header>
+
+<!-- Pages -->
+<div id="page-inicio" class="page active">
+  <div id="banner-notif" style="display:none">
+    <p>🔔 Activa notificaciones para recibir alertas cuando un equipo caiga</p>
+    <button id="btn-notif">Activar</button>
+  </div>
+  <div id="banner-notif-ios" style="display:none">
+    📲 Para recibir alertas en iPhone: toca <strong>Compartir ↗</strong> → <strong>"Añadir a pantalla de inicio"</strong> y vuelve a abrir desde el ícono.
+  </div>
+  <div class="stat-strip" id="stats-strip">
+    <div class="stat"><div class="stat-num muted">—</div><div class="stat-label">Offline</div></div>
+    <div class="stat"><div class="stat-num muted">—</div><div class="stat-label">Prioritarios↓</div></div>
+    <div class="stat"><div class="stat-num muted">—</div><div class="stat-label">Agentes</div></div>
+  </div>
+  <div class="card">
+    <div class="card-title">Agentes de escaneo</div>
+    <div class="chips" id="chips-agentes"><div class="spin"></div></div>
+  </div>
+  <div class="card">
+    <div class="card-title">Fuera de línea por red</div>
+    <div class="gauge-grid" id="gauge-grid"><div class="spin"></div></div>
+  </div>
+</div>
+
+<div id="page-criticos" class="page">
+  <div class="card">
+    <div class="card-title">Equipos prioritarios</div>
+    <div id="lista-criticos"><div class="spin"></div></div>
+  </div>
+</div>
+
+<div id="page-eventos" class="page">
+  <div class="card">
+    <div class="card-title">Últimos cambios</div>
+    <div id="lista-eventos"><div class="spin"></div></div>
+  </div>
+</div>
+
+<!-- Tab bar -->
+<nav class="tabs">
+  <button class="tab active" data-page="page-inicio" onclick="setTab(this)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
+    </svg>
+    Inicio
+  </button>
+  <button class="tab" data-page="page-criticos" onclick="setTab(this)">
+    <span id="tab-badge-criticos" class="tab-badge" style="display:none">0</span>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+      <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+    </svg>
+    Prioritarios
+  </button>
+  <button class="tab" data-page="page-eventos" onclick="setTab(this)">
+    <span id="tab-badge-eventos" class="tab-badge" style="display:none">●</span>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+    </svg>
+    Eventos
+  </button>
+</nav>
+
+<script>
+// =====================================================================
+// CONFIG (inyectada desde Flask)
+// =====================================================================
+const FB_API_KEY = {{ firebase_api_key | tojson }};
+const FB_DB_URL  = {{ firebase_db_url  | tojson }};
+const FB_EMAIL   = {{ firebase_email   | tojson }};
+const FB_PASS    = {{ firebase_pass    | tojson }};
+
+const INTERVALO_MS = 60_000;
+let idToken = null, tokenVence = 0;
+let ultimaClaveEvento = null;
+let timerId = null;
+let cargando = false;
+
+// =====================================================================
+// AUTH FIREBASE (REST)
+// =====================================================================
+async function getToken() {
+  if (idToken && Date.now() < tokenVence - 60_000) return idToken;
+  const url = `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${FB_API_KEY}`;
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({email: FB_EMAIL, password: FB_PASS, returnSecureToken: true})
+  });
+  if (!r.ok) throw new Error('Auth Firebase fallo: ' + r.status);
+  const d = await r.json();
+  idToken = d.idToken;
+  tokenVence = Date.now() + parseInt(d.expiresIn) * 1000;
+  return idToken;
+}
+
+async function fbGet(ruta, query = '') {
+  const tok = await getToken();
+  const url = `${FB_DB_URL}/${ruta}.json?auth=${tok}${query}`;
+  const r = await fetch(url);
+  if (!r.ok) throw new Error('Firebase ' + r.status);
+  const txt = await r.text();
+  if (txt === 'null' || !txt) return null;
+  return JSON.parse(txt);
+}
+
+// =====================================================================
+// TABS
+// =====================================================================
+function setTab(btn) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById(btn.dataset.page).classList.add('active');
+  if (btn.dataset.page === 'page-eventos') {
+    document.getElementById('tab-badge-eventos').style.display = 'none';
+  }
+}
+
+// =====================================================================
+// RENDER
+// =====================================================================
+function duracion(seg) {
+  if (seg < 90) return seg + ' s';
+  const min = Math.floor(seg / 60);
+  if (min < 90) return min + ' min';
+  const h = Math.floor(min / 60);
+  if (h < 48) return h + ' h ' + (min % 60) + ' min';
+  return Math.floor(h / 24) + ' d';
+}
+
+function tiempoDesde(ts) {
+  const seg = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+  return 'hace ' + duracion(seg);
+}
+
+function renderEstado(estado) {
+  if (!estado) return;
+  const offline = estado.offline_total ?? 0;
+  const cOff = estado.criticos_offline ?? 0;
+  const cTot = estado.criticos_total ?? 0;
+  let agentesActivos = 0, agentesTotales = 0;
+  const sit = estado.sitios ?? {};
+  for (const s of Object.values(sit)) {
+    agentesTotales++;
+    if (!s.sin_datos) agentesActivos++;
+  }
+
+  const strip = document.getElementById('stats-strip');
+  strip.innerHTML = `
+    <div class="stat"><div class="stat-num ${offline > 0 ? 'err' : 'ok'}">${offline}</div><div class="stat-label">Offline</div></div>
+    <div class="stat"><div class="stat-num ${cOff > 0 ? 'err' : 'ok'}">${cOff}/${cTot}</div><div class="stat-label">Prioritarios↓</div></div>
+    <div class="stat"><div class="stat-num ${agentesActivos < agentesTotales ? 'warn' : 'ok'}">${agentesActivos}/${agentesTotales}</div><div class="stat-label">Agentes</div></div>
+  `;
+
+  // Chips agentes
+  const nombres = Object.keys(sit).sort();
+  const chipsEl = document.getElementById('chips-agentes');
+  if (!nombres.length) {
+    chipsEl.innerHTML = '<span style="color:var(--muted);font-size:13px">Sin agentes</span>';
+  } else {
+    chipsEl.innerHTML = nombres.map(n => {
+      const s = sit[n];
+      const ult = s.ultimo_escaneo_ms ?? 0;
+      const inter = s.intervalo_sitio_seg ?? 120;
+      const edad = ult ? (Date.now() - ult) / 1000 : 999999;
+      let cls = 'muted', lbl = 'sin datos';
+      if (ult) {
+        if (edad <= Math.max(inter * 1.5, 60)) { cls = 'ok'; lbl = 'activo'; }
+        else if (edad <= Math.max(inter * 3, 600)) { cls = 'warn'; lbl = 'retrasado'; }
+      }
+      return `<div class="chip ${cls}"><span class="chip-dot"></span>${n}</div>`;
+    }).join('');
+  }
+
+  // Gauges
+  const sitArr = nombres.map(n => ({nombre: n, ...sit[n]}))
+    .filter(s => !s.sin_datos && s.total > 0)
+    .sort((a, b) => (b.offline / b.total) - (a.offline / a.total));
+  const gaugeEl = document.getElementById('gauge-grid');
+  if (!sitArr.length) {
+    gaugeEl.innerHTML = '<span style="color:var(--muted);font-size:13px">Sin datos</span>';
+  } else {
+    gaugeEl.innerHTML = sitArr.map(s => {
+      const pct = Math.round(100 * (s.offline ?? 0) / s.total);
+      const color = pct > 20 ? 'var(--err)' : pct > 5 ? 'var(--warn)' : 'var(--ok)';
+      return `<div class="gauge">
+        <div class="gauge-nombre">${s.nombre}</div>
+        <div class="gauge-bar-bg"><div class="gauge-bar" style="width:${pct}%;background:${color}"></div></div>
+        <div class="gauge-pct">${pct}% offline · ${s.offline ?? 0}/${s.total}</div>
+      </div>`;
+    }).join('');
+  }
+}
+
+function renderCriticos(criticos) {
+  const el = document.getElementById('lista-criticos');
+  if (!criticos) { el.innerHTML = '<div class="empty"><div class="empty-icon">✅</div>Sin prioritarios configurados</div>'; return; }
+  const lista = Object.values(criticos).sort((a, b) => {
+    const ra = a.online === false ? 0 : a.online ? 2 : 1;
+    const rb = b.online === false ? 0 : b.online ? 2 : 1;
+    return ra - rb || (a.ip ?? '').localeCompare(b.ip ?? '');
+  });
+  if (!lista.length) { el.innerHTML = '<div class="empty"><div class="empty-icon">✅</div>Sin equipos prioritarios</div>'; return; }
+
+  let caidos = 0;
+  el.innerHTML = lista.map(eq => {
+    const nombre = eq.hostname || eq.ip;
+    const det = eq.ip + (eq.sitio ? ' · ' + eq.sitio : '');
+    let dotCls, estado;
+    if (eq.online === null || eq.online === undefined) {
+      dotCls = 'muted'; estado = 'Sin datos';
+    } else if (eq.online) {
+      dotCls = 'ok'; estado = 'En línea';
+    } else {
+      dotCls = 'err'; caidos++;
+      const desde = eq.desde_ms ? ' · caído hace ' + duracion(Math.max(0, (Date.now() - eq.desde_ms) / 1000)) : '';
+      estado = 'Offline' + desde;
+    }
+    return `<div class="fila">
+      <div class="dot ${dotCls}"></div>
+      <div class="fila-cuerpo">
+        <div class="fila-titulo">${nombre}</div>
+        <div class="fila-sub">${det}</div>
+      </div>
+      <div class="fila-tiempo">${estado}</div>
+    </div>`;
+  }).join('');
+
+  const badge = document.getElementById('tab-badge-criticos');
+  if (caidos > 0) { badge.textContent = caidos; badge.style.display = 'flex'; }
+  else { badge.style.display = 'none'; }
+}
+
+function iconoEvento(tipo) {
+  if (tipo === 'cayo') return '🔴';
+  if (tipo === 'volvio') return '🟢';
+  if (tipo === 'nuevo') return '🔵';
+  if (tipo === 'sitio_sin_datos') return '🟠';
+  if (tipo === 'sitio_recuperado') return '🟢';
+  return '⚪';
+}
+
+function tituloEvento(ev) {
+  const tipo = ev.tipo;
+  if (tipo === 'cayo') return '🔴 Pasó a offline' + (ev.critico ? ' (prioritario)' : '');
+  if (tipo === 'volvio') return '🟢 Volvió online' + (ev.critico ? ' (prioritario)' : '');
+  if (tipo === 'nuevo') return '🔵 Nuevo equipo en la red';
+  if (tipo === 'sitio_sin_datos') return '🟠 Sitio sin reportar';
+  if (tipo === 'sitio_recuperado') return '🟢 Sitio de vuelta';
+  return tipo;
+}
+
+function detalleEvento(ev) {
+  // Prioridad: responsable > hostname > IP
+  const principal = ev.responsable || ev.hostname || ev.ip || '';
+  const maquina = ev.hostname && ev.ip ? (ev.hostname + ' · ' + ev.ip) :
+                  (ev.hostname || ev.ip || '');
+  const extra = ev.sitio ? ' · ' + ev.sitio : '';
+  if (ev.responsable) return principal + ' · ' + maquina + extra;
+  return maquina + extra;
+}
+
+function renderEventos(evs) {
+  const el = document.getElementById('lista-eventos');
+  if (!evs) { el.innerHTML = '<div class="empty"><div class="empty-icon">🕐</div>Sin eventos registrados</div>'; return; }
+  const claves = Object.keys(evs).sort().reverse().slice(0, 40);
+  if (!claves.length) { el.innerHTML = '<div class="empty"><div class="empty-icon">🕐</div>Sin eventos registrados</div>'; return; }
+
+  el.innerHTML = claves.map(k => {
+    const ev = evs[k];
+    const titulo = tituloEvento(ev);
+    const detalle = detalleEvento(ev);
+    const cuando = ev.ts ? tiempoDesde(ev.ts) : '';
+    const dotCls = ev.tipo === 'cayo' || ev.tipo === 'sitio_sin_datos' ? 'err' :
+                   ev.tipo === 'volvio' || ev.tipo === 'sitio_recuperado' ? 'ok' :
+                   ev.tipo === 'nuevo' ? 'info' : 'muted';
+    return `<div class="fila">
+      <div class="dot ${dotCls}"></div>
+      <div class="fila-cuerpo">
+        <div class="fila-titulo">${titulo}</div>
+        <div class="fila-sub">${detalle}</div>
+      </div>
+      <div class="fila-tiempo">${cuando}</div>
+    </div>`;
+  }).join('');
+}
+
+// =====================================================================
+// NOTIFICACIONES
+// =====================================================================
+function mostrarToast(titulo, sub, tipo) {
+  const c = document.getElementById('toast-container');
+  const t = document.createElement('div');
+  t.className = 'toast ' + tipo;
+  const icon = tipo === 'err' ? '🔴' : tipo === 'ok' ? '🟢' : tipo === 'info' ? '🔵' : '⚪';
+  t.innerHTML = `<span class="toast-icon">${icon}</span>
+    <div class="toast-body"><div class="toast-title">${titulo}</div>${sub ? `<div class="toast-sub">${sub}</div>` : ''}</div>
+    <button class="toast-close" onclick="this.parentElement.remove()">✕</button>`;
+  c.prepend(t);
+  setTimeout(() => { if (t.parentElement) t.remove(); }, 7000);
+}
+
+function notificarEvento(ev) {
+  const titulo = tituloEvento(ev);
+  const detalle = detalleEvento(ev);
+  const tipo = ev.tipo === 'cayo' ? 'err' : ev.tipo === 'volvio' ? 'ok' : 'info';
+  mostrarToast(titulo, detalle, tipo);
+
+  // Notificación nativa del sistema (si tiene permiso)
+  if (Notification.permission === 'granted') {
+    try {
+      new Notification(titulo, { body: detalle, icon: '/movil/icons/icon-192.png', tag: ev.ip || ev.sitio });
+    } catch(e) {}
+  }
+}
+
+function pedirPermisoNotificaciones() {
+  if (!('Notification' in window)) return;
+  Notification.requestPermission().then(p => {
+    document.getElementById('banner-notif').style.display = 'none';
+  });
+}
+
+function iniciarBannerNotificaciones() {
+  if (!('Notification' in window)) return;
+  // iOS dentro de un navegador normal (no instalado): mostrar instrucción
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const isStandalone = window.navigator.standalone;
+  if (isIOS && !isStandalone) {
+    document.getElementById('banner-notif-ios').style.display = 'block';
+    return;
+  }
+  if (Notification.permission === 'default') {
+    document.getElementById('banner-notif').style.display = 'flex';
+  }
+}
+
+document.getElementById('btn-notif').addEventListener('click', pedirPermisoNotificaciones);
+
+// =====================================================================
+// CICLO PRINCIPAL
+// =====================================================================
+let eventosAnteriores = null;
+
+async function ciclo(manual = false) {
+  if (cargando && !manual) return;
+  cargando = true;
+  if (manual) document.getElementById('btn-refresh').style.opacity = '0.5';
+
+  const badge = document.getElementById('conexion-badge');
+  badge.textContent = 'Actualizando…';
+  badge.className = '';
+
+  try {
+    const [estado, criticos, evs] = await Promise.all([
+      fbGet('colector/estado'),
+      fbGet('colector/criticos'),
+      fbGet('colector/eventos',
+        '&orderBy=' + encodeURIComponent('"$key"') + '&limitToLast=40'),
+    ]);
+
+    renderEstado(estado);
+    renderCriticos(criticos);
+    renderEventos(evs);
+
+    // Detectar eventos nuevos para notificar
+    if (eventosAnteriores !== null && evs) {
+      const prevClaves = new Set(Object.keys(eventosAnteriores));
+      const nuevos = Object.entries(evs)
+        .filter(([k, _]) => !prevClaves.has(k))
+        .sort(([a], [b]) => a.localeCompare(b));
+      for (const [_, ev] of nuevos) {
+        if (ev.tipo === 'cayo' || ev.tipo === 'volvio') notificarEvento(ev);
+      }
+      if (nuevos.length > 0) {
+        document.getElementById('tab-badge-eventos').style.display = 'flex';
+      }
+    }
+    eventosAnteriores = evs ?? {};
+
+    // Estado badge
+    const offline = estado?.offline_total ?? 0;
+    const cOff = estado?.criticos_offline ?? 0;
+    if (cOff > 0) {
+      badge.textContent = cOff + ' prioritario(s) caído(s)';
+      badge.className = 'err';
+    } else if (offline > 0) {
+      badge.textContent = offline + ' offline';
+      badge.className = 'warn';
+    } else {
+      badge.textContent = 'Red estable';
+      badge.className = 'ok';
+    }
+  } catch(e) {
+    badge.textContent = 'Sin conexión';
+    badge.className = 'err';
+    console.error(e);
+  }
+
+  cargando = false;
+  if (manual) document.getElementById('btn-refresh').style.opacity = '';
+
+  // Re-programar
+  clearTimeout(timerId);
+  timerId = setTimeout(() => ciclo(), INTERVALO_MS);
+}
+
+// =====================================================================
+// ARRANQUE
+// =====================================================================
+iniciarBannerNotificaciones();
+ciclo();
+
+// Refrescar al volver a la app (pantalla activa)
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) ciclo();
+});
+
+// Registrar Service Worker para PWA (iOS / Android / Chrome)
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/movil/sw.js', { scope: '/movil' })
+      .then(reg => console.log('SW registrado', reg.scope))
+      .catch(err => console.error('Error registrando SW', err));
+  });
+}
+</script>
+</body>
+</html>

@@ -65,3 +65,15 @@ webapp/netwatch_backup_*.db
 # Id de la ultima orden ejecutada por el agente (anti-bucle), por PC
 agente_apagado/agente_ultima_orden.txt
 agente_apagado/**/agente_ultima_orden.txt
+
+# Colector NetWatch
+colector/colector_config.json
+colector/colector_estado.json
+colector/*.log
+colector/*.apk
+colector/android/local.properties
+colector/android/colector_apk_config.json
+colector/android/.gradle/
+colector/android/build/
+colector/android/app/build/
+colector/android/.idea/

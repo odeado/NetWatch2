@@ -1,0 +1,29 @@
+{
+  "firebase": {
+    "databaseURL": "https://gestion-usuarios-equipos-default-rtdb.firebaseio.com",
+    "apiKey": "AIzaSyDGQUvsES_fhkVQwRXWRcfPEz6wOEni6tk",
+    "email": "colector@tu-dominio.cl",
+    "password": "CAMBIAR"
+  },
+  "intervalo_seg": 60,
+  "intervalo_sitio_seg": 120,
+  "etiquetas": {},
+  "offline_tras_escaneos": 2,
+  "sitio_sin_datos_min": 10,
+  "refrescar_criticos_min": 60,
+  "max_eventos": 300,
+  "sitios": [],
+  "criticos_manuales": [],
+  "telefono": {
+    "email": "",
+    "password": ""
+  },
+  "_comentarios": {
+    "firebase": "Los mismos databaseURL/apiKey que webapp/firebase_config.json. Conviene una cuenta propia del colector (Firebase > Authentication > Add user).",
+    "telefono": "Opcional: cuenta SOLO LECTURA para la app del celular. Si lo dejas vacio, la app usa la cuenta del colector.",
+    "sitios": "Vacio = todos los sitios que publiquen en escaneos_remotos. O una lista: [\"rendic\", \"matta\"].",
+    "criticos_manuales": "IPs prioritarias extra, ademas de las marcadas como criticas en NetWatch: [\"172.30.100.10\"].",
+    "offline_tras_escaneos": "Escaneos seguidos sin respuesta para dar un equipo por caido.",
+    "sitio_sin_datos_min": "Minutos sin escaneo nuevo de un sitio para avisar que su scanner dejo de reportar."
+  }
+}

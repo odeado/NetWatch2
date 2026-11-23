@@ -30,6 +30,7 @@ import os
 import platform
 import re
 import socket
+import struct
 import subprocess
 import sys
 import threading
@@ -159,12 +160,25 @@ def _get_port_executor():
 
 def _check_port(args):
     ip, port, timeout = args
+    sock = None
     try:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            sock.settimeout(timeout)
-            return sock.connect_ex((ip, port)) == 0
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(timeout)
+        # SO_LINGER (1, 0) envia RST al cerrar y evita que los sockets queden
+        # en TIME_WAIT acumulando buffers en Windows (previene WinError 10055).
+        try:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack('ii', 1, 0))
+        except OSError:
+            pass
+        return sock.connect_ex((ip, port)) == 0
     except OSError:
         return False
+    finally:
+        if sock:
+            try:
+                sock.close()
+            except Exception:
+                pass
 
 
 def scan_ports(ip, ports, timeout=0.6):
